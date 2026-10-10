@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { dragCoefficient } from "../../sim/aero.ts";
 import { aeroShape, BUFFET_BAND, dragMultiplier } from "../../sim/airframe.ts";
-import { fixAero, tunnel, type Company } from "../../sim/company.ts";
+import type { Company } from "../../sim/company.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { AERO_FACILITIES, BUFFET_FIX, believedAero, type AeroFacility } from "../../sim/tunnel.ts";
 import { Chip } from "../components/Bits.tsx";
 import { Plot, type Series } from "../components/Plot.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
 import { DESIGNS, game } from "../game.ts";
+import { fixAeroJob, tunnelJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
 
 /** What each facility can see, in the player's words. */
@@ -156,7 +157,7 @@ export function Tunnel({ company }: { company: Company }) {
                 <span className="mono soft">
                   {money(BUFFET_FIX.cost)} · {BUFFET_FIX.days} days
                 </span>
-                <button type="button" className="btn primary" onClick={() => game.act((c) => fixAero(c, shape.design, "transonic-buffet"))}>
+                <button type="button" className="btn primary" onClick={() => game.schedule(fixAeroJob(shape.design, shape.label))}>
                   Fit them
                 </button>
               </div>
@@ -184,7 +185,7 @@ export function Tunnel({ company }: { company: Company }) {
                       </li>
                     ))}
                   </ul>
-                  <button type="button" className="btn" onClick={() => game.act((c) => tunnel(c, shape.design, id))}>
+                  <button type="button" className="btn" onClick={() => game.schedule(tunnelJob(shape.design, shape.label, id))}>
                     Book · +{money(f.days * COSTS.overheadPerDay)} payroll
                   </button>
                 </div>

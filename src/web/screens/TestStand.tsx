@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fire, fixEngine, type Company } from "../../sim/company.ts";
+import type { Company } from "../../sim/company.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { flowSeparates, type Engine } from "../../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../../sim/hardware.ts";
@@ -8,6 +8,7 @@ import { burnTime } from "../../sim/vehicle.ts";
 import { Chip, ProofBar } from "../components/Bits.tsx";
 import { isVacuumBell, Nozzle } from "../components/Rocket.tsx";
 import { DESIGNS, game } from "../game.ts";
+import { fireJob, fixEngineJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
 
 type EngineUse = { engine: Engine; burn: number; upper: boolean; usedBy: string[] };
@@ -166,7 +167,7 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
                 <span className="mono soft">
                   {money(fix.cost)} · {fix.days} days
                 </span>
-                <button type="button" className="btn primary" onClick={() => game.act((c) => fixEngine(c, engine, mode))}>
+                <button type="button" className="btn primary" onClick={() => game.schedule(fixEngineJob(engine, mode))}>
                   Apply fix
                 </button>
               </div>
@@ -220,7 +221,7 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
               : `Proves at most ${duration} s of a ${burn.toFixed(0)} s burn.`}
         </span>
         <div className="actions">
-          <button type="button" className="btn primary" onClick={() => game.act((c) => fire(c, engine, duration, facility))}>
+          <button type="button" className="btn primary" onClick={() => game.schedule(fireJob(engine, duration, facility, runs))}>
             Fire · {money(cost)} · {spec.days} days
           </button>
           <span className="muted" style={{ fontSize: 14 }}>

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { fly, type Company } from "../../sim/company.ts";
+import type { Company } from "../../sim/company.ts";
 import { vehicleCost } from "../../sim/cost.ts";
 import { burnTime, idealDeltaV, stackMass } from "../../sim/vehicle.ts";
 import { LEO_300, SUBORBITAL_TEST } from "../../missions.ts";
 import { Chip, Facts, Stack, Tabs } from "../components/Bits.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
 import { DESIGNS, game } from "../game.ts";
+import { buildJob, testFlightJob } from "../jobs.ts";
 import { km, money } from "../format.ts";
 
 type Tab = "lineup" | "design" | "record";
@@ -143,14 +144,14 @@ function Design({ company, designKey }: { company: Company; designKey: string })
             : "Straight up the whole flight. A sounding rocket: it never turns over, so it can't reach orbit."}
         </p>
         <div className="actions">
-          <button type="button" className="btn primary" onClick={() => game.askBuild(designKey)}>
+          <button type="button" className="btn primary" onClick={() => game.schedule(buildJob(designKey))}>
             Build one · {money(cost)} · {days} days
           </button>
           <button
             type="button"
             className="btn"
             disabled={stock === 0}
-            onClick={() => game.act((c) => fly(c, designKey, { mission }), (r) => game.showFlight(r, designKey))}
+            onClick={() => game.schedule(testFlightJob(designKey, mission, (r) => game.showFlight(r, designKey)))}
           >
             Test flight · {mission.target ? `LEO ${km(mission.target.apoapsis, 0)}` : "straight up"}
           </button>

@@ -30,8 +30,9 @@ const M = { left: 56, right: 18, top: 16, bottom: 40 };
 export function Plot({ x, y, series, markers = [], bands = [], rules = [], cursor, height = 280, label }: Props) {
   const iw = W - M.left - M.right;
   const ih = height - M.top - M.bottom;
-  const sx = (v: number) => ((v - x.min) / (x.max - x.min)) * iw;
-  const sy = (v: number) => ih - ((v - y.min) / (y.max - y.min)) * ih;
+  // An empty range (a flight over at T+0) would divide by zero.
+  const sx = (v: number) => ((v - x.min) / (x.max - x.min || 1)) * iw;
+  const sy = (v: number) => ih - ((v - y.min) / (y.max - y.min || 1)) * ih;
   const fx = x.format ?? String;
   const fy = y.format ?? String;
   const path = (pts: Array<[number, number]>) =>
@@ -115,6 +116,8 @@ export function Plot({ x, y, series, markers = [], bands = [], rules = [], curso
 
 /** Round tick positions covering 0..max. */
 export function ticks(max: number, count = 5): number[] {
+  // A flight that dies on the pad has nothing to scale: one tick, not an endless loop.
+  if (!(max > 0) || !Number.isFinite(max)) return [0, 1];
   const raw = max / count;
   const mag = 10 ** Math.floor(Math.log10(raw));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw;

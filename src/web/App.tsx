@@ -1,21 +1,23 @@
 import { useState } from "react";
 import { reputation, summary } from "../sim/company.ts";
 import { COSTS } from "../sim/cost.ts";
-import { BuildConfirm } from "./components/BuildConfirm.tsx";
+import { JobConfirm, JobProgress } from "./components/JobDialogs.tsx";
 import { game, useGame } from "./game.ts";
 import { money, signed } from "./format.ts";
 import { Board } from "./screens/Board.tsx";
 import { Flight } from "./screens/Flight.tsx";
 import { Hangar } from "./screens/Hangar.tsx";
+import { Launch } from "./screens/Launch.tsx";
 import { Ledger } from "./screens/Ledger.tsx";
 import { NewGame } from "./screens/NewGame.tsx";
 import { TestStand } from "./screens/TestStand.tsx";
 import { Tunnel } from "./screens/Tunnel.tsx";
 
-type Screen = "board" | "hangar" | "stand" | "tunnel" | "ledger";
+type Screen = "board" | "launch" | "hangar" | "stand" | "tunnel" | "ledger";
 
 const SCREENS: Array<[Screen, string]> = [
   ["board", "Board"],
+  ["launch", "Launch"],
   ["hangar", "Hangar"],
   ["stand", "Test stand"],
   ["tunnel", "Tunnel"],
@@ -81,6 +83,7 @@ export function App() {
       ) : (
         <>
           {screen === "board" && <Board company={company} version={state.version} goTo={setScreen} />}
+          {screen === "launch" && <Launch company={company} version={state.version} goTo={setScreen} />}
           {screen === "hangar" && <Hangar company={company} />}
           {screen === "stand" && <TestStand company={company} />}
           {screen === "tunnel" && <Tunnel company={company} />}
@@ -90,7 +93,7 @@ export function App() {
 
       <div className="notices" aria-live="polite">
         {state.notices.map((n) => (
-          <div key={n.id} className={`notice ${n.tone === "bad" ? "bad" : ""}`}>
+          <div key={n.id} className={`notice ${n.tone === "info" ? "" : n.tone}`}>
             <span>{n.text}</span>
             <button type="button" aria-label="Dismiss" onClick={() => game.dismiss(n.id)}>
               ✕
@@ -99,9 +102,8 @@ export function App() {
         ))}
       </div>
 
-      {state.pendingBuild && !company.dead && <BuildConfirm company={company} designKey={state.pendingBuild} />}
-
-      {state.busy && <div className="busy">{state.busy}</div>}
+      {state.pending && !company.dead && <JobConfirm company={company} job={state.pending} />}
+      {state.progress && <JobProgress key={state.progress.id} progress={state.progress} />}
 
       {company.dead && !state.flight && (
         <div className="overlay" role="dialog" aria-modal="true" aria-label="The run is over">

@@ -1,8 +1,10 @@
 import { useSyncExternalStore } from "react";
-import { build, newCompany, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
-import type { Vehicle } from "../sim/vehicle.ts";
+import { newCompany, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import { generateBoard, startingCash } from "../contracts.ts";
-import { MERIDIAN, PATHFINDER, PATHFINDER_FAT_FAIRING, PATHFINDER_TWO_STAGE } from "../vehicles.ts";
+import { DESIGNS } from "./designs.ts";
+import { deadlineRisks, signedContracts, type Job } from "./jobs.ts";
+
+export { DESIGNS, defaultDesign } from "./designs.ts";
 
 /**
  * The game's state for the browser: the sim's Company plus what the UI
@@ -11,30 +13,25 @@ import { MERIDIAN, PATHFINDER, PATHFINDER_FAT_FAIRING, PATHFINDER_TWO_STAGE } fr
  * saves and tells React to redraw.
  */
 
-/** The designs a player starts with. The other sim variants are command-line teaching cases. */
-export const DESIGNS: Record<string, Vehicle> = {
-  pathfinder: PATHFINDER,
-  "fat-fairing": PATHFINDER_FAT_FAIRING,
-  "two-stage": PATHFINDER_TWO_STAGE,
-  meridian: MERIDIAN,
-};
+export type Notice = { id: number; text: string; tone: "info" | "bad" | "clock" };
 
-export type Notice = { id: number; text: string; tone: "info" | "bad" };
+/** A job on the clock: the progress screen runs from `fromDay` to `toDay`. */
+export type Progress = { id: number; doing: string; fromDay: number; toDay: number; ms: number; crunching: boolean };
 
 type State = {
   company: Company | null;
   /** The most recent flight, kept until the player leaves its debrief. */
   flight: { id: number; report: FlightReport; design: string } | null;
   notices: Notice[];
-  busy: string | null;
-  /** A build waiting on the player's go-ahead: the design key. */
-  pendingBuild: string | null;
+  /** A job waiting on the player's go-ahead. */
+  pending: Job<any> | null;
+  progress: Progress | null;
   version: number;
 };
 
 const SAVE_KEY = "rocketx.save.v1";
 
-let state: State = { company: load(), flight: null, notices: [], busy: null, pendingBuild: null, version: 0 };
+let state: State = { company: load(), flight: null, notices: [], pending: null, progress: null, version: 0 };
 const listeners = new Set<() => void>();
 let nextNotice = 1;
 let nextFlight = 1;
@@ -62,9 +59,33 @@ function save(): void {
   }
 }
 
+let nextProgress = 1;
+
 function notify(text: string, tone: Notice["tone"]): void {
-  state.notices = [...state.notices, { id: nextNotice++, text, tone }].slice(-5);
+  const id = nextNotice++;
+  state.notices = [...state.notices, { id, text, tone }].slice(-5);
+  // The calendar notices are a glance, not a record: they clear themselves.
+  if (tone === "clock") setTimeout(() => game.dismiss(id), 9000);
 }
+
+let lastClock: { day: number; id: number } | null = null;
+
+/** One line on the signed contracts' deadlines, from today. */
+function clockNotice(company: Company, when: "now" | "after"): void {
+  const due = signedContracts(company);
+  if (due.length === 0) return;
+  // Back-to-back jobs: the last job's "after" already says where today stands.
+  if (when === "now" && lastClock?.day === company.day && state.notices.some((n) => n.id === lastClock!.id)) return;
+  lastClock = { day: company.day, id: nextNotice };
+  const parts = due.map((c) => {
+    const left = c.deadline - company.day;
+    return `"${c.title}" ${left < 0 ? "is past due" : `${left} day${left === 1 ? "" : "s"} to go`} (day ${c.deadline})`;
+  });
+  notify(`${when === "now" ? "Day" : "Now day"} ${company.day} · ${parts.join(" · ")}`, "clock");
+}
+
+/** How long the progress screen runs: a couple of seconds, a little longer for long jobs. */
+const progressMs = (days: number) => Math.round(1400 + Math.min(days, 60) * 20);
 
 export const game = {
   subscribe(listener: () => void): () => void {
@@ -111,33 +132,51 @@ export const game = {
     }
   },
 
-  /** Ask before a build: it spends money and calendar the player can't get back. */
-  askBuild(key: string): void {
-    state.pendingBuild = key;
+  /**
+   * Start a job that moves the calendar. It asks first when it would cost a
+   * signed contract its deadline (and always for builds), then shows the
+   * days passing before the sim runs it.
+   */
+  schedule<T extends ActionResult>(job: Job<T>): void {
+    const company = state.company;
+    if (!company || state.progress) return;
+    if (job.alwaysAsk || deadlineRisks(company, job.days, job.forContract).length > 0) {
+      state.pending = job;
+      emit();
+    } else game.proceed(job);
+  },
+
+  cancel(): void {
+    state.pending = null;
     emit();
   },
 
-  cancelBuild(): void {
-    state.pendingBuild = null;
-    emit();
-  },
-
-  confirmBuild(): void {
-    const key = state.pendingBuild;
-    state.pendingBuild = null;
-    if (key) game.act((c) => build(c, key));
+  confirm(): void {
+    const job = state.pending;
+    state.pending = null;
+    if (job) game.proceed(job);
     else emit();
   },
 
-  /** Same as act, but shows a busy screen first: re-tunes take a few seconds. */
-  actSlow<T extends ActionResult>(label: string, action: (company: Company) => T, onDone?: (result: T) => void): void {
-    state.busy = label;
+  proceed<T extends ActionResult>(job: Job<T>): void {
+    const company = state.company;
+    if (!company) return;
+    clockNotice(company, "now");
+    const ms = progressMs(job.days);
+    const id = nextProgress++;
+    state.progress = { id, doing: job.doing, fromDay: company.day, toDay: company.day + job.days, ms, crunching: false };
     emit();
     setTimeout(() => {
-      game.act(action, onDone);
-      state.busy = null;
+      // Let the bar sit full while the sim works: a re-tune takes a few seconds.
+      state.progress = { ...state.progress!, crunching: true };
       emit();
-    }, 30);
+      setTimeout(() => {
+        game.act(job.run, job.onDone);
+        state.progress = null;
+        if (state.company && !state.company.dead) clockNotice(state.company, "after");
+        emit();
+      }, 40);
+    }, ms);
   },
 
   showFlight(report: FlightReport, design: string): void {

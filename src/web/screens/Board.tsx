@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
-import { accept, bid, fly, posted, reputation, retune, wait, type Company } from "../../sim/company.ts";
+import { accept, bid, posted, reputation, type Company } from "../../sim/company.ts";
 import type { Contract } from "../../sim/contracts.ts";
 import { COSTS } from "../../sim/cost.ts";
+import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
 import { Chip, Facts } from "../components/Bits.tsx";
-import { DESIGNS, game } from "../game.ts";
+import { DESIGNS, defaultDesign, game } from "../game.ts";
+import { waitJob } from "../jobs.ts";
 import { km, money } from "../format.ts";
 
-type Props = { company: Company; version: number; goTo: (screen: "stand" | "tunnel" | "hangar") => void };
+type Props = { company: Company; version: number; goTo: (screen: "launch") => void };
 
 function status(company: Company, c: Contract): { text: string; tone: "good" | "warn" | "bad" | "muted" | undefined } {
   const closed = company.closed[c.id];
@@ -18,10 +20,6 @@ function status(company: Company, c: Contract): { text: string; tone: "good" | "
   if (company.day > c.deadline) return { text: "EXPIRED", tone: "muted" };
   if (reputation(company) < c.minReputation) return { text: `NEEDS REP ${c.minReputation}`, tone: "muted" };
   return { text: "OPEN", tone: undefined };
-}
-
-function defaultDesign(c: Contract): string {
-  return c.minApogee !== undefined ? "pathfinder" : "meridian";
 }
 
 export function Board({ company, version, goTo }: Props) {
@@ -84,11 +82,11 @@ export function Board({ company, version, goTo }: Props) {
                 {upcoming.length} more contract{upcoming.length > 1 ? "s" : ""} to be posted. Next around day {nextPosting}.
               </span>
             )}
-            <button type="button" className="btn" onClick={() => game.act((c) => wait(c, 30))}>
+            <button type="button" className="btn" onClick={() => game.schedule(waitJob(30, "Waiting for the board"))}>
               Wait 30 days · {money(30 * COSTS.overheadPerDay)}
             </button>
             {nextPosting !== null && (
-              <button type="button" className="btn" onClick={() => game.act((c) => wait(c, nextPosting - c.day))}>
+              <button type="button" className="btn" onClick={() => game.schedule(waitJob(nextPosting - company.day, "Waiting for the next posting"))}>
                 Wait for the next posting
               </button>
             )}
@@ -118,10 +116,7 @@ function BidPanel({
   // The forecast flies the vehicle once; recompute only when something changed.
   const b = useMemo(() => bid(company, contract.id, design), [company, contract.id, design, version]);
   const signed = company.accepted.includes(contract.id);
-  const built = company.inventory[design] ?? 0;
-  const turns = DESIGNS[design]?.pitchProgram?.kind === "gravity-turn";
   const open = !company.closed[contract.id] && company.day <= contract.deadline;
-  const testing = Math.max(0, b.daysLeft - b.build.days - COSTS.padDays);
 
   return (
     <aside className="side card" aria-label="Bid">
@@ -129,17 +124,7 @@ function BidPanel({
         <p className="label">Bid · {contract.customer}</p>
         <h2>{contract.title}</h2>
       </div>
-      <label className="stack" style={{ gap: 6 }}>
-        <span className="soft">Vehicle</span>
-        <select value={design} onChange={(e) => setDesign(e.target.value)}>
-          {Object.entries(DESIGNS).map(([key, d]) => (
-            <option key={key} value={key}>
-              {d.name}
-              {(company.inventory[key] ?? 0) > 0 ? ` · ${company.inventory[key]} built` : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+      <DesignSelect label="Bid it with" value={design} onChange={setDesign} designs={DESIGNS} inventory={company.inventory} />
       <Facts
         items={[
           ["Pays", <span className="good">{money(contract.payout)}</span>],
@@ -147,105 +132,29 @@ function BidPanel({
           ["Penalty", <span className="bad">{money(contract.penalty)}</span>],
         ]}
       />
-      {open && (
-        <div className="stack" style={{ gap: 6 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }} className="muted">
-            <span>Day {company.day}</span>
-            <span>{b.daysLeft} days to fly</span>
-            <span>Day {contract.deadline}</span>
-          </div>
-          <div role="img" aria-label={`Schedule: ${testing} days for tests, ${b.build.days} to build, ${COSTS.padDays} on the pad`} style={{ display: "flex", height: 14, borderRadius: 3, overflow: "hidden", background: "var(--ground)" }}>
-            {b.fitsSchedule ? (
-              <>
-                <div style={{ flex: `${testing} 1 0`, background: "#26303a" }} />
-                <div style={{ flex: `${b.build.days} 1 0`, background: "var(--cyan)" }} />
-                <div style={{ flex: `${COSTS.padDays} 1 0`, background: "var(--amber)" }} />
-              </>
-            ) : (
-              <div style={{ flex: 1, background: "var(--red)" }} />
-            )}
-          </div>
-          <span className={b.fitsSchedule ? "muted" : "bad"} style={{ fontSize: 14 }}>
-            {b.fitsSchedule
-              ? `${testing} days of slack for tests, then a ${b.build.days}-day build and ${COSTS.padDays} days on the pad.`
-              : `A ${b.build.days}-day build and ${COSTS.padDays} days on the pad no longer fit before the deadline.`}
-          </span>
-        </div>
-      )}
+      {open && <Schedule day={company.day} deadline={contract.deadline} b={b} />}
       {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
-      {b.blockers.length > 0 && (
-        <ul className="list bad">
-          {b.blockers.map((t) => (
-            <li key={t}>{t}</li>
-          ))}
-        </ul>
-      )}
-      {b.regimes.length > 0 && (
-        <div className="stack" style={{ gap: 6 }}>
-          <p className="label">New regimes</p>
-          <ul className="list">
-            {b.regimes.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {b.unknowns.length > 0 && (
-        <div className="stack" style={{ gap: 6 }}>
-          <p className="label">Flying on trust</p>
-          <ul className="list">
-            {b.unknowns.map((u) => (
-              <li key={u.subject + u.text}>
-                <span className="mono warn" style={{ fontSize: 12, fontWeight: 600, flex: "0 0 auto" }}>
-                  {u.subject === "Airframe" ? "AIRFRAME" : "ENGINE"}
-                </span>
-                <span>
-                  {u.subject !== "Airframe" && <strong>{u.subject} </strong>}
-                  {u.text}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <div className="stack" style={{ gap: 6, padding: "14px 16px", borderRadius: 4, background: "var(--raised)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-          <p className="label">Forecast from what's known</p>
-          <Chip tone={b.forecast.delivers ? "good" : "warn"}>{b.forecast.delivers ? "DELIVERS" : "MISSES"}</Chip>
-        </div>
-        <span className="mono" style={{ fontSize: 16 }}>
-          {b.forecast.text}
-        </span>
-      </div>
-      <div className="actions">
-        {!signed && open && (
-          <button type="button" className="btn primary" disabled={b.blockers.length > 0} onClick={() => game.act((c) => accept(c, contract.id))}>
-            Sign contract
+      <Findings b={b} />
+      <Forecast b={b} />
+      {signed ? (
+        <div className="actions">
+          <span className="soft">Signed. Build, re-tune and fly it from the Launch page.</span>
+          <button type="button" className="btn primary" onClick={() => goTo("launch")}>
+            Go to Launch
           </button>
-        )}
-        {signed && (
-          <button
-            type="button"
-            className="btn primary"
-            disabled={built === 0}
-            title={built === 0 ? `Build a ${b.designName} first` : undefined}
-            onClick={() => game.act((c) => fly(c, design, { contract: contract.id }), (r) => game.showFlight(r, design))}
-          >
-            Launch {b.designName}
-          </button>
-        )}
-        <button type="button" className="btn" onClick={() => game.askBuild(design)}>
-          Build · {money(b.build.cost)} · {b.build.days} d
-        </button>
-        {turns && contract.mission.target && open && (
-          <button type="button" className="btn" onClick={() => game.actSlow("Re-tuning the pitch programme…", (c) => retune(c, design, contract.id))}>
-            Re-tune for {contract.payloadMass} kg
-          </button>
-        )}
-        <button type="button" className="btn" onClick={() => goTo("stand")}>
-          Plan tests
-        </button>
-      </div>
+        </div>
+      ) : (
+        open && (
+          <div className="actions">
+            <button type="button" className="btn primary" disabled={b.blockers.length > 0} onClick={() => game.act((c) => accept(c, contract.id))}>
+              Sign contract
+            </button>
+            <span className="muted" style={{ fontSize: 14 }}>
+              Signing commits you to day {contract.deadline}. Missing it costs {money(contract.penalty)}.
+            </span>
+          </div>
+        )
+      )}
     </aside>
   );
 }
