@@ -69,9 +69,11 @@ Built so far: a two-dimensional ascent sim in the plane of the trajectory, flown
 
 The trajectory stays in one plane. Plane changes, the out-of-plane part of the pad's motion and coast-and-relight insertions aren't modelled.
 
-Pitch programmes are open-loop and tuned on design Isp. Once the stand measures the real Isp, a tuned programme usually misses its insertion tolerance, so re-tuning against test data (or closed-loop guidance from the flight-control domain) is the obvious next lever.
+- Pitch programme re-tuning. The trajectory office searches the gravity turn's kick angle and upper-stage ramp against the company's model of the vehicle: measured Isp and drag where tests measured them, the drawings where not, and known buffet. Inside half the tolerance it prefers propellant margin. Engine failures are left out, since no pitch steers around them. A re-tune is adopted only if its prediction reaches orbit
 
-Next: re-tuning the pitch programme from test data, then contracts that bid on these missions with cash and calendar.
+A re-tune is only as good as the testing behind it. Tuned on the drawings and flown on real engines, Meridian misses. With accurate test data and engine failures set aside, re-tuning takes it from 0 to 13 of 25 seeds in spec. Of the rest, 3 buffet whatever the pitch, and 9 lack the Δv for a 200 kg payload once real Isp is known.
+
+Next: contracts that bid on these missions with cash and calendar, so a test campaign competes with the schedule.
 
 ## Running
 
@@ -89,10 +91,13 @@ npm run sim -- pathfinder --json
 
 # Test campaign, then fly. Steps run in order: engine@seconds[/altitude] fires,
 # tunnel:cfd|subsonic|transonic tests the vehicle's shape, fix:engine:mode or
-# fix:aero:transonic-buffet fixes something a test found. --reveal shows the hidden truth.
+# fix:aero:transonic-buffet fixes something a test found, retune re-tunes the pitch
+# programme from what has been measured so far. --reveal shows the hidden truth.
 npm run campaign -- meridian --seed 1
 npm run campaign -- meridian --seed 1 harrier-sl@140 harrier-vac@5/altitude \
   fix:harrier-vac:hard-start harrier-vac@280/altitude --reveal
+npm run campaign -- meridian --seed 7 harrier-sl@140 harrier-vac@280/altitude \
+  tunnel:transonic retune                                     # re-tune from what was measured
 npm run campaign -- fat-fairing --seed 1 tunnel:cfd          # CFD misses the buffet
 npm run campaign -- fat-fairing --seed 1 tunnel:transonic \
   fix:aero:transonic-buffet tunnel:transonic

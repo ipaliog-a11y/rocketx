@@ -158,6 +158,11 @@ export type AscentOptions = {
   hardware?: HardwareTruth;
   /** The shapes' hidden aero truth, keyed by aero shape. Left out, the drag curves are exact and nothing buffets. */
   aero?: AeroTruthTable;
+  /**
+   * False records structural loads without breaking the vehicle, so an
+   * analysis can see how far over the budget a trajectory goes.
+   */
+  structuralFailures?: boolean;
 };
 
 /** [x, y, vx, vy, mass, gravity, drag, back-pressure, steering, ideal Δv] */
@@ -500,7 +505,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     if (phase.burning && qAlpha > maxQAlpha.value) maxQAlpha = { value: qAlpha, t, altitude: k.altitude, mach: k.mach };
     const buffet = ascending ? buffetLoad(ctx.aero, k.mach, k.q) : 0;
     if (buffet > maxBuffet.value) maxBuffet = { value: buffet, t, mach: k.mach };
-    if (buffet > vehicle.limits.maxDynamicPressure) {
+    if (buffet > vehicle.limits.maxDynamicPressure && (options.structuralFailures ?? true)) {
       fail(k, "transonic-buffet", buffet);
       break;
     }

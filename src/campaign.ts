@@ -12,6 +12,8 @@ import {
   type Facility,
 } from "./sim/teststand.ts";
 import { MISSIONS } from "./missions.ts";
+import { retuneFromTests } from "./sim/tuning.ts";
+import type { Vehicle } from "./sim/vehicle.ts";
 import { ENGINES, VEHICLES } from "./vehicles.ts";
 
 /**
@@ -23,12 +25,13 @@ import { ENGINES, VEHICLES } from "./vehicles.ts";
  *   tunnel:transonic         put the vehicle's shape in the transonic tunnel
  *                            (also tunnel:cfd, tunnel:subsonic)
  *   fix:aero:transonic-buffet  fix buffet the tunnel has seen
+ *   retune                   re-tune the pitch programme from what's been measured
  *
  * npm run campaign -- meridian leo-300 --seed 7 harrier-sl@5 harrier-sl@150 --reveal
  */
 
 const USAGE =
-  "Usage: campaign <vehicle> [mission] [--seed N] [--reveal] [engine@seconds[/altitude] | tunnel:facility | fix:engine:mode | fix:aero:mode ...]";
+  "Usage: campaign <vehicle> [mission] [--seed N] [--reveal] [engine@seconds[/altitude] | tunnel:facility | fix:engine:mode | fix:aero:mode | retune ...]";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -40,8 +43,10 @@ const reveal = args.includes("--reveal");
 const words = args.filter((a) => !a.startsWith("--"));
 
 const vehicleName = words.shift();
-const vehicle = vehicleName ? VEHICLES[vehicleName] : undefined;
-if (!vehicle) fail(`Unknown vehicle "${vehicleName ?? ""}". Choose one of: ${Object.keys(VEHICLES).join(", ")}`);
+const design = vehicleName ? VEHICLES[vehicleName] : undefined;
+if (!design) fail(`Unknown vehicle "${vehicleName ?? ""}". Choose one of: ${Object.keys(VEHICLES).join(", ")}`);
+/** The vehicle as it will fly: a re-tune swaps its pitch programme. */
+let vehicle: Vehicle = design;
 const steered = vehicle.pitchProgram && vehicle.pitchProgram.kind !== "vertical";
 const missionName = words[0] && MISSIONS[words[0]] ? words.shift()! : steered ? "leo-300" : "suborbital";
 const mission = MISSIONS[missionName]!;
@@ -59,6 +64,14 @@ for (const step of words) {
           ? applyAeroFix(campaign, vehicle, mode as FailureMode)
           : applyFix(campaign, engineOf(target), mode as FailureMode).text,
       );
+    } catch (error) {
+      console.log((error as Error).message);
+    }
+  } else if (step === "retune") {
+    try {
+      const tuned = retuneFromTests(campaign, vehicle, mission);
+      vehicle = tuned.vehicle;
+      console.log(tuned.text);
     } catch (error) {
       console.log((error as Error).message);
     }
