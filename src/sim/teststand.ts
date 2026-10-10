@@ -9,6 +9,8 @@ import {
   type FailureMode,
   type HardwareTruth,
 } from "./hardware.ts";
+import { aeroShape, type AeroTruthTable } from "./airframe.ts";
+import { aeroUnknowns, type AeroKnowledge } from "./tunnel.ts";
 import { burnTime, type Vehicle } from "./vehicle.ts";
 
 /**
@@ -86,14 +88,17 @@ export type Campaign = {
   /** Hidden from the player. Fixes change it; tests read it. */
   truth: HardwareTruth;
   knowledge: Record<string, EngineKnowledge>;
+  /** Hidden aero truth per outer shape. */
+  aeroTruth: AeroTruthTable;
+  aeroKnowledge: Record<string, AeroKnowledge>;
   /** $k spent on firings, lost hardware and fixes. */
   spent: number;
   /** Calendar days used by firings, rebuilds and fixes. */
   days: number;
 };
 
-export function newCampaign(truth: HardwareTruth): Campaign {
-  return { truth, knowledge: {}, spent: 0, days: 0 };
+export function newCampaign(truth: HardwareTruth, aeroTruth: AeroTruthTable = {}): Campaign {
+  return { truth, knowledge: {}, aeroTruth, aeroKnowledge: {}, spent: 0, days: 0 };
 }
 
 function knowledgeOf(campaign: Campaign, engine: Engine): EngineKnowledge {
@@ -280,11 +285,12 @@ export function applyFix(campaign: Campaign, engine: Engine, mode: FailureMode):
   };
 }
 
-export type Unknown = { engine: string; text: string };
+/** Something a flight would take on trust. `subject` is the engine or the airframe it concerns. */
+export type Unknown = { subject: string; text: string };
 
 /**
- * What a vehicle would be flying on trust: every way its engines could
- * surprise it that no firing has ruled out. This is the bid screen's
+ * What a vehicle would be flying on trust: every way its engines or its
+ * shape could surprise it that no firing or tunnel run has ruled out. This is the bid screen's
  * "regimes this vehicle has never seen" for propulsion.
  */
 export function flightUnknowns(vehicle: Vehicle, campaign: Campaign): Unknown[] {
@@ -300,7 +306,7 @@ export function flightUnknowns(vehicle: Vehicle, campaign: Campaign): Unknown[] 
 
   const unknowns: Unknown[] = [];
   for (const { engine, burn, upper } of uses.values()) {
-    const add = (text: string) => unknowns.push({ engine: engine.name, text });
+    const add = (text: string) => unknowns.push({ subject: engine.name, text });
     const known = campaign.knowledge[engine.name];
     const burnText = `${burn.toFixed(0)} s`;
     if (!known || known.firings === 0) {
@@ -329,19 +335,30 @@ export function flightUnknowns(vehicle: Vehicle, campaign: Campaign): Unknown[] 
     if (known.measuredIspFactor === null) add("Isp never measured. Trajectory and propellant margin rest on the design figure.");
     if (upper && !known.altitudeTested) add("Never fired in the altitude cell. Vacuum performance is an inference.");
   }
+  if (campaign.aeroTruth[aeroShape(vehicle).key]) unknowns.push(...aeroUnknowns(vehicle, campaign));
   return unknowns;
 }
 
 /**
  * The engines as the company believes them to be: measured Isp where a
- * firing measured it, the design figure where not, and no failures,
- * because a model can only predict what it knows. Flying this gives the
- * pre-flight prediction.
+ * firing measured it, the design figure where not, and only the failures
+ * the stand has seen and nobody fixed, because a model can only predict
+ * what it knows. Flying this gives the pre-flight prediction.
  */
 export function believedHardware(campaign: Campaign): HardwareTruth {
   const believed: HardwareTruth = {};
   for (const name of Object.keys(campaign.truth)) {
-    believed[name] = { ...IDEAL_TRUTH, ispFactor: campaign.knowledge[name]?.measuredIspFactor ?? 1 };
+    const known = campaign.knowledge[name];
+    const seen = (mode: FailureMode) =>
+      known?.open.includes(mode)
+        ? [...known.history].reverse().flatMap((r) => r.findings).find((f) => f.mode === mode)
+        : undefined;
+    believed[name] = {
+      ispFactor: known?.measuredIspFactor ?? 1,
+      hardStart: seen("hard-start") !== undefined,
+      instabilityOnset: seen("combustion-instability")?.t ?? null,
+      thermalLife: seen("burn-through")?.t ?? Infinity,
+    };
   }
   return believed;
 }

@@ -1,4 +1,5 @@
 import { dragCoefficient, dynamicPressure, referenceArea } from "./aero.ts";
+import { aeroShape, buffetLoad, dragMultiplier, IDEAL_AERO, type AeroTruth, type AeroTruthTable } from "./airframe.ts";
 import { atmosphereAt } from "./atmosphere.ts";
 import { G0, MU_EARTH, R_EARTH } from "./constants.ts";
 import { flowSeparates, massFlow, thrustAt } from "./engine.ts";
@@ -32,6 +33,7 @@ export type EventKind =
   | "meco"
   | "cutoff"
   | "engine-failure"
+  | "structural-failure"
   | "staging"
   | "orbit"
   | "apogee"
@@ -49,7 +51,7 @@ export type FlightEvent = {
   stage: number;
   /** Event-specific number: q for max-q, T/W for liftoff, pressure for separation, kg left for cutoff. */
   value?: number;
-  /** For an engine failure, which failure mode. */
+  /** For an engine or structural failure, which failure mode. */
   mode?: FailureMode;
 };
 
@@ -96,7 +98,7 @@ export type Losses = {
   steering: number;
 };
 
-/** "apogee" means the flight topped out and fell back: suborbital. "failure" means an engine failed and the vehicle was lost. */
+/** "apogee" means the flight topped out and fell back: suborbital. "failure" means the vehicle was lost to an engine or structural failure. */
 export type Outcome = "no-liftoff" | "failure" | "orbit" | "apogee" | "impact" | "timeout";
 
 export type FlightResult = {
@@ -111,6 +113,8 @@ export type FlightResult = {
     maxQ: { value: number; t: number; altitude: number; velocity: number; mach: number; stage: number };
     /** Peak dynamic pressure × angle of attack, Pa·deg. */
     maxQAlpha: { value: number; t: number; altitude: number; mach: number };
+    /** Peak unsteady load from transonic buffet, Pa. 0 if the shape doesn't buffet. */
+    maxBuffetLoad: { value: number; t: number; mach: number };
     /** Inertial speed at final shutdown, m/s. */
     burnoutVelocity: number;
     /** Ground-relative speed at final shutdown, m/s. */
@@ -152,6 +156,8 @@ export type AscentOptions = {
    * and fail when their quirks say so. Left out, every engine is perfect.
    */
   hardware?: HardwareTruth;
+  /** The shapes' hidden aero truth, keyed by aero shape. Left out, the drag curves are exact and nothing buffets. */
+  aero?: AeroTruthTable;
 };
 
 /** [x, y, vx, vy, mass, gravity, drag, back-pressure, steering, ideal Δv] */
@@ -176,6 +182,8 @@ type Context = {
   vehicle: Vehicle;
   /** In-plane rotation rate of the Earth and its air, rad/s. */
   omega: number;
+  /** How the shape really behaves in the air. */
+  aero: AeroTruth;
 };
 
 /** Everything the integrator and the event checks need at one instant. */
@@ -250,7 +258,7 @@ function snapshot(ctx: Context, phase: Phase, t: number, s: State): Snapshot {
     thrustDir,
     angleOfAttack: Math.acos(cosAlpha),
     thrust: phase.burning ? phase.stage.engineCount * thrustAt(phase.stage.engine, atm.pressure) : 0,
-    drag: q * dragCoefficient(vehicle.dragCurve, mach) * phase.area,
+    drag: q * dragCoefficient(vehicle.dragCurve, mach) * dragMultiplier(ctx.aero, mach) * phase.area,
     mach,
     q,
     pressure: atm.pressure,
@@ -329,7 +337,11 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
   if (vehicle.stages.length === 0) throw new Error(`${vehicle.name} has no stages`);
   const program = vehicle.pitchProgram ?? VERTICAL;
   const geometry = launchGeometry(mission, options.rotatingEarth ?? true);
-  const ctx: Context = { vehicle, omega: geometry.rotationRate };
+  const ctx: Context = {
+    vehicle,
+    omega: geometry.rotationRate,
+    aero: options.aero?.[aeroShape(design).key] ?? IDEAL_AERO,
+  };
   const lastStage = vehicle.stages.length - 1;
 
   // Guidance shuts the last stage down once the orbit has the target's
@@ -365,6 +377,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
   let outcome: Outcome = "timeout";
   let maxQ = { value: 0, t: 0, altitude: 0, velocity: 0, mach: 0, stage: 0 };
   let maxQAlpha = { value: 0, t: 0, altitude: 0, mach: 0 };
+  let maxBuffet = { value: 0, t: 0, mach: 0 };
   let burnout = { t: 0, altitude: 0, velocity: 0, groundSpeed: 0, flightPathAngle: 0, downrange: 0 };
   let orbit: OrbitElements | null = null;
   let apogee = { t: 0, altitude: 0 };
@@ -400,8 +413,9 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     });
   };
 
-  const fail = (k: Snapshot, mode: FailureMode) => {
-    events.push({ kind: "engine-failure", t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, mode });
+  const fail = (k: Snapshot, mode: FailureMode, value?: number) => {
+    const kind = mode === "transonic-buffet" ? "structural-failure" : "engine-failure";
+    events.push({ kind, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, mode, value });
     outcome = "failure";
     record(k);
   };
@@ -484,6 +498,12 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     if (ascending && k.q > maxQ.value) maxQ = { value: k.q, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex };
     const qAlpha = k.q * k.angleOfAttack * DEG;
     if (phase.burning && qAlpha > maxQAlpha.value) maxQAlpha = { value: qAlpha, t, altitude: k.altitude, mach: k.mach };
+    const buffet = ascending ? buffetLoad(ctx.aero, k.mach, k.q) : 0;
+    if (buffet > maxBuffet.value) maxBuffet = { value: buffet, t, mach: k.mach };
+    if (buffet > vehicle.limits.maxDynamicPressure) {
+      fail(k, "transonic-buffet", buffet);
+      break;
+    }
     if (ascending && !passedMach1 && k.mach >= 1) {
       passedMach1 = true;
       event("mach-1", k);
@@ -585,6 +605,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       apogeeTime: apogee.t,
       maxQ,
       maxQAlpha,
+      maxBuffetLoad: maxBuffet,
       burnoutVelocity: burnout.velocity,
       burnoutGroundSpeed: burnout.groundSpeed,
       burnoutAltitude: burnout.altitude,

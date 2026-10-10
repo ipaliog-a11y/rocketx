@@ -1,5 +1,6 @@
 import type { FlightEvent, FlightResult } from "./ascent.ts";
 import { R_EARTH } from "./constants.ts";
+import { aeroShape } from "./airframe.ts";
 import { FAILURE_LABELS, type FailureMode } from "./hardware.ts";
 import { EARTH_ROTATION, type Mission } from "./mission.ts";
 import type { Campaign } from "./teststand.ts";
@@ -39,6 +40,7 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     "q-alpha-limit-exceeded": `Side-load budget exceeded, q·α ${kPaDeg(e.value ?? 0)}`,
     "accel-limit-exceeded": `Acceleration limit exceeded, ${e.value?.toFixed(1)} g`,
     meco: `Engine cutoff, ${stage}`,
+    "structural-failure": `Structural failure: ${e.mode ? FAILURE_LABELS[e.mode] : ""}, load ${kPa(e.value ?? 0)}`,
     "engine-failure": `Engine failure: ${e.mode ? FAILURE_LABELS[e.mode] : ""}, ${vehicle.stages[e.stage]?.engine.name ?? ""}`,
     cutoff: `Guidance cutoff on target energy, ${Math.round(e.value ?? 0)} kg propellant left`,
     staging: `Stage separation, ${stage} ignites`,
@@ -255,7 +257,7 @@ function insertionLines(result: FlightResult, vehicle: Vehicle, mission: Mission
   }
 }
 
-const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation">, (engine: string, after: string) => string> = {
+const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buffet">, (engine: string, after: string) => string> = {
   "hard-start": (engine) => `hard start. The ${engine} chamber cracked as it lit.`,
   "combustion-instability": (engine, after) =>
     `combustion instability ${after} into the ${engine} burn. The pressure oscillation shook the stage apart.`,
@@ -264,8 +266,13 @@ const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation">, (engine: string
 };
 
 function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
+  const structural = result.events.find((x) => x.kind === "structural-failure");
+  if (structural) {
+    buffetLines(structural, vehicle, campaign, lines);
+    return;
+  }
   const e = result.events.find((x) => x.kind === "engine-failure");
-  if (!e?.mode || e.mode === "flow-separation") return;
+  if (!e?.mode || e.mode === "flow-separation" || e.mode === "transonic-buffet") return;
   const stage = vehicle.stages[e.stage]!;
   const engine = stage.engine.name;
   const ignition = result.events.filter((x) => x.kind === "ignition" && x.stage === e.stage)[0];
@@ -289,5 +296,22 @@ function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign
     lines.push(
       `  The longest clean firing of the current ${engine} hardware was ${known.provenDuration.toFixed(1)} s. The flight needed it to run past ${after}.`,
     );
+  }
+}
+
+function buffetLines(e: FlightEvent, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
+  const shape = aeroShape(vehicle);
+  lines.push(
+    `Vehicle lost at ${tPlus(e.t)}, ${km(e.altitude)}, Mach ${e.mach.toFixed(2)}: transonic buffet. The shock on the fairing shoulder oscillated and drove the unsteady load past the ${kPa(vehicle.limits.maxDynamicPressure)} the structure was built for.`,
+  );
+  if (!campaign) return;
+  const known = campaign.aeroKnowledge[shape.key];
+  if (known?.open.includes("transonic-buffet")) {
+    lines.push(`  The transonic tunnel had already seen buffet on the ${shape.label}. It flew unfixed.`);
+  } else if (!known || known.runs === 0) {
+    lines.push(`  The ${shape.label} was never tested. A transonic tunnel run would have shown the buffet.`);
+  } else if (known.transonicRise === null) {
+    const only = known.dragSource === "cfd" ? "It only saw CFD, which averages over moving shocks. " : "";
+    lines.push(`  The ${shape.label} never went through the transonic tunnel. ${only}A transonic run would have shown the buffet.`);
   }
 }

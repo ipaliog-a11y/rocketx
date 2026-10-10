@@ -20,13 +20,19 @@ export type EngineTruth = {
   thermalLife: number;
 };
 
-export type FailureMode = "hard-start" | "combustion-instability" | "burn-through" | "flow-separation";
+export type FailureMode =
+  | "hard-start"
+  | "combustion-instability"
+  | "burn-through"
+  | "flow-separation"
+  | "transonic-buffet";
 
 export const FAILURE_LABELS: Record<FailureMode, string> = {
   "hard-start": "hard start",
   "combustion-instability": "combustion instability",
   "burn-through": "burn-through",
   "flow-separation": "flow separation",
+  "transonic-buffet": "transonic buffet",
 };
 
 /** Odds and ranges the seed draws from. Tuned so most designs have at least one surprise. */

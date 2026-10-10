@@ -64,13 +64,14 @@ Built so far: a two-dimensional ascent sim in the plane of the trajectory, flown
 - Δv bookkeeping relative to the ground: delivered Δv split into gravity, drag, back-pressure and steering losses
 - A text debrief that names the physics, including why an insertion missed
 - Engine test stand. Each engine has hidden truths rolled from the run's seed: real Isp, hard start, combustion instability onset and chamber life. Hot-fires on a sea-level stand or an altitude cell reveal only what they reach, cost cash and calendar days, and destroy the test engine when something fails. Fixes remove a mode the stand has seen, cost some performance, and make earlier proof void
-- Before flight: a list of what the vehicle is flying on trust, and a forecast from the measured engine performance. In flight, engines perform and fail as built, and the debrief points at the firing that would have caught the failure
+- Wind tunnels. Each outer shape has hidden aero truths: real drag against the hand-estimated curve, the real transonic drag rise, and buffet on the fairing shoulder (likelier on a hammerhead fairing). CFD is cheap and gets drag about half right, but can't see buffet. The subsonic tunnel measures drag. The transonic tunnel measures the drag rise and shows buffet. Vortex generators fix buffet for about 3% drag. Buffet that drives the load past the structural budget breaks the vehicle up near Mach 1
+- Before flight: a list of what the vehicle is flying on trust, and a forecast that flies the vehicle as measured, including any failure seen and not fixed. In flight, engines perform and fail as built, and the debrief points at the firing that would have caught the failure
 
 The trajectory stays in one plane. Plane changes, the out-of-plane part of the pad's motion and coast-and-relight insertions aren't modelled.
 
 Pitch programmes are open-loop and tuned on design Isp. Once the stand measures the real Isp, a tuned programme usually misses its insertion tolerance, so re-tuning against test data (or closed-loop guidance from the flight-control domain) is the obvious next lever.
 
-Next: wind-tunnel runs for the aero domain, re-tuning the pitch programme from test data, then contracts that bid on these missions with cash and calendar.
+Next: re-tuning the pitch programme from test data, then contracts that bid on these missions with cash and calendar.
 
 ## Running
 
@@ -87,10 +88,14 @@ npm run sim -- fat-fairing              # also: vac-bell, overfuelled, two-stage
 npm run sim -- pathfinder --json
 
 # Test campaign, then fly. Steps run in order: engine@seconds[/altitude] fires,
-# fix:engine:mode fixes something the stand found. --reveal shows the hidden truth.
+# tunnel:cfd|subsonic|transonic tests the vehicle's shape, fix:engine:mode or
+# fix:aero:transonic-buffet fixes something a test found. --reveal shows the hidden truth.
 npm run campaign -- meridian --seed 1
 npm run campaign -- meridian --seed 1 harrier-sl@140 harrier-vac@5/altitude \
   fix:harrier-vac:hard-start harrier-vac@280/altitude --reveal
+npm run campaign -- fat-fairing --seed 1 tunnel:cfd          # CFD misses the buffet
+npm run campaign -- fat-fairing --seed 1 tunnel:transonic \
+  fix:aero:transonic-buffet tunnel:transonic
 npm test
 npm run typecheck
 ```
