@@ -232,6 +232,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
   company.inventory[key]! -= 1;
   const result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth });
   const lines = [debrief(result, vehicle, mission, company.campaign)];
+  const orbitedBefore = (company.experience[key]?.orbits ?? 0) > 0;
   learnFromFlight(company.campaign, vehicle, result);
   recordExperience(company, key, vehicle, result);
 
@@ -258,6 +259,11 @@ export function fly(company: Company, key: string, target: { contract: string } 
   } else {
     const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
     if (failure?.mode) company.record.push({ day: company.day, tag: failure.mode, reputation: -1, note: `${design.name} test flight` });
+    // A design's first orbit is flight heritage customers will pay for.
+    if (result.outcome === "orbit" && !orbitedBefore) {
+      company.record.push({ day: company.day, tag: "demonstrated", reputation: 1, note: `${design.name} demonstration flight` });
+      lines.push("", `The ${design.name} has demonstrated orbit. Customers notice: reputation +1.`);
+    }
   }
   return { text: lines.join("\n"), notices, result };
 }
@@ -355,6 +361,8 @@ function describeTag(tag: Tag): string {
       return "a missed deadline";
     case "delivered":
       return "a delivery";
+    case "demonstrated":
+      return "an orbital demonstration";
     default:
       return `a ${FAILURE_LABELS[tag]}`;
   }

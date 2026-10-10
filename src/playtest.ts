@@ -123,25 +123,35 @@ function play(seed: number, policy: Policy): Outcome {
   const testing = policy !== "reckless";
   let note = "";
 
-  // Suborbital first, for the reputation the LEO customers want.
+  // Suborbital work first, for the reputation the LEO customers want. A
+  // player presses on after a failure, so the bots do too.
   if (testing) {
     engineTests(company, "pathfinder", policy);
     proveShape(company, "pathfinder", policy === "cheap" ? "cfd" : "transonic");
   }
   for (const id of ["sounding", "microgravity"]) {
     const c = contract(id);
-    if (!canSign(company, c, "pathfinder")) continue;
+    if (reputation(company) >= 1 || !canSign(company, c, "pathfinder")) continue;
     if (testing && !forecastDelivers(company, "pathfinder", c)) continue;
     deliver(company, "pathfinder", c);
-    if (reputation(company) >= 1) break;
   }
-  if (reputation(company) < 1) note ||= "no suborbital delivery";
 
-  // Then orbit.
   if (testing && !company.dead) {
     if (!engineTests(company, "meridian", policy)) note ||= "Meridian engines unproven";
     if (!proveShape(company, "meridian", policy === "cheap" ? "cfd" : "transonic")) note ||= "Meridian shape unproven";
   }
+
+  // No heritage yet: buy it with an orbital demonstration flight.
+  if (reputation(company) < 1 && !company.dead) {
+    note ||= "needed a demonstration flight";
+    const leo = contract("leo-150");
+    if (testing) guard(company, () => retune(company, "meridian", leo.id));
+    for (let tries = 0; tries < 2 && reputation(company) < 1 && !company.dead; tries++) {
+      if (!guard(company, () => build(company, "meridian"))) break;
+      guard(company, () => fly(company, "meridian", { mission: leo.mission }));
+    }
+  }
+
   const orbital = policy === "greedy" ? ["leo-200", "leo-150", "sso-150"] : ["leo-200", "leo-150"];
   for (const id of orbital) {
     const c = contract(id);
@@ -153,7 +163,7 @@ function play(seed: number, policy: Policy): Outcome {
     }
     deliver(company, "meridian", c);
   }
-  if (company.firstOrbitDay === null) note ||= "no forecast reached orbit";
+  if (company.firstOrbitDay === null) note ||= "never reached orbit";
 
   const statuses = Object.values(company.closed);
   return {

@@ -7,7 +7,7 @@ import type { Mission } from "./mission.ts";
  * this, not a single score: a customer may forgive a late launch and still
  * refuse a company that has burned through a chamber.
  */
-export type Tag = FailureMode | "no-orbit" | "short" | "insertion-miss" | "late" | "delivered";
+export type Tag = FailureMode | "no-orbit" | "short" | "insertion-miss" | "late" | "delivered" | "demonstrated";
 
 /** A problem statement with money attached. */
 export type Contract = {
@@ -18,8 +18,14 @@ export type Contract = {
   payloadMass: number;
   /** For suborbital work: the apogee the experiment needs, m. */
   minApogee?: number;
-  /** Paid on delivery, $k. A degraded orbit pays half. */
+  /** Paid on delivery, $k. */
   payout: number;
+  /**
+   * Share of the payout for an orbit out of spec. 0 means a miss is no use
+   * to this customer at all: a weather satellite at the wrong altitude
+   * drifts out of its sun-synchronous plane.
+   */
+  degradedShare: number;
   /** Charged if the flight fails or the deadline passes, $k. */
   penalty: number;
   /** Last day the flight can happen. */
@@ -80,13 +86,16 @@ export function settle(contract: Contract, result: FlightResult): Settlement {
       text: `${contract.customer}: payload delivered in spec. Paid $${contract.payout}k.`,
     };
   }
-  const half = Math.round(contract.payout / 2);
+  if (contract.degradedShare <= 0) {
+    return { ...lost("insertion-miss", "the orbit is out of spec and no use for this mission."), reputation: -1 };
+  }
+  const part = Math.round(contract.payout * contract.degradedShare);
   return {
     status: "degraded",
-    payout: half,
+    payout: part,
     penalty: 0,
     tag: "insertion-miss",
     reputation: 0,
-    text: `${contract.customer}: payload in orbit but out of spec; it will spend its own propellant fixing that. Paid half, $${half}k.`,
+    text: `${contract.customer}: payload in orbit but out of spec; it will spend its own propellant fixing that. Paid ${Math.round(contract.degradedShare * 100)}%, $${part}k.`,
   };
 }
