@@ -366,6 +366,30 @@ function generated(seed: number): Contract[] {
       refuses: [...FAILURE_TAGS, "no-orbit", "late"],
     });
   }
+  // Student payloads: small, poorly paid, and open to any company. A firm
+  // whose record has scared off everyone else can still fly these and win
+  // its reputation back one delivery at a time.
+  for (let day = int(40, 80); day < 1_000; day += int(70, 110)) {
+    const payload = step(between(10, 30), 5);
+    const apogee = step(between(90, 105), 5);
+    out.push({
+      id: id("student"),
+      kind: "sounding",
+      customer: pick(["Northreach College", "Aldane Polytechnic", "Tidewater Institute"]),
+      title: `Student payload above ${apogee} km`,
+      mission: SUBORBITAL_TEST,
+      payloadMass: payload,
+      minApogee: apogee * 1000,
+      payout: step(between(600, 900), 10),
+      degradedShare: 0.5,
+      penalty: 50,
+      deadline: day + int(150, 200),
+      minReputation: -10,
+      postedDay: day,
+      refuses: [],
+    });
+  }
+
   return out;
 }
 

@@ -7,7 +7,7 @@ import { debrief } from "./debrief.ts";
 import type { Engine } from "./engine.ts";
 import { combineTruth, FAILURE_LABELS, rollPartTruths, rollTruths, type FailureMode } from "./hardware.ts";
 import type { Mission } from "./mission.ts";
-import { holds, LICENCE_LABELS, LICENCE_COSTS, missionLicence, nextLicence, requiredLicence, type Licence } from "./licence.ts";
+import { holds, LICENCE_LABELS, LICENCE_COSTS, missionLicence, nextLicence, requiredLicence, SPACE_LINE, type Licence } from "./licence.ts";
 import {
   assembleEngine,
   developmentCost,
@@ -617,6 +617,11 @@ export function fly(company: Company, key: string, target: { contract: string } 
     if (result.outcome === "orbit" && !orbitedBefore) {
       company.record.push({ day: company.day, tag: "demonstrated", reputation: 1, note: `${design.name} demonstration flight` });
       lines.push("", `The ${design.name} has demonstrated orbit. Customers notice: reputation +1.`);
+    } else if (!failure && reputation(company) < 0 && result.summary.apogee >= SPACE_LINE) {
+      // The way back from a bad record: fly cleanly where people can see it.
+      // Each clean flight above 100 km wins back a point, up to zero.
+      company.record.push({ day: company.day, tag: "demonstrated", reputation: 1, note: `${design.name} recovery flight` });
+      lines.push("", `A clean flight above 100 km. Customers and the regulator notice: reputation +1, now ${reputation(company)}.`);
     }
   }
   company.flights.push({

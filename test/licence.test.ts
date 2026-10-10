@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { achievements } from "../src/sim/achievements.ts";
 import { IDEAL_AERO } from "../src/sim/airframe.ts";
-import { accept, applyForLicence, build, fire, fly, newCompany, rename, type Company } from "../src/sim/company.ts";
+import { accept, applyForLicence, build, fire, fly, newCompany, rename, reputation, type Company } from "../src/sim/company.ts";
 import { COSTS } from "../src/sim/cost.ts";
 import { IDEAL_TRUTH } from "../src/sim/hardware.ts";
 import { LICENCE_COSTS, nextLicence } from "../src/sim/licence.ts";
@@ -76,4 +76,20 @@ test("achievements are worked out from the record", () => {
   assert.deepEqual(earned().sort(), ["first-build", "first-firing", "space"]);
   const fleet = achievements(c).find((a) => a.id === "fleet")!;
   assert.deepEqual(fleet.progress, [1, 5]);
+});
+
+test("a company with a bad record can win its reputation back", () => {
+  const c = company();
+  c.record.push({ day: 0, tag: "hard-start", reputation: -2, note: "an earlier disaster" });
+  assert.equal(reputation(c), -2);
+  // Student payloads take anyone.
+  const students = c.board.filter((x) => x.minReputation < 0);
+  assert.ok(students.length > 5);
+  // Clean flights above 100 km win back a point each, up to zero and no further.
+  build(c, "pathfinder");
+  build(c, "pathfinder");
+  build(c, "pathfinder");
+  for (let i = 0; i < 3; i++) fly(c, "pathfinder", { mission: SUBORBITAL_TEST });
+  assert.equal(reputation(c), 0);
+  assert.equal(nextLicence(c, reputation(c))!.ready, true);
 });

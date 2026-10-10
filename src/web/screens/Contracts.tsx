@@ -73,6 +73,15 @@ export function Contracts({ company, version, goTo }: Props) {
       </div>
       <div className="row">
         <section className="grow stack" aria-label="Contracts">
+          {reputation(company) < 0 && (
+            <div className="card alert" role="note">
+              <p className="label bad">Reputation {reputation(company)}: most customers won't sign</p>
+              <span className="soft">
+                Two ways back. Student payloads accept any record and earn +1 when delivered. And every clean test flight above 100 km, from the Hangar, wins back a point
+                until you are at 0.{company.licence === "suborbital" ? " The orbital licence also needs a reputation of 0 or better." : ""}
+              </span>
+            </div>
+          )}
           {view === "table" ? <Table rows={rows} selected={contract?.id} select={setSelected} /> : <Calendar company={company} rows={rows} selected={contract?.id} select={setSelected} />}
           <div className="actions">
             {nextPosting !== null && <span className="muted">Next new posting around day {nextPosting}.</span>}
