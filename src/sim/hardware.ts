@@ -143,10 +143,10 @@ export function asBuilt(engine: Engine, truth: EngineTruth): Engine {
 export function firstFailure(truth: EngineTruth): { t: number; mode: FailureMode } | null {
   if (truth.hardStart) return { t: 0, mode: "hard-start" };
   const onset = truth.instabilityOnset ?? Infinity;
-  if (onset === Infinity && truth.thermalLife === Infinity) return null;
-  return onset <= truth.thermalLife
-    ? { t: onset, mode: "combustion-instability" }
-    : { t: truth.thermalLife, mode: "burn-through" };
+  // JSON has no Infinity: a saved "never burns through" comes back as null.
+  const life = truth.thermalLife ?? Infinity;
+  if (onset === Infinity && life === Infinity) return null;
+  return onset <= life ? { t: onset, mode: "combustion-instability" } : { t: life, mode: "burn-through" };
 }
 
 /** Hidden truths for every engine a set of designs uses, keyed by engine name. */

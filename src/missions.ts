@@ -50,6 +50,19 @@ export const MISSIONS: Record<string, Mission> = {
   "leo-300": LEO_300,
   "sso-500": SSO_500,
   "leo-equatorial": LEO_EQUATORIAL,
+  // High-energy missions: parking orbit, coast, relights. Defined below.
+  get "leo-800"() {
+    return highCircular(800, 28.5);
+  },
+  get gto() {
+    return gto();
+  },
+  get tli() {
+    return lunar();
+  },
+  get escape() {
+    return escape(10);
+  },
 };
 
 /**

@@ -85,6 +85,10 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 - The drawing board: design a vehicle from one or two stages (diameter, tank length, engine and engine count) and a fairing. Propellant follows from tank volume and dry mass from a simple structures model (engine mass by thrust, tank structure by propellant, heavier for pressure-fed tanks, plus avionics, interstage and fairing). Redrawn presets come out within about 10% of the hand-drawn ones. The board refuses what can't work (a booster bell that separates on the pad, too many engines for the diameter, a stack too slender, liftoff thrust below weight) and warns about what is risky (low thrust to weight, a hammerhead fairing). Drawing up costs the office's time, plus tooling the first time a tank or fairing diameter is used
 - A sizing guide: say what the rocket is for (a contract, an orbit or an apogee, and a payload) and it searches stage sizes and the company's engines with the rocket equation against what the job takes, then offers the cheapest, a balanced and a most-margin design. Orbital picks re-tune into spec on typical engines; sounding picks are flown to confirm the apogee
 - Production lines. A build is an order: paid up front, built on a line while the company keeps testing and flying, and rolled out on its ready day. Orders queue on the line that frees first; a launch with the vehicle still on the line waits for rollout. A second and third line ($2.5M and $4M) build in parallel
+- High-energy missions. Orbits above about 400 km go to a 200 km parking orbit, coast, and relight the upper stage: once to raise the high point (geostationary transfer, trans-lunar injection) or to escape with a given C3, and once more at the high point to circularise. Each burn steers prograde and cuts off on the energy of the orbit it aims for. Coasts are integrated with a longer step and replayed from above the orbit
+- Relights are a regime of their own. A stage that has already run must restart in vacuum, and a relight failure, owned by the feed cycle, strands the payload in its parking orbit. The altitude cell runs restart tests; a restart kit fixes the mode for every engine sharing the cycle
+- Bigger hardware: 3, 100 and 250 kN chambers, a storable (hypergolic) cycle that lights reliably for kick stages and deep space, 2.4 and 3.0 m tanks, and three-stage designs. The guide sizes the burns after the parking orbit from vis-viva, adds a kick stage beyond about 11 km/s, and asks for 8% margin when a mission relights
+- High-energy work on the board from about day 350: geostationary comsats, navigation satellites at 1,200 km, lunar probes, deep-space probes and the Skyweb mega-constellation (a 500–750 kg batch every month). Payloads are sized against a developed 100 kN gas-generator booster with a margin; the tests fly the heaviest of each
 - Engines are priced from their parts, so a pressure-fed engine costs about half as much per kN as a gas-generator one
 - Achievements worked out from the record: first firing, first flight above 100 km, first orbit, the orbital licence, a fleet of five, $10M earned, a completed series and so on
 
@@ -110,8 +114,9 @@ Not modelled yet: running tests in parallel with each other, loans or investors,
 1. ~~Company, licences, contracts~~ (done)
 2. ~~Engines built from parts~~ (done)
 3. ~~Vehicle builder, sizing guide, production lines~~ (done)
-4. New regimes: coast and relight, transfer orbits, deep-space engines; crew (a launch-abort system, the crewed-flight licence, station flights); large constellations
-5. After that: reusable boosters (land and refurbish), the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
+4. ~~New regimes, part a: coast and relight, transfer orbits, deep-space engines, mega-constellations~~ (done)
+5. New regimes, part b: crew (a capsule with a launch-abort system, pad- and in-flight abort tests, the crewed-flight licence, cargo then crew to the station). Losing a crew revokes the licence, costs a heavy penalty and much of the company's reputation
+6. After that: reusable boosters (land and refurbish), the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
 
 ## Playing in the browser
 
@@ -139,8 +144,9 @@ Needs Node 22.18 or newer, which runs TypeScript directly. The sim itself has no
 npm install          # TypeScript, only needed for typecheck
 npm run sim          # fly Pathfinder and print the debrief
 npm run sim -- meridian                 # small orbital launcher, LEO 300 km
-npm run sim -- meridian sso-500         # missions: suborbital, leo-300,
-                                        # sso-500, leo-equatorial
+npm run sim -- meridian sso-500         # missions: suborbital, leo-300, sso-500,
+                                        # leo-equatorial, leo-800, gto, tli, escape
+npm run sim -- meridian leo-800         # parking orbit, coast, two relights
 npm run sim -- fat-fairing              # also: vac-bell, overfuelled, two-stage,
                                         # meridian-lofted, meridian-hard-kick
 npm run sim -- pathfinder --json

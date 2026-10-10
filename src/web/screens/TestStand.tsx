@@ -4,7 +4,7 @@ import { COSTS } from "../../sim/cost.ts";
 import { flowSeparates, type Engine } from "../../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../../sim/hardware.ts";
 import { partKeys, partLabel } from "../../sim/parts.ts";
-import { FACILITIES, FIXES, HARDWARE_LOSS, revisionLetter, seenAt as seenAtKnown, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
+import { FACILITIES, FIXES, HARDWARE_LOSS, RESTART_TEST, revisionLetter, seenAt as seenAtKnown, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
 import { burnTime } from "../../sim/vehicle.ts";
 import { Chip, ProofBar, Tabs } from "../components/Bits.tsx";
 import { isVacuumBell, Nozzle } from "../components/Rocket.tsx";
@@ -145,7 +145,9 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
   const known = company.campaign.knowledge[engine.name];
   const [facility, setFacility] = useState<Facility>(use.upper || isVacuumBell(engine) ? "altitude" : "sea-level");
   const [duration, setDuration] = useState(Math.ceil((burn * 1.1) / 5) * 5);
+  const [restartWanted, setRestart] = useState(false);
   const spec = FACILITIES[facility];
+  const restart = restartWanted && facility === "altitude";
 
   // Where would this firing stop, as far as the company knows?
   const stops: Array<[number, string]> = [];
@@ -158,7 +160,8 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
   stops.sort((a, b) => a[0] - b[0]);
   const stop = stops[0];
   const runs = stop ? Math.min(stop[0], duration) : duration;
-  const cost = spec.setup + spec.perSecond * runs;
+  const cost = spec.setup * (restart ? 2 : 1) + spec.perSecond * runs;
+  const days = spec.days + (restart ? RESTART_TEST.days : 0);
   const last = known?.history.at(-1);
   const measured = known?.measuredIspFactor ?? null;
 
@@ -193,6 +196,11 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
             Vacuum running
           </span>
           <span style={{ fontSize: 18, fontWeight: 600 }}>{known?.altitudeTested ? "Measured in the cell" : use.upper ? "Never in vacuum" : "Not needed"}</span>
+          {use.upper && (
+            <span className={known?.open.includes("relight-failure") ? "bad" : known?.relightProven ? "good" : "muted"} style={{ fontSize: 14 }}>
+              {known?.open.includes("relight-failure") ? "Won't relight" : known?.relightProven ? "Relight proven" : "Relight never tried"}
+            </span>
+          )}
         </div>
       </div>
 
@@ -258,6 +266,14 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
             </output>
           </span>
         </label>
+        <label className="actions" style={{ gap: 10, opacity: facility === "altitude" ? 1 : 0.5 }}>
+          <input type="checkbox" checked={restart} disabled={facility !== "altitude"} onChange={(e) => setRestart(e.target.checked)} />
+          <span className="soft">
+            Restart test: shut down, purge, and relight in vacuum, the way an upper stage does after a coast.
+            {facility !== "altitude" && " Needs the altitude cell."}
+            {known?.relightProven ? " Relight already proven." : ""}
+          </span>
+        </label>
         <ProofBar proven={runs} required={burn} label={`This firing would run ${runs.toFixed(1)} s of a ${burn.toFixed(0)} s flight burn`} />
         <span className={stop ? "bad" : duration >= burn ? "good" : "warn"}>
           {stop
@@ -267,11 +283,11 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
               : `Proves at most ${duration} s of a ${burn.toFixed(0)} s burn.`}
         </span>
         <div className="actions">
-          <button type="button" className="btn primary" onClick={() => game.schedule(fireJob(engine, duration, facility, runs))}>
-            Fire · {money(cost)} · {spec.days} days
+          <button type="button" className="btn primary" onClick={() => game.schedule(fireJob(engine, duration, facility, runs, restart))}>
+            {restart ? "Fire and restart" : "Fire"} · {money(cost)} · {days} days
           </button>
           <span className="muted" style={{ fontSize: 14 }}>
-            Plus {money(spec.days * COSTS.overheadPerDay)} payroll. If the engine fails: +{money(HARDWARE_LOSS.cost)} and {HARDWARE_LOSS.days} days for a new one.
+            Plus {money(days * COSTS.overheadPerDay)} payroll. If the engine fails: +{money(HARDWARE_LOSS.cost)} and {HARDWARE_LOSS.days} days for a new one.
           </span>
         </div>
       </form>

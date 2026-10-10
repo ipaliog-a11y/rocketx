@@ -65,6 +65,8 @@ export type Sample = {
   altitude: number;
   /** Ground distance from the pad along the surface, m. */
   downrange: number;
+  /** Angle around the Earth's centre from where the pad was at launch, in inertial space, rad. */
+  theta: number;
   /** Inertial speed, m/s. */
   velocity: number;
   /** Speed relative to the ground and the air, m/s. */
@@ -412,7 +414,15 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
   let orbit: OrbitElements | null = null;
   let apogee = { t: 0, altitude: 0 };
 
-  const downrange = () => R_EARTH * (Math.atan2(s[X], s[Y]) - ctx.omega * t);
+  // Ground distance keeps counting past half an orbit instead of wrapping to negative.
+  let groundAngle = 0;
+  const downrange = () => {
+    let a = Math.atan2(s[X], s[Y]) - ctx.omega * t;
+    while (a - groundAngle > Math.PI) a -= 2 * Math.PI;
+    while (a - groundAngle < -Math.PI) a += 2 * Math.PI;
+    groundAngle = a;
+    return R_EARTH * a;
+  };
 
   const event = (kind: EventKind, k: Snapshot, value?: number) => {
     events.push({ kind, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, value });
@@ -425,6 +435,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       t,
       altitude: k.altitude,
       downrange: downrange(),
+      theta: Math.atan2(s[X], s[Y]),
       velocity: k.speed,
       airSpeed: k.airSpeed,
       verticalVelocity: vUp,

@@ -11,6 +11,11 @@ import { km, money } from "../format.ts";
 
 type Props = { company: Company; version: number; goTo: (screen: "contracts" | "stand" | "tunnel") => void };
 
+/** A design with a vehicle on the ground or on the line: what the player most likely means to fly. */
+function readyDesign(company: Company): string | undefined {
+  return Object.keys(company.designs).find((k) => readyDay(company, k) !== null);
+}
+
 /** Days left on a contract, coloured by whether a launch still fits. */
 function countdown(company: Company, c: Contract): { text: string; tone: "good" | "warn" | "bad" } {
   const left = c.deadline - company.day;
@@ -73,7 +78,7 @@ export function Launch({ company, version, goTo }: Props) {
             company={company}
             version={version}
             contract={contract}
-            design={choice[contract.id] ?? defaultDesign(contract)}
+            design={choice[contract.id] ?? readyDesign(company) ?? defaultDesign(contract)}
             setDesign={(d) => setChoice({ ...choice, [contract.id]: d })}
             goTo={goTo}
           />

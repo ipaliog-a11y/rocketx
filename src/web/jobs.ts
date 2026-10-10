@@ -7,7 +7,7 @@ import { LICENCE_LABELS, type Application } from "../sim/licence.ts";
 import { partLabel, type EngineParts } from "../sim/parts.ts";
 import type { DesignQuote, VehicleSpec } from "../sim/builder.ts";
 import type { Mission } from "../sim/mission.ts";
-import { FACILITIES, FIXES, HARDWARE_LOSS, type Facility } from "../sim/teststand.ts";
+import { FACILITIES, FIXES, HARDWARE_LOSS, RESTART_TEST, type Facility } from "../sim/teststand.ts";
 import { AERO_FACILITIES, BUFFET_FIX, type AeroFacility } from "../sim/tunnel.ts";
 import { RETUNE_COST } from "../sim/tuning.ts";
 import { money } from "./format.ts";
@@ -128,16 +128,16 @@ export function retuneTestJob(company: Company, key: string, mission: Mission): 
 /** Days until a design's next vehicle is on the pad: 0 if one is built. */
 const waitForRollout = (company: Company, key: string) => Math.max(0, (readyDay(company, key) ?? company.day) - company.day);
 
-export function fireJob(engine: Engine, seconds: number, facility: Facility, expectedRun: number): Job {
+export function fireJob(engine: Engine, seconds: number, facility: Facility, expectedRun: number, restart = false): Job {
   const f = FACILITIES[facility];
   return {
-    title: `Fire the ${engine.name} for ${seconds} s?`,
-    doing: `Hot-firing the ${engine.name} · ${f.name}`,
+    title: restart ? `Fire the ${engine.name} for ${seconds} s, then restart it in vacuum?` : `Fire the ${engine.name} for ${seconds} s?`,
+    doing: `${restart ? "Restart test" : "Hot-firing"} the ${engine.name} · ${f.name}`,
     verb: "Fire",
-    days: f.days,
-    cost: f.setup + f.perSecond * expectedRun,
+    days: f.days + (restart ? RESTART_TEST.days : 0),
+    cost: f.setup * (restart ? 2 : 1) + f.perSecond * expectedRun,
     caveat: `If the engine fails, a new one costs ${money(HARDWARE_LOSS.cost)} and ${HARDWARE_LOSS.days} more days.`,
-    run: (c) => fire(c, engine, seconds, facility),
+    run: (c) => fire(c, engine, seconds, facility, restart),
   };
 }
 

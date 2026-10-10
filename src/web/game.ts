@@ -29,9 +29,9 @@ type State = {
   version: number;
 };
 
-const SAVE_KEY = "rocketx.save.v4";
+const SAVE_KEY = "rocketx.save.v5";
 /** Saves from before licences, the generated board or engines built from parts: they can't be carried over. */
-const OLD_SAVE_KEYS = ["rocketx.save.v1", "rocketx.save.v2", "rocketx.save.v3"];
+const OLD_SAVE_KEYS = ["rocketx.save.v1", "rocketx.save.v2", "rocketx.save.v3", "rocketx.save.v4"];
 
 /** Set when an old save was found and dropped, so the new-game screen can say so. Declared before the first load. */
 export let droppedOldSave = false;

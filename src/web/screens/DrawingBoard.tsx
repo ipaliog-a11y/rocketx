@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { assembleVehicle, checkVehicle, designQuote, DIAMETERS, figures, maxEngines, specOf, type VehicleSpec } from "../../sim/builder.ts";
+import { assembleVehicle, checkVehicle, designQuote, DIAMETERS, figures, maxEngines, specOf, stageRole, type VehicleSpec } from "../../sim/builder.ts";
 import { posted, type Company } from "../../sim/company.ts";
 import { vehicleCost } from "../../sim/cost.ts";
 import { suggestBuilds, type Goal, type Suggestion } from "../../sim/guide.ts";
 import { burnTime } from "../../sim/vehicle.ts";
-import { circular, SSO_500, SUBORBITAL_TEST } from "../../missions.ts";
+import { circular, escape, gto, highCircular, lunar, SSO_500, SUBORBITAL_TEST } from "../../missions.ts";
 import { Chip, Facts } from "../components/Bits.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
 import { game } from "../game.ts";
@@ -19,6 +19,10 @@ const CUSTOM_ORBITS = [
   { id: "350/40", label: "LEO 350 km, 40°", mission: circular(350, 40) },
   { id: "400/51.6", label: "LEO 400 km, 51.6° (station orbit)", mission: circular(400, 51.6) },
   { id: "sso", label: "SSO 500 km, 97.4°", mission: SSO_500 },
+  { id: "nav", label: "1,200 km circular, 55° (relights)", mission: highCircular(1_200, 55) },
+  { id: "gto", label: "Geostationary transfer (relights)", mission: gto() },
+  { id: "tli", label: "Trans-lunar injection (relights)", mission: lunar() },
+  { id: "c3", label: "Escape, C3 10 (relights)", mission: escape(10) },
 ];
 
 const fit = (v: ReturnType<typeof assembleVehicle>, px: number) => Math.min(30, px / height(v));
@@ -64,7 +68,8 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
           {spec.stages.map((s, i) => {
             const engine = engines[s.engine];
             const max = engine ? maxEngines(engine, s.diameter) : 1;
-            const label = spec.stages.length > 1 ? (i === 0 ? "Booster" : "Upper stage") : "Core stage";
+            const role = stageRole(spec.stages.length, i);
+            const label = role.charAt(0).toUpperCase() + role.slice(1);
             return (
               <fieldset key={i} className="card stage-editor">
                 <legend className="label">{label}</legend>
@@ -118,20 +123,25 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
             );
           })}
           <div className="actions">
-            {spec.stages.length === 1 ? (
+            {spec.stages.length < 3 && (
               <button
                 type="button"
                 className="btn"
                 onClick={() => {
+                  // An upper stage gets a vacuum engine; a kick stage prefers a storable one, which restarts reliably.
                   const vac = engineList.find((e) => e.exitPressure < 20_000) ?? engineList[0]!;
-                  setSpec({ ...spec, stages: [...spec.stages, { diameter: spec.stages[0]!.diameter, tankLength: 2, engine: vac.name, engineCount: 1 }] });
+                  const kick = engineList.find((e) => e.parts?.cycle === "storable") ?? vac;
+                  const below = spec.stages.at(-1)!;
+                  const added = spec.stages.length === 1 ? { diameter: below.diameter, tankLength: 2, engine: vac.name, engineCount: 1 } : { diameter: below.diameter, tankLength: 1, engine: kick.name, engineCount: 1 };
+                  setSpec({ ...spec, stages: [...spec.stages, added] });
                 }}
               >
-                Add an upper stage
+                {spec.stages.length === 1 ? "Add an upper stage" : "Add a kick stage"}
               </button>
-            ) : (
-              <button type="button" className="btn" onClick={() => setSpec({ ...spec, stages: spec.stages.slice(0, 1) })}>
-                Remove the upper stage
+            )}
+            {spec.stages.length > 1 && (
+              <button type="button" className="btn" onClick={() => setSpec({ ...spec, stages: spec.stages.slice(0, -1) })}>
+                Remove the {stageRole(spec.stages.length, spec.stages.length - 1)}
               </button>
             )}
             <label className="actions" style={{ gap: 8 }}>
@@ -173,7 +183,7 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
             )}
           </div>
           <span className="muted" style={{ fontSize: 14 }}>
-            Orbit from Port Avery takes about 9.5 km/s at 300 km; a sounding flight to 100 km about 2.2 km/s.
+            Orbit from Port Avery takes about 9.5 km/s at 300 km, geostationary transfer about 11.5, escape about 12.5; a sounding flight to 100 km about 2.2.
           </span>
           {check.problems.map((p) => (
             <span key={p} className="bad">

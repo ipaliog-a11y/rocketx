@@ -25,6 +25,7 @@ import { believedAero, type AeroFacility } from "./sim/tunnel.ts";
 import { burnTime } from "./sim/vehicle.ts";
 import { generateBoard, startingCash } from "./contracts.ts";
 import { SUBORBITAL_TEST } from "./missions.ts";
+import { missionPlan } from "./sim/mission.ts";
 import { ENGINES, VEHICLES } from "./vehicles.ts";
 
 /**
@@ -180,6 +181,8 @@ function play(seed: number, policy: Policy): Outcome {
       (c) =>
         c.minApogee === undefined &&
         c.kind !== "crew" &&
+        // The bots fly the preset Meridian; work that needs a parking orbit and relights needs a bigger design.
+        missionPlan(c.mission).burns.length === 0 &&
         !considered.has(c.id) &&
         (policy === "greedy" || c.id !== "sso-150") &&
         canSign(company, c, "meridian"),

@@ -16,6 +16,8 @@ export type OrbitElements = {
   energy: number;
   /** Speed a circular orbit would need at the current radius, m/s. */
   circularSpeed: number;
+  /** Direction of periapsis in the trajectory plane, rad, measured like a sample's angle: from the pad's direction toward downrange. */
+  periapsisAngle: number;
 };
 
 /** Keplerian elements from a planar position and velocity around Earth's centre. */
@@ -28,7 +30,12 @@ export function orbitFrom(x: number, y: number, vx: number, vy: number): OrbitEl
   const p = (h * h) / MU_EARTH;
   const rp = p / (1 + eccentricity);
   const ra = eccentricity < 1 ? p / (1 - eccentricity) : Infinity;
+  // Eccentricity vector: points at periapsis.
+  const rv = x * vx + y * vy;
+  const ex = ((v2 - MU_EARTH / r) * x - rv * vx) / MU_EARTH;
+  const ey = ((v2 - MU_EARTH / r) * y - rv * vy) / MU_EARTH;
   return {
+    periapsisAngle: Math.atan2(ex, ey),
     periapsis: rp - R_EARTH,
     apoapsis: ra - R_EARTH,
     eccentricity,

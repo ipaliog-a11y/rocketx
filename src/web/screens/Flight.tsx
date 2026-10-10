@@ -3,13 +3,14 @@ import type { FlightEvent, FlightResult, Sample } from "../../sim/ascent.ts";
 import type { FlightReport } from "../../sim/company.ts";
 import { FAILURE_LABELS } from "../../sim/hardware.ts";
 import { Chip, Facts } from "../components/Bits.tsx";
+import { OrbitPlot } from "../components/OrbitPlot.tsx";
 import { niceMax, Plot, ticks, type Marker } from "../components/Plot.tsx";
 import { game } from "../game.ts";
 import { km, kPa, money } from "../format.ts";
 
 /** The watched launch: a replay of the flight the sim just flew, then the debrief. */
 
-const SPEEDS = [1, 5, 20] as const;
+const SPEEDS = [1, 5, 20, 100] as const;
 
 const EVENT_LABELS: Partial<Record<FlightEvent["kind"], string>> = {
   liftoff: "Liftoff",
@@ -22,6 +23,11 @@ const EVENT_LABELS: Partial<Record<FlightEvent["kind"], string>> = {
   cutoff: "Guidance cutoff",
   staging: "Staging",
   orbit: "Orbit insertion",
+  coast: "Coasting",
+  relight: "Relight",
+  transfer: "Transfer burn done",
+  circularize: "Circularised",
+  escape: "Escape burn done",
   apogee: "Apogee",
   impact: "Ground impact",
   "flow-separation": "Nozzle flow separating",
@@ -87,7 +93,9 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
   const maxRange = Math.max(...samples.map((s) => s.downrange)) / 1000;
   const turns = maxRange > 30;
   const xOf = (s: Sample) => (turns ? s.downrange / 1000 : s.t);
-  const maxAlt = Math.max(...samples.map((s) => s.altitude), target?.apoapsis ?? 0) / 1000;
+  // A transfer orbit's apogee would squash the climb flat: the orbit view shows those.
+  const shownTarget = target && Number.isFinite(target.apoapsis) && target.apoapsis < 3_000_000 ? target : undefined;
+  const maxAlt = Math.max(...samples.map((s) => s.altitude), shownTarget?.apoapsis ?? 0) / 1000;
   const xMax = niceMax(turns ? maxRange : end);
   const yMax = niceMax(maxAlt * 1.08);
   const flown = samples.filter((s) => s.t <= t).map((s): [number, number] => [xOf(s), s.altitude / 1000]);
@@ -151,10 +159,19 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
                 { points: whole, color: "#5bb8e3", opacity: 0.3, dash: "6 5" },
                 { points: flown, color: "#5bb8e3", width: 3 },
               ]}
-              rules={target ? [{ at: target.apoapsis / 1000, color: "#f0a43a", label: `target ${km(target.apoapsis, 0)}`, labelAt: "start" }] : []}
+              rules={shownTarget ? [{ at: shownTarget.apoapsis / 1000, color: "#f0a43a", label: `target ${km(shownTarget.apoapsis, 0)}`, labelAt: "start" }] : []}
               markers={markers}
             />
           </figure>
+          {r.summary.inclination > 0 && (r.outcome === "orbit" || r.outcome === "escape" || r.events.some((e) => e.kind === "coast")) && (
+            <figure className="card" style={{ margin: 0 }}>
+              <figcaption className="label">From above the orbit</figcaption>
+              <OrbitPlot samples={samples} t={t} events={r.events} orbit={t >= end ? r.summary.orbit : null} target={target} label="The flight seen from above the trajectory plane" />
+              <span className="muted" style={{ fontSize: 13 }}>
+                Blue: the path flown. Dashed amber: the orbit it ended on. White dots: staging, coasts and relights.
+              </span>
+            </figure>
+          )}
           <figure className="card" style={{ margin: 0 }}>
             <figcaption className="label">Dynamic pressure against the load budget</figcaption>
             <Plot
@@ -179,7 +196,7 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
               ["Mach", now.altitude < 150_000 ? now.mach.toFixed(2) : "—"],
               ["q", kPa(now.dynamicPressure)],
               ["Pitch", `${now.pitch.toFixed(1)}°`],
-              ["Stage", now.stage === 0 ? "Booster" : "Upper"],
+              ["Stage", ["Booster", "Upper", "Kick stage"][now.stage] ?? `Stage ${now.stage + 1}`],
             ]}
           />
           <div className="card">
