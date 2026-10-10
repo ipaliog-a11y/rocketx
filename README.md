@@ -93,9 +93,18 @@ Testing pays, testing the wrong question costs nearly as much as not testing, an
 
 Not modelled yet: running jobs in parallel (building while testing), loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
 
+## Playing in the browser
+
+```sh
+npm install
+npm run dev          # http://localhost:5173
+```
+
+A React + Vite front end (`src/web/`) on the same sim code the tests and the command line use. Board, hangar, test stand, wind tunnel and ledger screens; launches replay the flight the sim just flew, then show the debrief. The run saves to the browser's local storage. `npm run build` writes a static site to `dist/`.
+
 ## Running
 
-Needs Node 22.18 or newer, which runs TypeScript directly. The sim has no runtime dependencies.
+Needs Node 22.18 or newer, which runs TypeScript directly. The sim itself has no runtime dependencies; React is only for the browser front end.
 
 ```sh
 npm install          # TypeScript, only needed for typecheck

@@ -4,6 +4,7 @@ import { simulateAscent } from "../src/sim/ascent.ts";
 import { aeroShape, IDEAL_AERO } from "../src/sim/airframe.ts";
 import {
   accept,
+  bid,
   brief,
   build,
   fire,
@@ -230,4 +231,37 @@ test("time costs payroll, and later contracts appear on the board over time", ()
   wait(c, 300);
   assert.equal(c.cash, 12_000 - 300 * COSTS.overheadPerDay);
   assert.ok(posted(c).some((x) => x.id === "rideshare-1"));
+});
+
+test("the bid is structured data the UI can lay out", () => {
+  const c = company();
+  const b = bid(c, "leo", "meridian");
+  assert.equal(b.designName, "Meridian");
+  assert.deepEqual(b.build, vehicleCost(MERIDIAN));
+  assert.ok(b.blockers.some((x) => /reputation of 1/.test(x)));
+  assert.ok(b.regimes.includes("The Meridian has never flown."));
+  assert.equal(b.forecast.delivers, true);
+  assert.equal(b.fitsSchedule, true);
+  assert.match(brief(c, "leo", "meridian"), /Forecast from what's known: .* in spec/);
+});
+
+test("every launch lands in the flight log", () => {
+  const c = company();
+  accept(c, "sounding");
+  build(c, "pathfinder");
+  build(c, "pathfinder");
+  const report = fly(c, "pathfinder", { contract: "sounding" });
+  fly(c, "pathfinder", { mission: SUBORBITAL_TEST });
+  assert.equal(c.flights.length, 2);
+  assert.deepEqual(c.flights[0], {
+    day: c.flights[0]!.day,
+    design: "Pathfinder",
+    mission: SUBORBITAL_TEST.name,
+    contract: sounding.title,
+    outcome: "apogee",
+    settlement: "delivered",
+  });
+  assert.equal(c.flights[1]!.contract, null);
+  assert.equal(report.settlement?.status, "delivered");
+  assert.match(report.debrief, /^DEBRIEF: Pathfinder/);
 });

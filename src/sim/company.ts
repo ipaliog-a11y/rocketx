@@ -1,6 +1,6 @@
 import { simulateAscent, type FlightResult } from "./ascent.ts";
 import { aeroShape, rollAeroTruths } from "./airframe.ts";
-import { settle, type Contract, type Tag } from "./contracts.ts";
+import { settle, type Contract, type Settlement, type Tag } from "./contracts.ts";
 import { COSTS, vehicleCost } from "./cost.ts";
 import { debrief } from "./debrief.ts";
 import type { Engine } from "./engine.ts";
@@ -15,6 +15,7 @@ import {
   newCampaign,
   type Campaign,
   type Facility,
+  type Unknown,
 } from "./teststand.ts";
 import { retuneFromTests } from "./tuning.ts";
 import { applyAeroFix, believedAero, tunnelRun, type AeroFacility } from "./tunnel.ts";
@@ -35,6 +36,17 @@ export type Category = "test" | "fix" | "analysis" | "build" | "launch" | "overh
 export type MoneyEntry = { day: number; category: Category; amount: number; note: string };
 export type RecordEntry = { day: number; tag: Tag; reputation: number; note: string };
 
+/** One launch, as the ledger remembers it. */
+export type FlightLogEntry = {
+  day: number;
+  design: string;
+  mission: string;
+  contract: string | null;
+  outcome: FlightResult["outcome"];
+  /** What the customer made of it, for contract flights. */
+  settlement: "delivered" | "degraded" | "failed" | null;
+};
+
 /** What a design has actually flown. A bid that goes past this is a new regime. */
 export type Experience = { flights: number; orbits: number; maxApoapsis: number; inclinations: number[]; maxPayload: number };
 
@@ -54,6 +66,7 @@ export type Company = {
   ledger: MoneyEntry[];
   record: RecordEntry[];
   experience: Record<string, Experience>;
+  flights: FlightLogEntry[];
   firstOrbitDay: number | null;
   dead: boolean;
 };
@@ -79,6 +92,7 @@ export function newCompany(
     ledger: [],
     record: [],
     experience: {},
+    flights: [],
     firstOrbitDay: null,
     dead: false,
   };
@@ -254,7 +268,13 @@ export function build(company: Company, key: string): ActionResult {
   return { text: `Built a ${design.name}: ${money(cost)}, ${days} days. Ready on day ${company.day}.`, notices };
 }
 
-export type FlightReport = ActionResult & { result: FlightResult };
+export type FlightReport = ActionResult & {
+  result: FlightResult;
+  /** The engineer's debrief, written from what was known before the flight. */
+  debrief: string;
+  /** What the customer made of it, for contract flights. */
+  settlement: Settlement | null;
+};
 
 /**
  * Fly a built vehicle, for a signed contract or as a test flight on a
@@ -273,7 +293,9 @@ export function fly(company: Company, key: string, target: { contract: string } 
   const notices = charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`);
   company.inventory[key]! -= 1;
   const result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth });
-  const lines = [debrief(result, vehicle, mission, company.campaign)];
+  const written = debrief(result, vehicle, mission, company.campaign);
+  const lines = [written];
+  let settlement: Settlement | null = null;
   const orbitedBefore = (company.experience[key]?.orbits ?? 0) > 0;
   learnFromFlight(company.campaign, vehicle, result);
   recordExperience(company, key, vehicle, result);
@@ -285,6 +307,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
 
   if (contract) {
     const s = settle(contract, result);
+    settlement = s;
     company.accepted = company.accepted.filter((a) => a !== contract.id);
     company.closed[contract.id] = s.status;
     company.record.push({ day: company.day, tag: s.tag, reputation: s.reputation, note: contract.title });
@@ -306,8 +329,16 @@ export function fly(company: Company, key: string, target: { contract: string } 
       lines.push("", `The ${design.name} has demonstrated orbit. Customers notice: reputation +1.`);
     }
   }
+  company.flights.push({
+    day: company.day,
+    design: design.name,
+    mission: mission.name,
+    contract: contract?.title ?? null,
+    outcome: result.outcome,
+    settlement: settlement?.status ?? null,
+  });
   notices.push(...tick(company));
-  return { text: lines.join("\n"), notices, result };
+  return { text: lines.join("\n"), notices, result, debrief: written, settlement };
 }
 
 function recordExperience(company: Company, key: string, vehicle: Vehicle, result: FlightResult): void {
@@ -322,24 +353,43 @@ function recordExperience(company: Company, key: string, vehicle: Vehicle, resul
   }
 }
 
+export type Bid = {
+  contract: Contract;
+  designName: string;
+  /** Cost and days to build one vehicle for this payload. */
+  build: { cost: number; days: number };
+  daysLeft: number;
+  /** Building and launching now still makes the deadline. */
+  fitsSchedule: boolean;
+  /** Why the customer won't sign today, if they won't. */
+  blockers: string[];
+  /** Things this design has never done that the contract asks for. */
+  regimes: string[];
+  /** Everything the vehicle would fly on trust. */
+  unknowns: Unknown[];
+  forecast: { text: string; delivers: boolean; result: FlightResult };
+};
+
 /**
  * The bid screen: what the contract pays and risks, and everything this
  * design would be doing for the first time or on trust.
  */
-export function brief(company: Company, contractId: string, key: string): string {
+export function bid(company: Company, contractId: string, key: string): Bid {
   const contract = contractOf(company, contractId);
   const design = designOf(company, key);
   const vehicle = { ...design, payloadMass: contract.payloadMass };
   const mission = contract.mission;
-  const lines = [
-    `BID: ${contract.title} (${contract.customer})`,
-    `  ${money(contract.payout)} on delivery, ${money(contract.penalty)} penalty, fly by day ${contract.deadline} (${contract.deadline - company.day} days from now).`,
-  ];
-  if (contract.minReputation > 0) lines.push(`  Needs reputation ${contract.minReputation}; the company has ${reputation(company)}.`);
-  if (contract.refuses.length > 0) lines.push(`  Won't sign after: ${contract.refuses.map(describeTag).join(", ")}.`);
+  const build = vehicleCost(vehicle);
 
-  const { cost, days } = vehicleCost(vehicle);
-  lines.push(`  A ${design.name} costs ${money(cost)} and ${days} days to build.`);
+  const blockers: string[] = [];
+  if (company.accepted.includes(contract.id)) blockers.push("Already signed.");
+  else if (company.closed[contract.id]) blockers.push("Closed.");
+  if (company.day > contract.deadline) blockers.push("The deadline has passed.");
+  if (reputation(company) < contract.minReputation) {
+    blockers.push(`${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`);
+  }
+  const objection = company.record.find((r) => contract.refuses.includes(r.tag));
+  if (objection) blockers.push(`${contract.customer} won't sign with a record that shows ${describeTag(objection.tag)}.`);
 
   const regimes: string[] = [];
   const xp = company.experience[key];
@@ -359,22 +409,49 @@ export function brief(company: Company, contractId: string, key: string): string
     regimes.push(`${mission.site.name} can't launch directly into ${target.inclination}°: the pad is at ${mission.site.latitude}°.`);
   }
   if (target && target.inclination > 90) regimes.push("Retrograde: the Earth's spin works against this launch.");
-  if (regimes.length > 0) {
-    lines.push("  New regimes:");
-    for (const r of regimes) lines.push(`    ${r}`);
-  }
-
-  const unknowns = flightUnknowns(vehicle, company.campaign);
-  if (unknowns.length > 0) {
-    lines.push("  On trust:");
-    for (const u of unknowns) lines.push(`    ${u.subject}: ${u.text}`);
-  }
 
   const forecast = simulateAscent(vehicle, mission, {
     hardware: believedHardware(company.campaign),
     aero: believedAero(company.campaign),
   });
-  lines.push(`  Forecast from what's known: ${describeForecast(contract, forecast)}`);
+  const delivers =
+    contract.minApogee !== undefined
+      ? forecast.outcome === "apogee" && forecast.summary.apogee >= contract.minApogee
+      : (forecast.summary.insertion?.inSpec ?? false);
+
+  return {
+    contract,
+    designName: design.name,
+    build,
+    daysLeft: contract.deadline - company.day,
+    fitsSchedule: company.day + build.days + COSTS.padDays <= contract.deadline,
+    blockers,
+    regimes,
+    unknowns: flightUnknowns(vehicle, company.campaign),
+    forecast: { text: describeForecast(contract, forecast), delivers, result: forecast },
+  };
+}
+
+/** The bid screen as text, for the command line. */
+export function brief(company: Company, contractId: string, key: string): string {
+  const b = bid(company, contractId, key);
+  const c = b.contract;
+  const lines = [
+    `BID: ${c.title} (${c.customer})`,
+    `  ${money(c.payout)} on delivery, ${money(c.penalty)} penalty, fly by day ${c.deadline} (${b.daysLeft} days from now).`,
+  ];
+  if (c.minReputation > 0) lines.push(`  Needs reputation ${c.minReputation}; the company has ${reputation(company)}.`);
+  if (c.refuses.length > 0) lines.push(`  Won't sign after: ${c.refuses.map(describeTag).join(", ")}.`);
+  lines.push(`  A ${b.designName} costs ${money(b.build.cost)} and ${b.build.days} days to build.`);
+  if (b.regimes.length > 0) {
+    lines.push("  New regimes:");
+    for (const r of b.regimes) lines.push(`    ${r}`);
+  }
+  if (b.unknowns.length > 0) {
+    lines.push("  On trust:");
+    for (const u of b.unknowns) lines.push(`    ${u.subject}: ${u.text}`);
+  }
+  lines.push(`  Forecast from what's known: ${b.forecast.text}`);
   return lines.join("\n");
 }
 
