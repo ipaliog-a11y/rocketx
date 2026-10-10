@@ -1,6 +1,8 @@
 import type { FlightEvent, FlightResult } from "./ascent.ts";
 import { R_EARTH } from "./constants.ts";
+import { FAILURE_LABELS, type FailureMode } from "./hardware.ts";
 import { EARTH_ROTATION, type Mission } from "./mission.ts";
+import type { Campaign } from "./teststand.ts";
 import { ATMOSPHERE_TOP } from "./atmosphere.ts";
 import { SHORT_LIVED_PERIAPSIS } from "./orbit.ts";
 import type { Vehicle } from "./vehicle.ts";
@@ -37,6 +39,7 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     "q-alpha-limit-exceeded": `Side-load budget exceeded, q·α ${kPaDeg(e.value ?? 0)}`,
     "accel-limit-exceeded": `Acceleration limit exceeded, ${e.value?.toFixed(1)} g`,
     meco: `Engine cutoff, ${stage}`,
+    "engine-failure": `Engine failure: ${e.mode ? FAILURE_LABELS[e.mode] : ""}, ${vehicle.stages[e.stage]?.engine.name ?? ""}`,
     cutoff: `Guidance cutoff on target energy, ${Math.round(e.value ?? 0)} kg propellant left`,
     staging: `Stage separation, ${stage} ignites`,
     orbit: "Orbit insertion",
@@ -47,7 +50,11 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
   return `  ${at}  ${label[e.kind]}`;
 }
 
-export function debrief(result: FlightResult, vehicle: Vehicle, mission: Mission): string {
+/**
+ * `campaign`, when given, is what the stand had learned before this flight,
+ * so a failure can be traced to the firing that would have caught it.
+ */
+export function debrief(result: FlightResult, vehicle: Vehicle, mission: Mission, campaign?: Campaign): string {
   const { summary, events } = result;
   const lines: string[] = [];
   lines.push(`DEBRIEF: ${vehicle.name}`);
@@ -73,6 +80,11 @@ export function debrief(result: FlightResult, vehicle: Vehicle, mission: Mission
     return lines.join("\n");
   }
 
+  if (result.outcome === "failure") {
+    failureLines(result, vehicle, campaign, lines);
+    lines.push("");
+  }
+
   const steered = (vehicle.pitchProgram?.kind ?? "vertical") !== "vertical";
   const orbit = summary.orbit;
   if (result.outcome === "orbit" && orbit) {
@@ -90,11 +102,15 @@ export function debrief(result: FlightResult, vehicle: Vehicle, mission: Mission
     );
     if (steered && orbit) {
       const short = orbit.circularSpeed - summary.burnoutVelocity;
+      const fpa = summary.burnoutFlightPathAngle;
+      const at = `Short of orbit. Burnout at ${km(summary.burnoutAltitude)}, ${ms(summary.burnoutVelocity)}, flight path ${Math.abs(fpa).toFixed(1)}° ${fpa >= 0 ? "above" : "below"} the horizon.`;
       lines.push(
-        `Short of orbit. Burnout at ${km(summary.burnoutAltitude)}, ${ms(summary.burnoutVelocity)}, flight path ${Math.abs(summary.burnoutFlightPathAngle).toFixed(1)}° ${summary.burnoutFlightPathAngle >= 0 ? "above" : "below"} the horizon. A circular orbit at that height needs ${ms(orbit.circularSpeed)} flying level${short > 0 ? `, so about ${ms(short)} more` : ""}.`,
+        short > 0
+          ? `${at} A circular orbit at that height needs ${ms(orbit.circularSpeed)} flying level, so about ${ms(short)} more.`
+          : `${at} That is fast enough for orbit at that height, but the path dips to a periapsis of ${km(orbit.periapsis)}, inside the atmosphere.`,
       );
     }
-  } else lines.push("The flight was still going when the simulation stopped.");
+  } else if (result.outcome === "timeout") lines.push("The flight was still going when the simulation stopped.");
 
   if (summary.insertion) insertionLines(result, vehicle, mission, lines);
   lines.push("");
@@ -236,5 +252,42 @@ function insertionLines(result: FlightResult, vehicle: Vehicle, mission: Mission
         `  ${at}, above the target, so the orbit sags below it on the far side. The pitch programme levels out too high.`,
       );
     }
+  }
+}
+
+const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation">, (engine: string, after: string) => string> = {
+  "hard-start": (engine) => `hard start. The ${engine} chamber cracked as it lit.`,
+  "combustion-instability": (engine, after) =>
+    `combustion instability ${after} into the ${engine} burn. The pressure oscillation shook the stage apart.`,
+  "burn-through": (engine, after) =>
+    `chamber burn-through ${after} into the ${engine} burn. The jet through the liner cut into the stage.`,
+};
+
+function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
+  const e = result.events.find((x) => x.kind === "engine-failure");
+  if (!e?.mode || e.mode === "flow-separation") return;
+  const stage = vehicle.stages[e.stage]!;
+  const engine = stage.engine.name;
+  const ignition = result.events.filter((x) => x.kind === "ignition" && x.stage === e.stage)[0];
+  const into = e.t - (ignition?.t ?? 0);
+  const after = `${into.toFixed(1)} s`;
+  lines.push(`Vehicle lost at ${tPlus(e.t)}, ${km(e.altitude)}: ${IN_FLIGHT[e.mode](engine, after)}`);
+
+  if (!campaign) return;
+  const known = campaign.knowledge[engine];
+  if (!known || known.firings === 0) {
+    lines.push(
+      e.mode === "hard-start"
+        ? `  ${engine} was never fired on the stand. Any firing would have shown the hard start.`
+        : `  ${engine} was never fired on the stand. A ${Math.ceil(into)} s firing would have found this.`,
+    );
+  } else if (known.open.includes(e.mode)) {
+    lines.push(`  The stand had already seen this on ${engine}. It flew unfixed.`);
+  } else if (e.mode === "hard-start") {
+    lines.push(`  No firing of the current ${engine} hardware got past ignition.`);
+  } else {
+    lines.push(
+      `  The longest clean firing of the current ${engine} hardware was ${known.provenDuration.toFixed(1)} s. The flight needed it to run past ${after}.`,
+    );
   }
 }

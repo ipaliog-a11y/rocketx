@@ -10,7 +10,15 @@ export type Engine = {
   exitArea: number;
   /** Nozzle exit pressure, Pa. Low values mean a big vacuum-optimised bell. */
   exitPressure: number;
+  /**
+   * Burn duration the chamber was designed for, s. A design claim: the
+   * real hardware may fall short, and only a long enough firing tells.
+   */
+  ratedLife?: number;
 };
+
+/** Rated life assumed when a design doesn't state one, s. */
+export const DEFAULT_RATED_LIFE = 300;
 
 /**
  * Summerfield criterion: the exhaust tends to separate from the nozzle wall

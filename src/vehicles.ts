@@ -10,6 +10,7 @@ export const KESTREL_SL: Engine = {
   ispVac: 270,
   exitArea: 0.07,
   exitPressure: 70_000,
+  ratedLife: 100,
 };
 
 /** Same chamber with a long bell expanded for near-vacuum. Better Isp, worse on the pad. */
@@ -19,6 +20,7 @@ export const KESTREL_VAC: Engine = {
   ispVac: 300,
   exitArea: 0.15,
   exitPressure: 6_000,
+  ratedLife: 120,
 };
 
 /** Baseline suborbital sounding rocket: one stage, slim, sea-level engine. */
@@ -71,7 +73,7 @@ export const PATHFINDER_TWO_STAGE: Vehicle = {
       name: "Booster",
       dryMass: 700,
       propellantMass: 1_500,
-      engine: { ...KESTREL_SL, thrustVac: 50_000, exitArea: 0.09 },
+      engine: { ...KESTREL_SL, name: "Kestrel-SL Block 2", thrustVac: 50_000, exitArea: 0.09 },
       engineCount: 1,
       diameter: 0.8,
     },
@@ -79,7 +81,7 @@ export const PATHFINDER_TWO_STAGE: Vehicle = {
       name: "Upper",
       dryMass: 170,
       propellantMass: 400,
-      engine: { ...KESTREL_VAC, thrustVac: 9_000, exitArea: 0.04 },
+      engine: { ...KESTREL_VAC, name: "Kestrel-Vac Mini", thrustVac: 9_000, exitArea: 0.04, ratedLife: 160 },
       engineCount: 1,
       diameter: 0.6,
     },
@@ -94,6 +96,7 @@ export const HARRIER_SL: Engine = {
   ispVac: 311,
   exitArea: 0.055,
   exitPressure: 60_000,
+  ratedLife: 150,
 };
 
 /** Vacuum Harrier for the upper stage. */
@@ -103,6 +106,7 @@ export const HARRIER_VAC: Engine = {
   ispVac: 343,
   exitArea: 0.35,
   exitPressure: 2_000,
+  ratedLife: 300,
 };
 
 const MERIDIAN_TURN = {
@@ -168,3 +172,12 @@ export const VEHICLES: Record<string, Vehicle> = {
   "meridian-lofted": MERIDIAN_LOFTED,
   "meridian-hard-kick": MERIDIAN_HARD_KICK,
 };
+
+/** Every engine the vehicles use, keyed like "harrier-sl". */
+export const ENGINES: Record<string, Engine> = Object.fromEntries(
+  Object.values(VEHICLES).flatMap((v) => v.stages.map((stage) => [engineKey(stage.engine), stage.engine] as const)),
+);
+
+export function engineKey(engine: Engine): string {
+  return engine.name.toLowerCase().replace(/\s+/g, "-");
+}

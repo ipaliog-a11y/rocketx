@@ -3,6 +3,7 @@ import { atmosphereAt } from "./atmosphere.ts";
 import { G0, MU_EARTH, R_EARTH } from "./constants.ts";
 import { flowSeparates, massFlow, thrustAt } from "./engine.ts";
 import { commandedPitch, kickDue, VERTICAL } from "./guidance.ts";
+import { asBuilt, firstFailure, IDEAL_TRUTH, type FailureMode, type HardwareTruth } from "./hardware.ts";
 import { launchGeometry, scoreInsertion, targetSemiMajorAxis, type InsertionReport, type Mission } from "./mission.ts";
 import { isOrbit, orbitFrom, type OrbitElements } from "./orbit.ts";
 import { burnTime, stackMass, type Stage, type Vehicle } from "./vehicle.ts";
@@ -30,6 +31,7 @@ export type EventKind =
   | "accel-limit-exceeded"
   | "meco"
   | "cutoff"
+  | "engine-failure"
   | "staging"
   | "orbit"
   | "apogee"
@@ -47,6 +49,8 @@ export type FlightEvent = {
   stage: number;
   /** Event-specific number: q for max-q, T/W for liftoff, pressure for separation, kg left for cutoff. */
   value?: number;
+  /** For an engine failure, which failure mode. */
+  mode?: FailureMode;
 };
 
 export type Sample = {
@@ -92,8 +96,8 @@ export type Losses = {
   steering: number;
 };
 
-/** "apogee" means the flight topped out and fell back: suborbital. */
-export type Outcome = "no-liftoff" | "orbit" | "apogee" | "impact" | "timeout";
+/** "apogee" means the flight topped out and fell back: suborbital. "failure" means an engine failed and the vehicle was lost. */
+export type Outcome = "no-liftoff" | "failure" | "orbit" | "apogee" | "impact" | "timeout";
 
 export type FlightResult = {
   vehicle: string;
@@ -143,6 +147,11 @@ export type AscentOptions = {
   maxTime?: number;
   /** False holds the Earth still. For checking the physics against closed forms. */
   rotatingEarth?: boolean;
+  /**
+   * The engines' hidden truth, keyed by engine name. Engines fly as built
+   * and fail when their quirks say so. Left out, every engine is perfect.
+   */
+  hardware?: HardwareTruth;
 };
 
 /** [x, y, vx, vy, mass, gravity, drag, back-pressure, steering, ideal Δv] */
@@ -159,6 +168,8 @@ type Phase = {
   burning: boolean;
   area: number;
   kickStart: number | null;
+  /** Seconds after ignition this stage's engines fail, and how. */
+  failure: { t: number; mode: FailureMode } | null;
 };
 
 type Context = {
@@ -302,7 +313,16 @@ function verticalSpeed(s: State): number {
   return (s[VX] * s[X] + s[VY] * s[Y]) / r;
 }
 
-export function simulateAscent(vehicle: Vehicle, mission: Mission, options: AscentOptions = {}): FlightResult {
+export function simulateAscent(design: Vehicle, mission: Mission, options: AscentOptions = {}): FlightResult {
+  // Fly the engines as built, not as drawn.
+  const hardware = options.hardware;
+  const truthOf = (stage: Stage) => (hardware ? (hardware[stage.engine.name] ?? IDEAL_TRUTH) : IDEAL_TRUTH);
+  const vehicle: Vehicle = {
+    ...design,
+    stages: design.stages.map((stage) => ({ ...stage, engine: asBuilt(stage.engine, truthOf(stage)) })),
+  };
+  const failureOf = (index: number) => firstFailure(truthOf(design.stages[index]!));
+
   const dt = options.dt ?? 0.05;
   const sampleInterval = options.sampleInterval ?? 1;
   const maxTime = options.maxTime ?? 3600;
@@ -333,6 +353,7 @@ export function simulateAscent(vehicle: Vehicle, mission: Mission, options: Asce
     burning: true,
     area: frontalArea(vehicle, 0),
     kickStart: null,
+    failure: failureOf(0),
   };
 
   let liftedOff = false;
@@ -379,16 +400,28 @@ export function simulateAscent(vehicle: Vehicle, mission: Mission, options: Asce
     });
   };
 
-  const ignite = () => {
+  const fail = (k: Snapshot, mode: FailureMode) => {
+    events.push({ kind: "engine-failure", t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, mode });
+    outcome = "failure";
+    record(k);
+  };
+
+  /** Light the current stage. False if it fails on the spot. */
+  const ignite = (): boolean => {
     const k = snapshot(ctx, phase, t, s);
     event("ignition", k);
     if (flowSeparates(phase.stage.engine, k.pressure)) event("flow-separation", k, k.pressure);
+    if (phase.failure?.t === 0) {
+      fail(k, phase.failure.mode);
+      return false;
+    }
+    return true;
   };
 
-  ignite();
+  const lit = ignite();
   const pad = snapshot(ctx, phase, 0, s);
   const thrustToWeight = pad.thrust / (s[M] * pad.gravity);
-  if (thrustToWeight <= 1) {
+  if (lit && thrustToWeight <= 1) {
     event("no-liftoff", pad, thrustToWeight);
     record(pad);
     outcome = "no-liftoff";
@@ -397,6 +430,8 @@ export function simulateAscent(vehicle: Vehicle, mission: Mission, options: Asce
   while (outcome === "timeout" && t < maxTime) {
     const flow = phase.burning ? phase.stage.engineCount * massFlow(phase.stage.engine) : 0;
     let step = phase.burning ? Math.min(dt, propellant / flow) : dt;
+    // Land exactly on a scheduled engine failure.
+    if (phase.burning && phase.failure) step = Math.min(step, Math.max(0, phase.ignitedAt + phase.failure.t - t));
     const prev = s;
     const prevVerticalSpeed = verticalSpeed(s);
     const prevAirSpeed = snapshot(ctx, phase, t, s).airSpeed;
@@ -418,6 +453,11 @@ export function simulateAscent(vehicle: Vehicle, mission: Mission, options: Asce
     if (phase.burning) propellant = Math.max(0, propellant - flow * step);
 
     let k = snapshot(ctx, phase, t, s);
+
+    if (phase.burning && phase.failure && t - phase.ignitedAt >= phase.failure.t - 1e-9) {
+      fail(k, phase.failure.mode);
+      break;
+    }
 
     if (!liftedOff && k.altitude > 0) {
       liftedOff = true;
@@ -480,10 +520,17 @@ export function simulateAscent(vehicle: Vehicle, mission: Mission, options: Asce
         s[M] -= phase.stage.dryMass;
         stageIndex += 1;
         propellant = next.propellantMass;
-        phase = { ...phase, stage: next, stageIndex, ignitedAt: t, area: frontalArea(vehicle, stageIndex) };
+        phase = {
+          ...phase,
+          stage: next,
+          stageIndex,
+          ignitedAt: t,
+          area: frontalArea(vehicle, stageIndex),
+          failure: failureOf(stageIndex),
+        };
         k = snapshot(ctx, phase, t, s);
         event("staging", k);
-        ignite();
+        if (!ignite()) break;
       } else {
         phase = { ...phase, burning: false };
         k = snapshot(ctx, phase, t, s);

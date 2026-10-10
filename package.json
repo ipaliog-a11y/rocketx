@@ -9,6 +9,7 @@
   },
   "scripts": {
     "sim": "node src/cli.ts",
+    "campaign": "node src/campaign.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
