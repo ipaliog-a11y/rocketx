@@ -145,6 +145,7 @@ test("a missed deadline costs the penalty and a late mark", () => {
 
 test("running out of cash ends the run", () => {
   const c = company(1_500);
+  c.firstOrbitDay = 0; // past the LEO gate, so only negative cash ends it
   build(c, "pathfinder");
   assert.equal(c.dead, false);
   const out = build(c, "pathfinder");
@@ -152,6 +153,21 @@ test("running out of cash ends the run", () => {
   assert.ok(out.notices.some((n) => /company is dead/.test(n)));
   assert.throws(() => build(c, "pathfinder"), /company is gone/);
   assert.match(summary(c), /THE COMPANY DIED/);
+});
+
+test("before first orbit, a company that can't afford an orbital vehicle is finished", () => {
+  const meridian = vehicleCost(MERIDIAN).cost + COSTS.launchFee;
+  const c = company(meridian + 500);
+  fire(c, KESTREL_SL, 30, "sea-level");
+  assert.equal(c.dead, false);
+  const out = fire(c, KESTREL_SL, 300, "sea-level");
+  assert.equal(c.dead, true);
+  assert.ok(out.notices.some((n) => /can't afford another try at LEO/.test(n)));
+
+  // A built orbital vehicle, or money owed on a signed contract, keeps it alive.
+  const built = company(meridian);
+  build(built, "meridian");
+  assert.equal(built.dead, false);
 });
 
 test("stand time is charged to the company", () => {

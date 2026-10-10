@@ -26,7 +26,8 @@ import type { Vehicle } from "./vehicle.ts";
  * one tunnel, one pad and one build shop, used one job at a time, so every
  * action moves the calendar.
  *
- * The run ends when the cash runs out.
+ * The run ends when the cash runs out, or, before first orbit, when the
+ * company can no longer afford a vehicle that could get there.
  */
 
 export type Category = "test" | "fix" | "analysis" | "build" | "launch" | "payout" | "penalty";
@@ -114,11 +115,32 @@ function tick(company: Company): string[] {
     company.record.push({ day: company.day, tag: "late", reputation: -1, note: contract.title });
     notices.push(`Day ${contract.deadline}: ${contract.customer} gave up waiting on "${contract.title}". Penalty $${contract.penalty}k.`);
   }
-  if (company.cash < 0 && !company.dead) {
+  if (company.dead) return notices;
+  if (company.cash < 0) {
     company.dead = true;
     notices.push(`Day ${company.day}: the cash is gone. The company is dead.`);
+  } else if (stranded(company)) {
+    company.dead = true;
+    notices.push(
+      `Day ${company.day}: with ${money(company.cash)} and nothing built that can reach orbit, the company can't afford another try at LEO. It is finished.`,
+    );
   }
   return notices;
+}
+
+/**
+ * Before first orbit, the run is over once no vehicle can put anything in
+ * orbit: none is built, and the cash plus what signed contracts would pay
+ * can't buy and launch the cheapest orbital design.
+ */
+function stranded(company: Company): boolean {
+  if (company.firstOrbitDay !== null) return false;
+  const orbital = Object.entries(company.designs).filter(([, d]) => d.pitchProgram?.kind === "gravity-turn");
+  if (orbital.length === 0) return false;
+  if (orbital.some(([key]) => (company.inventory[key] ?? 0) > 0)) return false;
+  const cheapest = Math.min(...orbital.map(([, d]) => vehicleCost(d).cost + COSTS.launchFee));
+  const owed = company.accepted.reduce((sum, id) => sum + contractOf(company, id).payout, 0);
+  return company.cash + owed < cheapest;
 }
 
 function contractOf(company: Company, id: string): Contract {
@@ -207,8 +229,10 @@ export function build(company: Company, key: string): ActionResult {
   alive(company);
   const design = designOf(company, key);
   const { cost, days } = vehicleCost(design);
-  const notices = charge(company, "build", cost, days, `${design.name} build`);
+  // On the books before the bill lands: a company that spends its last cash
+  // on an orbital vehicle still has a vehicle that can reach orbit.
   company.inventory[key] = (company.inventory[key] ?? 0) + 1;
+  const notices = charge(company, "build", cost, days, `${design.name} build`);
   return { text: `Built a ${design.name}: ${money(cost)}, ${days} days. Ready on day ${company.day}.`, notices };
 }
 
