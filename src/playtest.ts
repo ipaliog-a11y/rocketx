@@ -2,6 +2,7 @@ import { aeroShape } from "./sim/airframe.ts";
 import { simulateAscent } from "./sim/ascent.ts";
 import {
   accept,
+  applyForLicence,
   build,
   fire,
   fixAero,
@@ -17,11 +18,13 @@ import {
 } from "./sim/company.ts";
 import type { Contract } from "./sim/contracts.ts";
 import { COSTS, vehicleCost } from "./sim/cost.ts";
+import { holds, nextLicence, ORBITAL_FLIGHTS_NEEDED, requiredLicence, safeSpaceFlights } from "./sim/licence.ts";
 import type { Engine } from "./sim/engine.ts";
 import { FIXES, believedHardware, type Facility } from "./sim/teststand.ts";
 import { believedAero, type AeroFacility } from "./sim/tunnel.ts";
 import { burnTime } from "./sim/vehicle.ts";
 import { generateBoard, startingCash } from "./contracts.ts";
+import { SUBORBITAL_TEST } from "./missions.ts";
 import { ENGINES, VEHICLES } from "./vehicles.ts";
 
 /**
@@ -103,7 +106,8 @@ function canSign(company: Company, contract: Contract, key: string): boolean {
   const open = !company.accepted.includes(contract.id) && !company.closed[contract.id];
   const onTime = company.day + days + COSTS.padDays <= contract.deadline;
   const clean = !company.record.some((r) => contract.refuses.includes(r.tag));
-  return open && onTime && clean && reputation(company) >= contract.minReputation;
+  const licensed = holds(company, requiredLicence(contract));
+  return open && onTime && clean && licensed && reputation(company) >= contract.minReputation;
 }
 
 /** Sign, build and fly one contract. */
@@ -136,12 +140,22 @@ function play(seed: number, policy: Policy): Outcome {
     engineTests(company, "pathfinder", policy);
     proveShape(company, "pathfinder", policy === "cheap" ? "cfd" : "transonic");
   }
-  for (const id of ["sounding", "microgravity"]) {
-    const c = contract(id);
-    if (reputation(company) >= 1 || !canSign(company, c, "pathfinder")) continue;
-    if (testing && !forecastDelivers(company, "pathfinder", c)) continue;
-    deliver(company, "pathfinder", c);
+  // Suborbital work until the regulator will grant an orbital licence and
+  // LEO customers will sign: sounding contracts when the board has them, a
+  // test flight when it doesn't.
+  const sounding = () =>
+    posted(company).find((c) => c.minApogee !== undefined && canSign(company, c, "pathfinder") && (!testing || forecastDelivers(company, "pathfinder", c)));
+  for (let tries = 0; tries < 6 && !company.dead; tries++) {
+    const licensable = safeSpaceFlights(company) >= ORBITAL_FLIGHTS_NEEDED;
+    if (licensable && reputation(company) >= 1) break;
+    const c = sounding();
+    if (c) deliver(company, "pathfinder", c);
+    else if (!licensable) {
+      if (guard(company, () => build(company, "pathfinder"))) guard(company, () => fly(company, "pathfinder", { mission: SUBORBITAL_TEST }));
+    } else break;
   }
+  if (nextLicence(company, reputation(company))?.ready) guard(company, () => applyForLicence(company));
+  if (!holds(company, "orbital")) note ||= "no orbital licence";
 
   if (testing && !company.dead) {
     if (!engineTests(company, "meridian", policy)) note ||= "Meridian engines unproven";
@@ -152,7 +166,7 @@ function play(seed: number, policy: Policy): Outcome {
   // and buy heritage with a demonstration flight if nobody will sign.
   const considered = new Set<string>();
   let demos = 0;
-  while (!company.dead && company.day < HORIZON) {
+  while (!company.dead && company.day < HORIZON && holds(company, "orbital")) {
     if (reputation(company) < 1) {
       if (demos >= MAX_DEMOS) break;
       demos += 1;
@@ -165,6 +179,7 @@ function play(seed: number, policy: Policy): Outcome {
     const wanted = posted(company).filter(
       (c) =>
         c.minApogee === undefined &&
+        c.kind !== "crew" &&
         !considered.has(c.id) &&
         (policy === "greedy" || c.id !== "sso-150") &&
         canSign(company, c, "meridian"),

@@ -9,7 +9,7 @@ import { DESIGNS, defaultDesign, game } from "../game.ts";
 import { buildJob, launchJob, retuneJob, signedContracts } from "../jobs.ts";
 import { km, money } from "../format.ts";
 
-type Props = { company: Company; version: number; goTo: (screen: "board" | "stand" | "tunnel") => void };
+type Props = { company: Company; version: number; goTo: (screen: "contracts" | "stand" | "tunnel") => void };
 
 /** Days left on a contract, coloured by whether a launch still fits. */
 function countdown(company: Company, c: Contract): { text: string; tone: "good" | "warn" | "bad" } {
@@ -34,9 +34,9 @@ export function Launch({ company, version, goTo }: Props) {
       {signed.length === 0 || !contract ? (
         <div className="card" style={{ alignItems: "flex-start" }}>
           <h2>Nothing signed</h2>
-          <span className="soft">Sign a contract on the board, then come back here to fly it.</span>
-          <button type="button" className="btn primary" onClick={() => goTo("board")}>
-            Go to the board
+          <span className="soft">Sign a contract on the Contracts page, then come back here to fly it.</span>
+          <button type="button" className="btn primary" onClick={() => goTo("contracts")}>
+            Go to Contracts
           </button>
         </div>
       ) : (

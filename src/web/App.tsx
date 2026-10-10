@@ -1,33 +1,32 @@
 import { useState } from "react";
 import { reputation, summary } from "../sim/company.ts";
-import { COSTS } from "../sim/cost.ts";
+import { LICENCE_LABELS } from "../sim/licence.ts";
 import { JobConfirm, JobProgress } from "./components/JobDialogs.tsx";
 import { game, useGame } from "./game.ts";
 import { money, signed } from "./format.ts";
-import { Board } from "./screens/Board.tsx";
+import { Company } from "./screens/Company.tsx";
+import { Contracts } from "./screens/Contracts.tsx";
 import { Flight } from "./screens/Flight.tsx";
 import { Hangar } from "./screens/Hangar.tsx";
 import { Launch } from "./screens/Launch.tsx";
-import { Ledger } from "./screens/Ledger.tsx";
 import { NewGame } from "./screens/NewGame.tsx";
 import { TestStand } from "./screens/TestStand.tsx";
 import { Tunnel } from "./screens/Tunnel.tsx";
 
-type Screen = "board" | "launch" | "hangar" | "stand" | "tunnel" | "ledger";
+type Screen = "company" | "contracts" | "launch" | "hangar" | "stand" | "tunnel";
 
 const SCREENS: Array<[Screen, string]> = [
-  ["board", "Board"],
+  ["company", "Company"],
+  ["contracts", "Contracts"],
   ["launch", "Launch"],
   ["hangar", "Hangar"],
   ["stand", "Test stand"],
   ["tunnel", "Tunnel"],
-  ["ledger", "Ledger"],
 ];
 
 export function App() {
   const state = useGame();
-  const [screen, setScreen] = useState<Screen>("board");
-  const [confirmQuit, setConfirmQuit] = useState(false);
+  const [screen, setScreen] = useState<Screen>("company");
   const company = state.company;
   if (!company) return <NewGame />;
 
@@ -35,7 +34,9 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">Untitled Launch Co.</div>
+        <button type="button" className="brand" onClick={() => (game.closeFlight(), setScreen("company"))}>
+          {company.name}
+        </button>
         <nav className="nav" aria-label="Sections">
           {SCREENS.map(([id, label]) => (
             <button key={id} type="button" aria-current={!state.flight && screen === id ? "page" : undefined} onClick={() => (game.closeFlight(), setScreen(id))}>
@@ -53,41 +54,26 @@ export function App() {
             <dd className={company.cash < 2_000 ? "bad" : undefined}>{money(company.cash)}</dd>
           </div>
           <div>
-            <dt>BURN</dt>
-            <dd>{money(COSTS.overheadPerDay)}/day</dd>
+            <dt>LICENCE</dt>
+            <dd>{LICENCE_LABELS[company.licence].toUpperCase()}</dd>
           </div>
           <div>
             <dt>REPUTATION</dt>
             <dd className={rep > 0 ? "good" : rep < 0 ? "bad" : undefined}>{signed(rep)}</dd>
           </div>
         </dl>
-        {confirmQuit ? (
-          <span className="actions">
-            <span className="soft">Abandon this run?</span>
-            <button type="button" className="btn" onClick={() => (setConfirmQuit(false), game.quit())}>
-              Abandon
-            </button>
-            <button type="button" className="btn" onClick={() => setConfirmQuit(false)}>
-              Keep playing
-            </button>
-          </span>
-        ) : (
-          <button type="button" className="btn" onClick={() => setConfirmQuit(true)}>
-            New run
-          </button>
-        )}
       </header>
 
       {state.flight ? (
         <Flight key={state.flight.id} report={state.flight.report} design={state.flight.design} />
       ) : (
         <>
-          {screen === "board" && <Board company={company} version={state.version} goTo={setScreen} />}
+          {screen === "company" && <Company company={company} />}
+          {screen === "contracts" && <Contracts company={company} version={state.version} goTo={setScreen} />}
           {screen === "launch" && <Launch company={company} version={state.version} goTo={setScreen} />}
           {screen === "hangar" && <Hangar company={company} />}
           {screen === "stand" && <TestStand company={company} />}
           {screen === "tunnel" && <Tunnel company={company} />}
-          {screen === "ledger" && <Ledger company={company} />}
         </>
       )}
 

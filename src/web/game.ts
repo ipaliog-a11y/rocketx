@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { newCompany, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { newCompany, rename, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import { generateBoard, startingCash } from "../contracts.ts";
 import { DESIGNS } from "./designs.ts";
 import { deadlineRisks, signedContracts, type Job } from "./jobs.ts";
@@ -29,7 +29,12 @@ type State = {
   version: number;
 };
 
-const SAVE_KEY = "rocketx.save.v1";
+const SAVE_KEY = "rocketx.save.v2";
+/** Saves from before licences and the generated board: they can't be carried over. */
+const OLD_SAVE_KEYS = ["rocketx.save.v1"];
+
+/** Set when an old save was found and dropped, so the new-game screen can say so. Declared before the first load. */
+export let droppedOldSave = false;
 
 let state: State = { company: load(), flight: null, notices: [], pending: null, progress: null, version: 0 };
 const listeners = new Set<() => void>();
@@ -43,6 +48,12 @@ function emit(): void {
 
 function load(): Company | null {
   try {
+    for (const key of OLD_SAVE_KEYS) {
+      if (localStorage.getItem(key) !== null) {
+        localStorage.removeItem(key);
+        droppedOldSave = true;
+      }
+    }
     const raw = localStorage.getItem(SAVE_KEY);
     return raw ? (JSON.parse(raw) as Company) : null;
   } catch {
@@ -94,14 +105,18 @@ export const game = {
   },
   snapshot: (): State => state,
 
-  start(seed: number): void {
+  start(seed: number, name: string): void {
     const board = generateBoard(seed);
     const engines = Object.values(DESIGNS).flatMap((d) => d.stages.map((s) => s.engine));
-    state.company = newCompany(seed, startingCash(seed), DESIGNS, engines, board);
+    state.company = newCompany(seed, startingCash(seed), DESIGNS, engines, board, name.trim() || "Untitled Launch Co.");
     state.flight = null;
     state.notices = [];
     save();
     emit();
+  },
+
+  rename(name: string): boolean {
+    return game.act((c) => (rename(c, name), { text: "", notices: [] })) !== null;
   },
 
   quit(): void {

@@ -6,6 +6,7 @@ import { debrief } from "./debrief.ts";
 import type { Engine } from "./engine.ts";
 import { FAILURE_LABELS, rollTruths, type FailureMode } from "./hardware.ts";
 import type { Mission } from "./mission.ts";
+import { holds, LICENCE_LABELS, LICENCE_COSTS, missionLicence, nextLicence, requiredLicence, type Licence } from "./licence.ts";
 import { learnFromFlight } from "./telemetry.ts";
 import {
   applyFix,
@@ -31,7 +32,10 @@ import type { Vehicle } from "./vehicle.ts";
  * company can no longer afford a vehicle that could get there.
  */
 
-export type Category = "test" | "fix" | "analysis" | "build" | "launch" | "overhead" | "payout" | "penalty";
+export type Category = "test" | "fix" | "analysis" | "build" | "launch" | "licence" | "overhead" | "payout" | "penalty";
+
+/** How a contract ended. "withdrawn" is a series instance the customer pulled after a failure. */
+export type Closed = "delivered" | "degraded" | "failed" | "late" | "withdrawn";
 
 export type MoneyEntry = { day: number; category: Category; amount: number; note: string };
 export type RecordEntry = { day: number; tag: Tag; reputation: number; note: string };
@@ -43,6 +47,8 @@ export type FlightLogEntry = {
   mission: string;
   contract: string | null;
   outcome: FlightResult["outcome"];
+  /** Highest point reached, m: the apoapsis for an orbit. */
+  apogee: number;
   /** What the customer made of it, for contract flights. */
   settlement: "delivered" | "degraded" | "failed" | null;
 };
@@ -51,7 +57,10 @@ export type FlightLogEntry = {
 export type Experience = { flights: number; orbits: number; maxApoapsis: number; inclinations: number[]; maxPayload: number };
 
 export type Company = {
+  /** The player's name for the firm. */
+  name: string;
   seed: number;
+  licence: Licence;
   day: number;
   /** $k. */
   cash: number;
@@ -60,9 +69,11 @@ export type Company = {
   designs: Record<string, Vehicle>;
   /** Built vehicles waiting for the pad, by design key. */
   inventory: Record<string, number>;
+  /** Vehicles built over the run, by design key. */
+  built: Record<string, number>;
   board: Contract[];
   accepted: string[];
-  closed: Record<string, "delivered" | "degraded" | "failed" | "late">;
+  closed: Record<string, Closed>;
   ledger: MoneyEntry[];
   record: RecordEntry[];
   experience: Record<string, Experience>;
@@ -77,15 +88,19 @@ export function newCompany(
   designs: Record<string, Vehicle>,
   engines: Engine[],
   board: Contract[],
+  name = "Untitled Launch Co.",
 ): Company {
   const campaign = newCampaign(rollTruths(engines, seed), rollAeroTruths(Object.values(designs), seed));
   return {
+    name,
     seed,
+    licence: "suborbital",
     day: 0,
     cash: startingCash,
     campaign,
     designs: { ...designs },
     inventory: {},
+    built: {},
     board,
     accepted: [],
     closed: {},
@@ -145,6 +160,7 @@ function tick(company: Company): string[] {
     company.ledger.push({ day: company.day, category: "penalty", amount: -contract.penalty, note: `${contract.title}: missed the deadline` });
     company.record.push({ day: company.day, tag: "late", reputation: -1, note: contract.title });
     notices.push(`Day ${contract.deadline}: ${contract.customer} gave up waiting on "${contract.title}". Penalty $${contract.penalty}k.`);
+    notices.push(...seriesAfter(company, contract, false));
   }
   if (company.dead) return notices;
   if (company.cash < 0) {
@@ -169,7 +185,8 @@ function stranded(company: Company): boolean {
   const orbital = Object.entries(company.designs).filter(([, d]) => d.pitchProgram?.kind === "gravity-turn");
   if (orbital.length === 0) return false;
   if (orbital.some(([key]) => (company.inventory[key] ?? 0) > 0)) return false;
-  const cheapest = Math.min(...orbital.map(([, d]) => vehicleCost(d).cost + COSTS.launchFee));
+  const licence = holds(company, "orbital") ? 0 : LICENCE_COSTS.orbital.fee;
+  const cheapest = Math.min(...orbital.map(([, d]) => vehicleCost(d).cost + COSTS.launchFee)) + licence;
   const owed = company.accepted.reduce((sum, id) => sum + contractOf(company, id).payout, 0);
   return company.cash + owed < cheapest;
 }
@@ -178,6 +195,24 @@ function contractOf(company: Company, id: string): Contract {
   const contract = company.board.find((c) => c.id === id);
   if (!contract) throw new Error(`No contract "${id}" on the board.`);
   return contract;
+}
+
+/**
+ * A series customer reacts to how an instance went: a delivery makes the
+ * later ones pay 5% more, a failure or a missed deadline pulls every later
+ * instance nobody has flown yet.
+ */
+function seriesAfter(company: Company, contract: Contract, ok: boolean): string[] {
+  if (!contract.seriesId) return [];
+  const later = company.board.filter(
+    (c) => c.seriesId === contract.seriesId && (c.seriesIndex ?? 0) > (contract.seriesIndex ?? 0) && !company.closed[c.id] && !company.accepted.includes(c.id),
+  );
+  if (ok) {
+    for (const c of later) c.payout = Math.round(c.payout * 1.05);
+    return [];
+  }
+  for (const c of later) company.closed[c.id] = "withdrawn";
+  return later.length > 0 ? [`${contract.customer} has withdrawn the rest of the series (${later.length} launch${later.length === 1 ? "" : "es"}).`] : [];
 }
 
 function designOf(company: Company, key: string): Vehicle {
@@ -198,12 +233,33 @@ function viaCampaign<T>(company: Company, category: Category, note: string, act:
 
 export type ActionResult = { text: string; notices: string[] };
 
+/** Rename the company. Customers don't mind. */
+export function rename(company: Company, name: string): void {
+  const clean = name.trim().slice(0, 40);
+  if (clean.length === 0) throw new Error("The company needs a name.");
+  company.name = clean;
+}
+
+/** Apply for the next licence tier: pay the fee and wait out the review. */
+export function applyForLicence(company: Company): ActionResult {
+  alive(company);
+  const next = nextLicence(company, reputation(company));
+  if (!next) throw new Error("The company already holds every licence there is.");
+  const missing = next.requirements.filter((r) => !r.met);
+  if (missing.length > 0) throw new Error(`The regulator wants: ${missing.map((r) => r.text.toLowerCase()).join("; ")}.`);
+  const notices = charge(company, "licence", next.fee, next.days, `${LICENCE_LABELS[next.tier]} licence`);
+  if (!company.dead) company.licence = next.tier;
+  return { text: `${LICENCE_LABELS[next.tier]} licence granted on day ${company.day}: ${money(next.fee)} and ${next.days} days of review.`, notices };
+}
+
 export function accept(company: Company, id: string): ActionResult {
   alive(company);
   const contract = contractOf(company, id);
   if (company.accepted.includes(id) || company.closed[id]) throw new Error(`"${contract.title}" is no longer open.`);
   if (company.day < contract.postedDay) throw new Error(`"${contract.title}" isn't on the board yet.`);
   if (company.day > contract.deadline) throw new Error(`"${contract.title}" has expired.`);
+  const needs = requiredLicence(contract);
+  if (!holds(company, needs)) throw new Error(`"${contract.title}" needs the ${LICENCE_LABELS[needs].toLowerCase()} licence.`);
   if (reputation(company) < contract.minReputation) {
     throw new Error(`${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`);
   }
@@ -264,6 +320,7 @@ export function build(company: Company, key: string): ActionResult {
   // On the books before the bill lands: a company that spends its last cash
   // on an orbital vehicle still has a vehicle that can reach orbit.
   company.inventory[key] = (company.inventory[key] ?? 0) + 1;
+  company.built[key] = (company.built[key] ?? 0) + 1;
   const notices = charge(company, "build", cost, days, `${design.name} build`);
   return { text: `Built a ${design.name}: ${money(cost)}, ${days} days. Ready on day ${company.day}.`, notices };
 }
@@ -288,6 +345,8 @@ export function fly(company: Company, key: string, target: { contract: string } 
   const contract = "contract" in target ? contractOf(company, target.contract) : null;
   if (contract && !company.accepted.includes(contract.id)) throw new Error(`"${contract.title}" isn't signed.`);
   const mission = contract?.mission ?? (target as { mission: Mission }).mission;
+  const needs = missionLicence(mission);
+  if (!holds(company, needs)) throw new Error(`Flying to orbit needs an orbital licence. Apply on the company page.`);
   const vehicle = { ...design, payloadMass: contract?.payloadMass ?? design.payloadMass };
 
   const notices = charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`);
@@ -320,6 +379,8 @@ export function fly(company: Company, key: string, target: { contract: string } 
       company.ledger.push({ day: company.day, category: "penalty", amount: -s.penalty, note: contract.title });
     }
     lines.push("", s.text);
+    const after = seriesAfter(company, contract, s.status !== "failed");
+    if (after.length > 0) lines.push(...after);
   } else {
     const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
     if (failure?.mode) company.record.push({ day: company.day, tag: failure.mode, reputation: -1, note: `${design.name} test flight` });
@@ -335,6 +396,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
     mission: mission.name,
     contract: contract?.title ?? null,
     outcome: result.outcome,
+    apogee: result.summary.apogee,
     settlement: settlement?.status ?? null,
   });
   notices.push(...tick(company));
@@ -388,6 +450,8 @@ export function bid(company: Company, contractId: string, key: string): Bid {
   if (reputation(company) < contract.minReputation) {
     blockers.push(`${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`);
   }
+  const needs = requiredLicence(contract);
+  if (!holds(company, needs)) blockers.push(`Needs the ${LICENCE_LABELS[needs].toLowerCase()} licence; the company holds ${LICENCE_LABELS[company.licence].toLowerCase()}.`);
   const objection = company.record.find((r) => contract.refuses.includes(r.tag));
   if (objection) blockers.push(`${contract.customer} won't sign with a record that shows ${describeTag(objection.tag)}.`);
 
@@ -488,7 +552,7 @@ function describeTag(tag: Tag): string {
 }
 
 export function status(company: Company): string {
-  const lines = [`Day ${company.day}. Cash ${money(company.cash)}. Reputation ${reputation(company)}.`];
+  const lines = [`${company.name.replace(/\.$/, "")}. Day ${company.day}. Cash ${money(company.cash)}. Reputation ${reputation(company)}. ${LICENCE_LABELS[company.licence]} licence.`];
   const built = Object.entries(company.inventory).filter(([, n]) => n > 0);
   if (built.length > 0) lines.push(`  On the ground: ${built.map(([k, n]) => `${n} × ${company.designs[k]!.name}`).join(", ")}.`);
   for (const id of company.accepted) {
@@ -513,6 +577,7 @@ export function summary(company: Company): string {
     analysis: "Analysis",
     build: "Vehicles built",
     launch: "Launch fees",
+    licence: "Licences",
     overhead: "Overhead",
     payout: "Contract payouts",
     penalty: "Penalties",

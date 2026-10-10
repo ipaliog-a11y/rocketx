@@ -1,15 +1,16 @@
-import { reputation, type Category, type Company } from "../../sim/company.ts";
+import type { Category, Company } from "../../sim/company.ts";
 import type { Tag } from "../../sim/contracts.ts";
 import { FAILURE_LABELS } from "../../sim/hardware.ts";
-import { Chip, Facts } from "../components/Bits.tsx";
+import { Chip } from "../components/Bits.tsx";
 import { money, signed } from "../format.ts";
 
-const LABELS: Record<Category, string> = {
+export const LABELS: Record<Category, string> = {
   test: "Tests",
   fix: "Fixes",
   analysis: "Analysis",
   build: "Vehicles built",
   launch: "Launch fees",
+  licence: "Licences",
   overhead: "Payroll",
   payout: "Contract payouts",
   penalty: "Penalties",
@@ -34,26 +35,14 @@ function tagText(tag: Tag): string {
   }
 }
 
-export function Ledger({ company }: { company: Company }) {
+/** The ledger and the record: the Company page's money tab. */
+export function LedgerTab({ company }: { company: Company }) {
   const totals = new Map<Category, number>();
   for (const e of company.ledger) totals.set(e.category, (totals.get(e.category) ?? 0) + e.amount);
   const spent = [...totals.values()].filter((v) => v < 0).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <h1>Ledger</h1>
-        <span className="muted">Seed {company.seed}</span>
-      </div>
-      <Facts
-        items={[
-          ["Day", String(company.day)],
-          ["Cash", money(company.cash)],
-          ["Reputation", signed(reputation(company))],
-          ["First orbit", company.firstOrbitDay === null ? "not yet" : `day ${company.firstOrbitDay}`],
-          ["Flights", String(company.flights.length)],
-        ]}
-      />
+    <>
       <div className="row">
         <section className="grow stack" aria-label="Money">
           <div className="card">
@@ -137,6 +126,6 @@ export function Ledger({ company }: { company: Company }) {
           </div>
         </aside>
       </div>
-    </div>
+    </>
   );
 }

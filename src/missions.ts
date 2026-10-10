@@ -51,3 +51,21 @@ export const MISSIONS: Record<string, Mission> = {
   "sso-500": SSO_500,
   "leo-equatorial": LEO_EQUATORIAL,
 };
+
+/**
+ * A circular orbit from Port Avery. Generated contracts use these: the
+ * altitudes and inclinations the company's launchers can reach directly
+ * from a 28.5° pad.
+ */
+export function circular(altitudeKm: number, inclination: number): Mission {
+  return {
+    name: `LEO ${altitudeKm} km, ${inclination}°`,
+    site: PORT_AVERY,
+    target: {
+      periapsis: altitudeKm * 1000,
+      apoapsis: altitudeKm * 1000,
+      inclination,
+      tolerance: { altitude: 15_000, inclination: 0.1 },
+    },
+  };
+}

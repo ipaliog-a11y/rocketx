@@ -1,13 +1,14 @@
-import { build, fire, fixAero, fixEngine, fly, retune, tunnel, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { applyForLicence, build, fire, fixAero, fixEngine, fly, retune, tunnel, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { COSTS, vehicleCost } from "../sim/cost.ts";
 import type { Engine } from "../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../sim/hardware.ts";
+import { LICENCE_LABELS, type Application } from "../sim/licence.ts";
 import type { Mission } from "../sim/mission.ts";
 import { FACILITIES, FIXES, HARDWARE_LOSS, type Facility } from "../sim/teststand.ts";
 import { AERO_FACILITIES, BUFFET_FIX, type AeroFacility } from "../sim/tunnel.ts";
 import { RETUNE_COST } from "../sim/tuning.ts";
-import { DESIGNS } from "./game.ts";
+import { DESIGNS } from "./designs.ts";
 import { money } from "./format.ts";
 
 /**
@@ -156,4 +157,17 @@ export function testFlightJob(key: string, mission: Mission, onDone: (r: FlightR
 
 export function waitJob(days: number, why: string): Job {
   return { title: `Wait ${days} days?`, doing: why, verb: "Wait", days, cost: 0, run: (c) => wait(c, days) };
+}
+
+export function licenceJob(application: Application): Job {
+  const name = LICENCE_LABELS[application.tier].toLowerCase();
+  return {
+    title: `Apply for the ${name} licence?`,
+    doing: `The regulator reviews your ${name} application`,
+    verb: "Apply",
+    days: application.days,
+    cost: application.fee,
+    alwaysAsk: true,
+    run: (c) => applyForLicence(c),
+  };
 }

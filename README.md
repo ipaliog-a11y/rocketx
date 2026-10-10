@@ -77,19 +77,24 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 - The bid screen shows what a contract pays and risks, the build cost, regimes the design has never flown, everything on trust, and a forecast with the contract's payload
 - Vehicles cost cash and days to build. A launch uses one up. In-spec delivery pays in full, an out-of-spec orbit pays half, and a loss or a missed deadline costs the penalty. Flights are tests too: telemetry teaches what the flight reached
 - The run ends when the cash goes negative. The summary breaks down where the money went and what the record says
+- Launch licences. A new company holds only the suborbital licence. The orbital one needs two flights above 100 km without losing the vehicle, a reputation of 0 or better, $250k and a 20-day review. Orbital contracts and orbital test flights are refused without it. A crewed-flight tier is on the map, but nothing can earn it yet
+- A generated board on top of the hand-tested contracts: about 80 contracts per seed over three years, across sounding science, microgravity, technology demos, rideshares, smallsats, weather, constellations, space agencies and crew. Payloads and orbits stay inside what the preset launchers reach with typical engines, with a margin. Recurring series (a university's aurora campaign, three constellations, the rideshare broker) post an instance every month or two. Deliver one and the rest pay 5% more; fail or miss one and the customer withdraws the rest
+- Achievements worked out from the record: first firing, first flight above 100 km, first orbit, the orbital licence, a fleet of five, $10M earned, a completed series and so on
 
 ## Balance
 
-`npm run playtest` plays whole company runs with bots across seeds. The bots decide only from what a player sees: test reports, forecasts and the board. There are four strategies: careful (full-duration firings with fixes, a transonic tunnel run, re-tuning, and bids only on a good forecast), cheap (5 s startup firings and CFD only), reckless (no tests) and greedy (careful, plus the SSO bid regardless of forecast). Current results over 30 seeds and a two-year horizon:
+`npm run playtest` plays whole company runs with bots across seeds. The bots decide only from what a player sees: test reports, forecasts and the board. They fly sounding work (or test flights) until they can apply for the orbital licence, then take orbital work. There are four strategies: careful (full-duration firings with fixes, a transonic tunnel run, re-tuning, and bids only on a good forecast), cheap (5 s startup firings and CFD only), reckless (no tests) and greedy (careful, plus the SSO bid regardless of forecast). Current results over 30 seeds and a two-year horizon:
 
 | Strategy | Survive | Reach orbit | Median cash at end |
 |---|---|---|---|
-| careful | 24 | 26 | $15.1M |
-| greedy | 15 | 26 | $6.7M |
-| cheap | 4 | 4 | $1.5M |
-| reckless | 0 | 2 | $2.2M |
+| careful | 30 | 30 | $30.4M |
+| greedy | 12 | 30 | −$0.7M |
+| cheap | 6 | 3 | $4.0M |
+| reckless | 18* | 1 | $4.8M |
 
-Testing pays, testing the wrong question costs nearly as much as not testing, and the greedy SSO bid halves survival. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
+\* Reckless bots that never earn the orbital licence stop trying and sit on their cash, so they count as alive. Only one of 30 reached orbit.
+
+Testing pays, testing the wrong question costs nearly as much as not testing, and the greedy SSO bid kills more than half the companies. Before the generated board, careful survived 24 of 30 with $15.1M: with more work posted, careful play is now comfortable and the money has nothing to buy. That waits on things worth spending on (a second pad and production line, bigger vehicles) rather than lower payouts. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
 
 Not modelled yet: running jobs in parallel (building while testing), loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
 
@@ -100,7 +105,14 @@ npm install
 npm run dev          # http://localhost:5173
 ```
 
-A React + Vite front end (`src/web/`) on the same sim code the tests and the command line use. Board, hangar, test stand, wind tunnel and ledger screens; launches replay the flight the sim just flew, then show the debrief. The run saves to the browser's local storage. `npm run build` writes a static site to `dist/`.
+A React + Vite front end (`src/web/`) on the same sim code the tests and the command line use.
+
+- **Company:** the company's name (editable), its numbers, the licence ladder with an Apply button, where the money went, the fleet, achievements and the ledger.
+- **Contracts:** a filterable table and a month calendar of postings and deadlines, with a bid panel that only signs.
+- **Launch:** build, re-tune and fly signed contracts.
+- **Hangar, Test stand, Tunnel:** design drawings, engine firings and wind-tunnel runs.
+
+Anything that uses up days asks first when it would cost a signed contract its deadline, then plays a short progress bar while the days pass. Launches replay the flight the sim just flew, then show the debrief. The run saves to the browser's local storage. `npm run build` writes a static site to `dist/`.
 
 ## Running
 
@@ -130,7 +142,8 @@ npm run campaign -- fat-fairing --seed 1 tunnel:cfd          # CFD misses the bu
 # A company run: the same steps plus contracts, builds and flights, against cash
 # and calendar. See src/company.ts for every step.
 npm run company -- --seed 3 board brief:sounding:pathfinder accept:sounding \
-  build:pathfinder fly:pathfinder:sounding accept:leo-150 harrier-sl@140 \
+  build:pathfinder fly:pathfinder:sounding build:pathfinder fly:pathfinder \
+  licence accept:leo-150 harrier-sl@140 \
   harrier-vac@280/altitude tunnel:meridian:transonic \
   fix:aero:meridian:transonic-buffet tunnel:meridian:transonic \
   retune:meridian:leo-150 build:meridian fly:meridian:leo-150

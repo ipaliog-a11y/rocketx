@@ -28,6 +28,7 @@ const near = (actual: number, expected: number, tolerance: number) =>
 
 const sounding: Contract = {
   id: "sounding",
+  kind: "sounding",
   customer: "Test U",
   title: "Probe",
   mission: SUBORBITAL_TEST,
@@ -43,6 +44,7 @@ const sounding: Contract = {
 };
 const leo: Contract = {
   id: "leo",
+  kind: "smallsat",
   customer: "Test Sat",
   title: "LEO",
   mission: LEO_300,
@@ -56,9 +58,14 @@ const leo: Contract = {
   postedDay: 0,
 };
 
-/** A company whose hidden hardware is perfect unless a test says otherwise. */
+/**
+ * A company whose hidden hardware is perfect unless a test says otherwise.
+ * It already holds the orbital licence: these tests are about engineering
+ * and money, not the regulator (test/licence.test.ts covers that).
+ */
 function company(cash = 12_000, engines: Partial<Record<string, EngineTruth>> = {}): Company {
   const c = newCompany(1, cash, VEHICLES, Object.values(ENGINES), [sounding, leo]);
+  c.licence = "orbital";
   for (const name of Object.keys(c.campaign.truth)) c.campaign.truth[name] = engines[name] ?? IDEAL_TRUTH;
   for (const key of Object.keys(c.campaign.aeroTruth)) c.campaign.aeroTruth[key] = IDEAL_AERO;
   return c;
@@ -259,8 +266,10 @@ test("every launch lands in the flight log", () => {
     mission: SUBORBITAL_TEST.name,
     contract: sounding.title,
     outcome: "apogee",
+    apogee: c.flights[0]!.apogee,
     settlement: "delivered",
   });
+  assert.ok(c.flights[0]!.apogee > 100_000);
   assert.equal(c.flights[1]!.contract, null);
   assert.equal(report.settlement?.status, "delivered");
   assert.match(report.debrief, /^DEBRIEF: Pathfinder/);

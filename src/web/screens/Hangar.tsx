@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Company } from "../../sim/company.ts";
+import { holds, missionLicence } from "../../sim/licence.ts";
 import { vehicleCost } from "../../sim/cost.ts";
 import { burnTime, idealDeltaV, stackMass } from "../../sim/vehicle.ts";
 import { LEO_300, SUBORBITAL_TEST } from "../../missions.ts";
@@ -150,7 +151,8 @@ function Design({ company, designKey }: { company: Company; designKey: string })
           <button
             type="button"
             className="btn"
-            disabled={stock === 0}
+            disabled={stock === 0 || !holds(company, missionLicence(mission))}
+            title={!holds(company, missionLicence(mission)) ? "Orbital test flights need the orbital licence" : stock === 0 ? `Build a ${v.name} first` : undefined}
             onClick={() => game.schedule(testFlightJob(designKey, mission, (r) => game.showFlight(r, designKey)))}
           >
             Test flight · {mission.target ? `LEO ${km(mission.target.apoapsis, 0)}` : "straight up"}
