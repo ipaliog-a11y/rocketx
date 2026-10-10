@@ -10,6 +10,7 @@ This repo holds early design decisions only. Nothing here is a build spec.
 |---|---|
 | [README.md](README.md) | Pitch, pillars, non-goals, loop |
 | [DESIGN.md](DESIGN.md) | Decisions from the first design pass, with rationale |
+| [src/sim/](src/sim/) | Simulation core: atmosphere, aero, engines, ascent, debrief |
 
 ## Pitch
 
@@ -48,4 +49,28 @@ After first orbit the same loop scales: new regime, new ignorance, new chance to
 
 ## Status
 
-Early paper design. No engine, no prototype, no name locked.
+Prototype started. The domains are **engines + aerodynamics** (DESIGN.md §15). No name locked.
+
+Built so far: a one-dimensional vertical ascent sim. It points straight up, so it covers sounding-rocket and suborbital flights but can't reach orbit yet.
+
+- US Standard Atmosphere 1976 up to 86 km, vacuum above 150 km
+- Drag from a Mach-dependent Cd curve with a transonic rise. Frontal area comes from the widest stage or the fairing
+- Engine thrust falls with ambient pressure (F = F_vac − p·A_e). Nozzle flow separation is flagged by the Summerfield criterion
+- Staging, max-q, Mach 1, load-budget and acceleration-limit events
+- Δv bookkeeping: delivered Δv split into gravity, drag and back-pressure losses
+- A text debrief that names the physics
+
+Next: a pitch programme and a second axis so LEO is possible, then test-stand runs that reveal failure modes before flight.
+
+## Running
+
+Needs Node 22.18 or newer, which runs TypeScript directly. The sim has no runtime dependencies.
+
+```sh
+npm install          # TypeScript, only needed for typecheck
+npm run sim          # fly Pathfinder and print the debrief
+npm run sim -- fat-fairing   # also: vac-bell, overfuelled, two-stage
+npm run sim -- pathfinder --json
+npm test
+npm run typecheck
+```
