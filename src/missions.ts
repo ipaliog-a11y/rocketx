@@ -69,3 +69,35 @@ export function circular(altitudeKm: number, inclination: number): Mission {
     },
   };
 }
+
+/** Geostationary transfer orbit from Port Avery: perigee low, apogee at geostationary height. */
+export function gto(): Mission {
+  return {
+    name: "GTO 200 × 35,786 km",
+    site: PORT_AVERY,
+    target: { periapsis: 200_000, apoapsis: 35_786_000, inclination: 28.5, tolerance: { altitude: 40_000, apoapsis: 500_000, inclination: 0.1 } },
+  };
+}
+
+/** A circular orbit above the direct-ascent limit: parking orbit, transfer, circularise. */
+export function highCircular(altitudeKm: number, inclination: number): Mission {
+  return { ...circular(altitudeKm, inclination), name: `${altitudeKm.toLocaleString("en-US")} km circular, ${inclination}°` };
+}
+
+/** Trans-lunar injection: an ellipse out to the Moon's distance. */
+export function lunar(): Mission {
+  return {
+    name: "Trans-lunar injection",
+    site: PORT_AVERY,
+    target: { periapsis: 200_000, apoapsis: 384_400_000, inclination: 28.5, tolerance: { altitude: 40_000, apoapsis: 20_000_000, inclination: 0.1 } },
+  };
+}
+
+/** Escape with a C3, km²/s²: the energy left over once Earth's pull is spent. */
+export function escape(c3: number): Mission {
+  return {
+    name: `Escape, C3 ${c3}`,
+    site: PORT_AVERY,
+    target: { periapsis: 200_000, apoapsis: Infinity, inclination: 28.5, c3, tolerance: { altitude: 15_000, inclination: 0.1, c3: 1 } },
+  };
+}

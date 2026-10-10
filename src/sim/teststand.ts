@@ -14,6 +14,7 @@ import {
 import { OWNER, partKeys, partLabel, type Slot } from "./parts.ts";
 import { aeroShape, type AeroTruthTable } from "./airframe.ts";
 import { aeroUnknowns, type AeroKnowledge } from "./tunnel.ts";
+import { missionPlan, type Mission } from "./mission.ts";
 import { burnTime, type Vehicle } from "./vehicle.ts";
 
 /**
@@ -81,6 +82,8 @@ export type EngineKnowledge = {
   measuredIspFactor: number | null;
   /** Fired in the altitude cell, so vacuum performance is measured, not inferred. */
   altitudeTested: boolean;
+  /** Shut down and restarted in vacuum: in the cell or in flight. */
+  relightProven: boolean;
   /** Failure modes seen and not yet fixed. */
   open: FailureMode[];
   /** Failure modes seen and fixed. */
@@ -103,6 +106,8 @@ export type PartKnowledge = {
   flights: number;
   /** Cycle: an engine with this start sequence has lit cleanly. */
   startupProven: boolean;
+  /** Cycle: an engine with this start sequence has restarted in vacuum. */
+  relightProven: boolean;
   /** Injector: longest running without instability on the current revision, s. */
   stableSeconds: number;
   /** Cooling: most of the rated life run without burning through, as a share. */
@@ -151,7 +156,7 @@ export function newCampaign(
 }
 
 export function blankEngineKnowledge(): EngineKnowledge {
-  return { firings: 0, startupProven: false, provenDuration: 0, measuredIspFactor: null, altitudeTested: false, open: [], fixed: [], seen: {}, history: [] };
+  return { firings: 0, startupProven: false, provenDuration: 0, measuredIspFactor: null, altitudeTested: false, relightProven: false, open: [], fixed: [], seen: {}, history: [] };
 }
 
 export function knowledgeOf(campaign: Campaign, engine: Engine): EngineKnowledge {
@@ -166,6 +171,7 @@ export function partKnowledgeOf(campaign: Campaign, key: string): PartKnowledge 
     firings: 0,
     flights: 0,
     startupProven: false,
+    relightProven: false,
     stableSeconds: 0,
     lifeShare: 0,
     altitudeTested: false,
@@ -196,7 +202,15 @@ export const revisionLetter = (revision: number): string => `Rev ${String.fromCh
  * Teach an engine's parts what a run showed: a firing on the stand or a
  * stage's burn in flight. `fired` is how long it ran, s.
  */
-export function learnParts(campaign: Campaign, engine: Engine, fired: number, findings: Finding[], where: Facility | "flight", steady: boolean): void {
+export function learnParts(
+  campaign: Campaign,
+  engine: Engine,
+  fired: number,
+  findings: Finding[],
+  where: Facility | "flight",
+  steady: boolean,
+  relit = false,
+): void {
   if (!engine.parts) return;
   const keys = partKeys(engine.parts);
   const rated = engine.ratedLife ?? DEFAULT_RATED_LIFE;
@@ -207,6 +221,7 @@ export function learnParts(campaign: Campaign, engine: Engine, fired: number, fi
     else part.firings += 1;
     if (!lit) continue;
     if (slot === "cycle") part.startupProven = true;
+    if (slot === "cycle" && relit) part.relightProven = true;
     if (slot === "injector") part.stableSeconds = Math.max(part.stableSeconds, fired);
     if (slot === "cooling") part.lifeShare = Math.max(part.lifeShare, fired / rated);
     if (slot === "nozzle" && steady && (where === "altitude" || where === "flight")) part.altitudeTested = true;
@@ -233,6 +248,7 @@ export function refreshFromParts(campaign: Campaign): void {
     const rated = engine.ratedLife ?? DEFAULT_RATED_LIFE;
     const part = (slot: Slot) => campaign.parts[keys[slot]];
     known.startupProven = part("cycle")?.startupProven ?? false;
+    known.relightProven = part("cycle")?.relightProven ?? false;
     const life = Math.round((part("cooling")?.lifeShare ?? 0) * rated * 1e6) / 1e6;
     known.provenDuration = Math.min(part("injector")?.stableSeconds ?? 0, life);
     if (part("nozzle")?.altitudeTested) known.altitudeTested = true;
@@ -259,8 +275,16 @@ function truthOf(campaign: Campaign, engine: Engine): EngineTruth {
 
 const kPa = (pa: number) => `${(pa / 1000).toFixed(1)} kPa`;
 
-/** Fire an engine on a facility for up to `duration` seconds. */
-export function hotFire(campaign: Campaign, engine: Engine, duration: number, facility: Facility): TestReport {
+/** Restarting after a firing in the cell: one more set-up and a day of purging and re-chilling. */
+export const RESTART_TEST = { days: 1 };
+
+/**
+ * Fire an engine on a facility for up to `duration` seconds. In the
+ * altitude cell, `restart` shuts it down after a clean firing and lights it
+ * again in vacuum, the way an upper stage does after a coast.
+ */
+export function hotFire(campaign: Campaign, engine: Engine, duration: number, facility: Facility, restart = false): TestReport {
+  if (restart && facility !== "altitude") throw new Error("A restart test needs vacuum: book the altitude cell.");
   const truth = truthOf(campaign, engine);
   const known = knowledgeOf(campaign, engine);
   const stand = FACILITIES[facility];
@@ -305,6 +329,19 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
     );
   }
 
+  // The restart: only after a clean firing, and only in vacuum.
+  let relit = false;
+  const restarting = restart && findings.length === 0 && !hardwareLost;
+  if (restarting) {
+    if (truth.relightFails) {
+      findings.push({
+        mode: "relight-failure",
+        t: fired,
+        text: `Relight failure: after shutdown and a purge, the igniter fired into a chamber that wouldn't take. In vacuum the start sequence lost the pressure it needs; an upper stage would be stranded after its coast.`,
+      });
+    } else relit = true;
+  }
+
   // Isp is measurable once the firing settles, unless the flow is separated.
   const steady = !separates && fired >= STEADY_STATE;
   const real = asBuilt(engine, truth);
@@ -328,16 +365,17 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
     if (!known.open.includes(f.mode)) known.open.push(f.mode);
     known.seen[f.mode] = f.t;
   }
-  learnParts(campaign, engine, fired, findings, facility, steady);
+  if (relit) known.relightProven = true;
+  learnParts(campaign, engine, fired, findings, facility, steady, relit);
 
-  const cost = stand.setup + stand.perSecond * fired + (hardwareLost ? HARDWARE_LOSS.cost : 0);
-  const days = stand.days + (hardwareLost ? HARDWARE_LOSS.days : 0);
+  const cost = stand.setup * (restarting ? 2 : 1) + stand.perSecond * fired + (hardwareLost ? HARDWARE_LOSS.cost : 0);
+  const days = stand.days + (restarting ? RESTART_TEST.days : 0) + (hardwareLost ? HARDWARE_LOSS.days : 0);
   campaign.spent += cost;
   campaign.days += days;
 
   const lines = [`${engine.name}, ${stand.name}, ${duration} s planned, ${fired.toFixed(1)} s fired.`];
   for (const f of findings) lines.push(`  ${f.text}`);
-  if (findings.length === 0) lines.push(`  Clean firing.`);
+  if (findings.length === 0) lines.push(relit ? `  Clean firing, then a clean restart in vacuum.` : `  Clean firing.`);
   if (isp) {
     const delta = isp.measured / isp.predicted - 1;
     lines.push(
@@ -389,6 +427,15 @@ export const FIXES: Partial<Record<FailureMode, Fix>> = {
     applyPart: (t) => ({ ...t, instabilityOnset: null, ispFactor: t.ispFactor * 0.995 }),
     costsIsp: true,
     text: "Baffles on the injector face break up the acoustic mode. They also mix propellant a little worse: about 0.5% Isp.",
+  },
+  "relight-failure": {
+    name: "restart kit",
+    cost: 200,
+    days: 25,
+    apply: (t) => ({ ...t, relightFails: false }),
+    applyPart: (t) => ({ ...t, relightFails: false }),
+    costsIsp: false,
+    text: "Spare igniter cartridges and a helium purge before each restart: the chamber is clean and pressurised when it lights.",
   },
   "burn-through": {
     name: "film cooling",
@@ -472,7 +519,10 @@ function applyPartFix(campaign: Campaign, engine: Engine, mode: FailureMode, slo
   if (!part.fixed.includes(mode)) part.fixed.push(mode);
   part.revision += 1;
   part.notes.push(`${revisionLetter(part.revision)}: ${fix.name}.`);
-  if (slot === "cycle") part.startupProven = false;
+  if (slot === "cycle") {
+    part.startupProven = false;
+    part.relightProven = false;
+  }
   if (slot === "injector") part.stableSeconds = 0;
   if (slot === "cooling") part.lifeShare = 0;
   refreshFromParts(campaign);
@@ -497,7 +547,8 @@ export type Unknown = { subject: string; text: string };
  * shape could surprise it that no firing or tunnel run has ruled out. This is the bid screen's
  * "regimes this vehicle has never seen" for propulsion.
  */
-export function flightUnknowns(vehicle: Vehicle, campaign: Campaign): Unknown[] {
+export function flightUnknowns(vehicle: Vehicle, campaign: Campaign, mission?: Mission): Unknown[] {
+  const relights = mission ? missionPlan(mission).burns.length > 0 : false;
   const uses = new Map<string, { engine: Engine; burn: number; upper: boolean }>();
   vehicle.stages.forEach((stage, i) => {
     const prior = uses.get(stage.engine.name);
@@ -540,6 +591,9 @@ export function flightUnknowns(vehicle: Vehicle, campaign: Campaign): Unknown[] 
     }
     if (known.measuredIspFactor === null) add("Isp never measured. Trajectory and propellant margin rest on the design figure.");
     if (upper && !known.altitudeTested) add("Never fired in the altitude cell. Vacuum performance is an inference.");
+    if (upper && relights && !known.relightProven && !known.open.includes("relight-failure")) {
+      add("Never restarted in vacuum. This mission shuts it down for a coast and relights it.");
+    }
   }
   if (campaign.aeroTruth[aeroShape(vehicle).key]) unknowns.push(...aeroUnknowns(vehicle, campaign));
   return unknowns;
@@ -560,6 +614,7 @@ export function believedHardware(campaign: Campaign): HardwareTruth {
       hardStart: seenAt(known, "hard-start") !== undefined,
       instabilityOnset: seenAt(known, "combustion-instability") ?? null,
       thermalLife: seenAt(known, "burn-through") ?? Infinity,
+      relightFails: seenAt(known, "relight-failure") !== undefined,
     };
   }
   return believed;

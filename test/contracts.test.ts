@@ -4,6 +4,7 @@ import { simulateAscent } from "../src/sim/ascent.ts";
 import { IDEAL_AERO } from "../src/sim/airframe.ts";
 import { accept, build, fly, newCompany, wait, type Company } from "../src/sim/company.ts";
 import type { Contract } from "../src/sim/contracts.ts";
+import { missionPlan } from "../src/sim/mission.ts";
 import { IDEAL_TRUTH } from "../src/sim/hardware.ts";
 import { retunePitch } from "../src/sim/tuning.ts";
 import { generateBoard } from "../src/contracts.ts";
@@ -45,6 +46,8 @@ test("the heaviest generated payload for each orbit can be put there with typica
   const heaviest = new Map<string, Contract>();
   for (const c of generateBoard(1)) {
     if (!c.mission.target || c.kind === "crew" || /^(leo|sso|equatorial|rideshare-)/.test(c.id)) continue;
+    // High-energy work needs the bigger hardware; test/coast.test.ts flies it.
+    if (missionPlan(c.mission).burns.length > 0) continue;
     const prev = heaviest.get(c.mission.name);
     if (!prev || c.payloadMass > prev.payloadMass) heaviest.set(c.mission.name, c);
   }

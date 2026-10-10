@@ -5,7 +5,7 @@ import { G0, MU_EARTH, R_EARTH } from "./constants.ts";
 import { flowSeparates, massFlow, thrustAt } from "./engine.ts";
 import { commandedPitch, kickDue, VERTICAL } from "./guidance.ts";
 import { asBuilt, firstFailure, IDEAL_TRUTH, type FailureMode, type HardwareTruth } from "./hardware.ts";
-import { launchGeometry, scoreInsertion, targetSemiMajorAxis, type InsertionReport, type Mission } from "./mission.ts";
+import { launchGeometry, missionPlan, scoreInsertion, targetSemiMajorAxis, type InsertionReport, type Mission, type OrbitBurn } from "./mission.ts";
 import { isOrbit, orbitFrom, type OrbitElements } from "./orbit.ts";
 import { burnTime, stackMass, type Stage, type Vehicle } from "./vehicle.ts";
 
@@ -36,6 +36,11 @@ export type EventKind =
   | "structural-failure"
   | "staging"
   | "orbit"
+  | "coast"
+  | "relight"
+  | "transfer"
+  | "circularize"
+  | "escape"
   | "apogee"
   | "impact"
   | "timeout";
@@ -99,7 +104,7 @@ export type Losses = {
 };
 
 /** "apogee" means the flight topped out and fell back: suborbital. "failure" means the vehicle was lost to an engine or structural failure. */
-export type Outcome = "no-liftoff" | "failure" | "orbit" | "apogee" | "impact" | "timeout";
+export type Outcome = "no-liftoff" | "failure" | "orbit" | "escape" | "apogee" | "impact" | "timeout";
 
 export type FlightResult = {
   vehicle: string;
@@ -181,6 +186,8 @@ type Phase = {
   kickStart: number | null;
   /** Seconds after ignition this stage's engines fail, and how. */
   failure: { t: number; mode: FailureMode } | null;
+  /** In orbit: thrust along the inertial velocity instead of the pitch programme. */
+  prograde?: boolean;
 };
 
 type Context = {
@@ -233,13 +240,16 @@ function snapshot(ctx: Context, phase: Phase, t: number, s: State): Snapshot {
   const flightPathAngle = airSpeed > 1e-9 ? Math.atan2(vUp, vHorizontal) : Math.PI / 2;
 
   const stageBurnFraction = phase.burning ? Math.min(1, (t - phase.ignitedAt) / burnTime(phase.stage)) : 1;
-  const pitch = commandedPitch(vehicle.pitchProgram ?? VERTICAL, {
-    t,
-    kickStart: phase.kickStart,
-    flightPathAngle,
-    stage: phase.stageIndex,
-    stageBurnFraction,
-  });
+  const inertialFpa = Math.atan2(s[VX] * up[0] + s[VY] * up[1], s[VX] * horizontal[0] + s[VY] * horizontal[1]);
+  const pitch = phase.prograde
+    ? inertialFpa
+    : commandedPitch(vehicle.pitchProgram ?? VERTICAL, {
+        t,
+        kickStart: phase.kickStart,
+        flightPathAngle,
+        stage: phase.stageIndex,
+        stageBurnFraction,
+      });
   const thrustDir: [number, number] = [
     Math.cos(pitch) * horizontal[0] + Math.sin(pitch) * up[0],
     Math.cos(pitch) * horizontal[1] + Math.sin(pitch) * up[1],
@@ -321,6 +331,17 @@ function specificEnergy(s: State): number {
   return (s[VX] * s[VX] + s[VY] * s[VY]) / 2 - MU_EARTH / Math.hypot(s[X], s[Y]);
 }
 
+/**
+ * Energy a burn aims for, J/kg, from where it starts. A prograde burn at one
+ * apsis moves the other: raising the apoapsis from the parking orbit, or
+ * raising the periapsis at the high point. An escape aims at its C3.
+ */
+function burnEnergy(burn: OrbitBurn, radius: number): number {
+  if (burn.until.kind === "energy") return burn.until.energy;
+  const other = R_EARTH + burn.until.altitude;
+  return -MU_EARTH / (radius + other);
+}
+
 function verticalSpeed(s: State): number {
   const r = Math.hypot(s[X], s[Y]);
   return (s[VX] * s[X] + s[VY] * s[Y]) / r;
@@ -338,7 +359,8 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
 
   const dt = options.dt ?? 0.05;
   const sampleInterval = options.sampleInterval ?? 1;
-  const maxTime = options.maxTime ?? 3600;
+  const plan = missionPlan(mission);
+  const maxTime = options.maxTime ?? (plan.burns.length > 0 ? 6 * 3600 : 3600);
   if (vehicle.stages.length === 0) throw new Error(`${vehicle.name} has no stages`);
   const program = vehicle.pitchProgram ?? VERTICAL;
   const geometry = launchGeometry(mission, options.rotatingEarth ?? true);
@@ -351,9 +373,12 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
 
   // Guidance shuts the last stage down once the orbit has the target's
   // energy. Where the energy lands between periapsis and apoapsis is up to
-  // the pitch programme.
+  // the pitch programme. A high-energy mission's ascent stops at its parking
+  // orbit, on whichever stage gets there first.
   const target = mission.target;
-  const cutoffEnergy = target ? -MU_EARTH / (2 * targetSemiMajorAxis(target, R_EARTH)) : Infinity;
+  const ascentTarget = plan.ascent;
+  const cutoffEnergy = ascentTarget ? -MU_EARTH / (2 * targetSemiMajorAxis(ascentTarget, R_EARTH)) : Infinity;
+  const parking = plan.burns.length > 0;
 
   const events: FlightEvent[] = [];
   const samples: Sample[] = [];
@@ -460,7 +485,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     // Energy cutoff: if this step carried the last stage past the target
     // energy, redo it with the step trimmed to land on the target.
     let guidanceCutoff = false;
-    if (phase.burning && stageIndex === lastStage && specificEnergy(s) >= cutoffEnergy) {
+    if (phase.burning && (stageIndex === lastStage || parking) && specificEnergy(s) >= cutoffEnergy) {
       const before = specificEnergy(prev);
       const fraction = (cutoffEnergy - before) / (specificEnergy(s) - before);
       step *= Math.min(1, Math.max(0, fraction));
@@ -583,7 +608,143 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     }
   }
 
-  if (outcome === "timeout") {
+  // High-energy missions: coast in the parking orbit, relight, and burn
+  // prograde to each target energy in turn.
+  if (outcome === "orbit" && parking) {
+    // Seconds the current stage has already run: failures count from its first ignition.
+    let stageRun = t - phase.ignitedAt;
+    const coastDt = Math.max(dt, 5);
+    const burnDt = Math.max(dt, 0.2);
+    const propagate = (step: number) => {
+      s = rk4(ctx, phase, t, s, step);
+      t += step;
+    };
+    const sampleCoast = (k: Snapshot) => {
+      if (t >= nextSampleAt) {
+        record(k);
+        nextSampleAt = t + Math.max(sampleInterval, 30);
+      }
+    };
+    const relightOf = (index: number) => {
+      const truth = hardware ? hardware[design.stages[index]!.engine.name] : undefined;
+      return truth?.relightFails ?? false;
+    };
+
+    for (const burn of plan.burns) {
+      outcome = "timeout";
+      // Coast.
+      let k = snapshot(ctx, phase, t, s);
+      event("coast", k);
+      const coastEnd = burn.coast.kind === "time" ? t + burn.coast.seconds : Infinity;
+      while (t < maxTime) {
+        const before = verticalSpeed(s);
+        const step = burn.coast.kind === "time" ? Math.min(coastDt, coastEnd - t) : coastDt;
+        propagate(step);
+        k = snapshot(ctx, phase, t, s);
+        if (k.altitude < 0) break;
+        sampleCoast(k);
+        if (burn.coast.kind === "time" ? t >= coastEnd - 1e-9 : before > 0 && verticalSpeed(s) <= 0) break;
+      }
+      if (k.altitude < 0) {
+        event("impact", k);
+        outcome = "impact";
+        break;
+      }
+      if (t >= maxTime) break;
+
+      // Relight: a stage that has already run has to restart in vacuum.
+      if (propellant <= 1e-9) {
+        const next = vehicle.stages[stageIndex + 1];
+        if (!next) {
+          outcome = "orbit";
+          break;
+        }
+        s[M] -= phase.stage.dryMass;
+        stageIndex += 1;
+        propellant = next.propellantMass;
+        stageRun = 0;
+        phase = { ...phase, stage: next, stageIndex, area: frontalArea(vehicle, stageIndex), failure: failureOf(stageIndex) };
+        event("staging", snapshot(ctx, phase, t, s));
+      }
+      phase = { ...phase, burning: true, prograde: true, ignitedAt: t - stageRun };
+      k = snapshot(ctx, phase, t, s);
+      if (stageRun > 0) {
+        event("relight", k);
+        if (relightOf(stageIndex)) {
+          fail(k, "relight-failure");
+          break;
+        }
+      } else {
+        event("ignition", k);
+        if (phase.failure?.t === 0) {
+          fail(k, phase.failure.mode);
+          break;
+        }
+      }
+
+      // Burn to the target energy: the orbit with the target apsis opposite where the vehicle is now.
+      const r = Math.hypot(s[X], s[Y]);
+      const goal = burnEnergy(burn, r);
+      let done = false;
+      while (!done && t < maxTime) {
+        const flow = phase.stage.engineCount * massFlow(phase.stage.engine);
+        let step = Math.min(burnDt, propellant / flow);
+        if (phase.failure) step = Math.min(step, Math.max(0, phase.ignitedAt + phase.failure.t - t));
+        const prev = s;
+        s = rk4(ctx, phase, t, prev, step);
+        if (specificEnergy(s) >= goal) {
+          const before = specificEnergy(prev);
+          step *= Math.min(1, Math.max(0, (goal - before) / (specificEnergy(s) - before)));
+          s = rk4(ctx, phase, t, prev, step);
+          done = true;
+        }
+        t += step;
+        propellant = Math.max(0, propellant - flow * step);
+        stageRun += step;
+        k = snapshot(ctx, phase, t, s);
+        if (phase.failure && t - phase.ignitedAt >= phase.failure.t - 1e-9) {
+          fail(k, phase.failure.mode);
+          break;
+        }
+        if (t >= nextSampleAt) {
+          record(k);
+          nextSampleAt = t + sampleInterval;
+        }
+        if (!done && propellant <= 1e-9) {
+          const next = vehicle.stages[stageIndex + 1];
+          if (!next) break;
+          event("meco", k);
+          s[M] -= phase.stage.dryMass;
+          stageIndex += 1;
+          propellant = next.propellantMass;
+          stageRun = 0;
+          phase = { ...phase, stage: next, stageIndex, ignitedAt: t, area: frontalArea(vehicle, stageIndex), failure: failureOf(stageIndex) };
+          k = snapshot(ctx, phase, t, s);
+          event("staging", k);
+          if (!ignite()) break;
+        }
+      }
+      if ((outcome as Outcome) === "failure") break;
+      phase = { ...phase, burning: false };
+      k = snapshot(ctx, phase, t, s);
+      const inertialFpa = Math.asin(Math.max(-1, Math.min(1, verticalSpeed(s) / k.speed)));
+      burnout = { t, altitude: k.altitude, velocity: k.speed, groundSpeed: k.airSpeed, flightPathAngle: inertialFpa * DEG, downrange: downrange() };
+      orbit = orbitFrom(s[X], s[Y], s[VX], s[VY]);
+      record(k);
+      if (!done) {
+        // Out of propellant short of the target: whatever orbit this is, it's the one the payload gets.
+        event("meco", k);
+        outcome = orbit.energy >= 0 ? "escape" : isOrbit(orbit) ? "orbit" : "impact";
+        break;
+      }
+      event(burn.name, k, propellant);
+      outcome = orbit.energy >= 0 ? "escape" : "orbit";
+    }
+    if (outcome === "timeout") {
+      const k = snapshot(ctx, phase, t, s);
+      events.push({ kind: "timeout", t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex });
+    }
+  } else if (outcome === "timeout") {
     const k = snapshot(ctx, phase, t, s);
     events.push({ kind: "timeout", t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex });
   }
@@ -596,8 +757,9 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
   const finalOrbit = orbit ?? orbitFrom(s[X], s[Y], s[VX], s[VY]);
   const insertion =
     target && outcome !== "no-liftoff"
-      ? scoreInsertion(target, finalOrbit, geometry.inclination, outcome === "orbit")
+      ? scoreInsertion(target, finalOrbit, geometry.inclination, outcome === "orbit" || outcome === "escape")
       : null;
+  const finalAltitude = Math.hypot(s[X], s[Y]) - R_EARTH;
 
   return {
     vehicle: vehicle.name,
@@ -606,7 +768,8 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     events,
     samples,
     summary: {
-      apogee: outcome === "orbit" && orbit ? orbit.apoapsis : apogee.altitude,
+      // An escape has no apogee: report how high it was when the simulation let go.
+      apogee: outcome === "orbit" && orbit ? orbit.apoapsis : outcome === "escape" ? finalAltitude : apogee.altitude,
       apogeeTime: apogee.t,
       maxQ,
       maxQAlpha,

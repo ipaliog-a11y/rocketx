@@ -31,7 +31,7 @@ test("parts assemble into an engine deterministically, with honest ranges", () =
   const r = engineRanges(a)!;
   assert.ok(r.isp[0] < r.isp[1] && r.isp[1] <= a.ispVac);
   assert.ok(r.life[0] < a.ratedLife! && r.life[1] > a.ratedLife!);
-  assert.deepEqual(partsProblems({ ...parts, size: 9 }), ["Gas generator engines come in 25, 35, 50 kN, not 9 kN."]);
+  assert.deepEqual(partsProblems({ ...parts, size: 9 }), ["Gas generator engines come in 25, 35, 50, 100, 250 kN, not 9 kN."]);
 });
 
 test("sister engines share their cycle, injector and cooling truths", () => {

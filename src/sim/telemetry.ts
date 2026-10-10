@@ -16,10 +16,21 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
   vehicle.stages.forEach((stage, index) => {
     const ignition = result.events.find((e) => e.kind === "ignition" && e.stage === index);
     if (!ignition) return;
-    const end = result.events.find(
-      (e) => e.stage === index && (e.kind === "meco" || e.kind === "cutoff" || e.kind === "engine-failure"),
-    );
-    const burned = (end?.t ?? result.events[result.events.length - 1]!.t) - ignition.t;
+    // A stage can burn more than once: on the way up, then after each coast.
+    // Its running time is the sum of the burns.
+    const lastT = result.events[result.events.length - 1]!.t;
+    let burned = 0;
+    let from: number | null = ignition.t;
+    for (const e of result.events) {
+      if (e.stage !== index || e.t < ignition.t) continue;
+      if ((e.kind === "relight" || e.kind === "ignition") && from === null) from = e.t;
+      if (from !== null && ["meco", "cutoff", "engine-failure", "transfer", "circularize", "escape", "staging"].includes(e.kind) && e.t > from) {
+        burned += e.t - from;
+        from = null;
+      }
+    }
+    if (from !== null) burned += lastT - from;
+    const failure = result.events.find((e) => e.stage === index && e.kind === "engine-failure");
     const truth = campaign.truth[stage.engine.name];
     if (!truth) return;
     const known = knowledgeOf(campaign, stage.engine);
@@ -36,10 +47,10 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
       days: 0,
       text: `Flight telemetry: ${stage.engine.name} ran ${burned.toFixed(1)} s.`,
     };
-    if (end?.kind === "engine-failure" && end.mode) {
-      report.findings.push({ mode: end.mode, t: burned, text: `${end.mode} at ${burned.toFixed(1)} s in flight` });
-      if (!known.open.includes(end.mode)) known.open.push(end.mode);
-      known.seen[end.mode] = burned;
+    if (failure?.mode) {
+      report.findings.push({ mode: failure.mode, t: burned, text: `${failure.mode} at ${burned.toFixed(1)} s in flight` });
+      if (!known.open.includes(failure.mode)) known.open.push(failure.mode);
+      known.seen[failure.mode] = burned;
     }
     if (burned > 0.3) known.startupProven = true;
     known.provenDuration = Math.max(known.provenDuration, burned);
@@ -48,7 +59,10 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
       if (index > 0) known.altitudeTested = true;
     }
     known.history.push(report);
-    learnParts(campaign, stage.engine, burned, report.findings, "flight", burned >= STEADY_STATE && index > 0);
+    // A relight in flight that wasn't followed by a relight failure proves the restart.
+    const relit = result.events.some((e) => e.kind === "relight" && e.stage === index) && failure?.mode !== "relight-failure";
+    if (relit) known.relightProven = true;
+    learnParts(campaign, stage.engine, burned, report.findings, "flight", burned >= STEADY_STATE && index > 0, relit);
   });
   refreshFromParts(campaign);
 

@@ -45,6 +45,11 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     cutoff: `Guidance cutoff on target energy, ${Math.round(e.value ?? 0)} kg propellant left`,
     staging: `Stage separation, ${stage} ignites`,
     orbit: "Orbit insertion",
+    coast: "Engine off: coasting",
+    relight: `Relight, ${stage}`,
+    transfer: `Transfer burn complete, ${Math.round(e.value ?? 0)} kg propellant left`,
+    circularize: `Circularisation burn complete, ${Math.round(e.value ?? 0)} kg propellant left`,
+    escape: `Escape burn complete: on the way out, ${Math.round(e.value ?? 0)} kg propellant left`,
     apogee: "Apogee",
     impact: "Ground impact",
     timeout: "Simulation time limit",
@@ -96,6 +101,10 @@ export function debrief(result: FlightResult, vehicle: Vehicle, mission: Mission
     if (orbit.periapsis < SHORT_LIVED_PERIAPSIS) {
       lines.push("  Periapsis is low enough that air drag will bring the payload down within days.");
     }
+  } else if (result.outcome === "escape" && orbit) {
+    lines.push(
+      `Escaping Earth with C3 ${((2 * orbit.energy) / 1e6).toFixed(1)} km²/s²: ${ms(Math.sqrt(Math.max(0, 2 * orbit.energy)))} left over once Earth's pull is spent. Final burn ended at ${tPlus(summary.burnoutTime)}.`,
+    );
   } else if (result.outcome === "apogee" || result.outcome === "impact") {
     lines.push(
       result.outcome === "apogee"
@@ -207,9 +216,17 @@ function insertionLines(result: FlightResult, vehicle: Vehicle, mission: Mission
   const target = ins.target;
   const tol = target.tolerance;
   lines.push("");
+  if (target.c3 !== undefined) {
+    lines.push(`Target escape with C3 ${target.c3} km²/s² (±${tol.c3 ?? 1}): ${ins.inSpec ? "IN SPEC" : "OUT OF SPEC"}.`);
+    if (ins.c3Error !== undefined && result.outcome === "escape") lines.push(`  C3 ${sign(ins.c3Error)}${Math.abs(ins.c3Error).toFixed(1)} km²/s² against the target.`);
+    else lines.push("  The vehicle never reached escape energy.");
+    return;
+  }
   lines.push(
-    `Target ${km(target.periapsis)} × ${km(target.apoapsis)} at ${target.inclination.toFixed(1)}° (±${km(tol.altitude)}, ±${tol.inclination}°): ${ins.inSpec ? "IN SPEC" : "OUT OF SPEC"}.`,
+    `Target ${km(target.periapsis)} × ${km(target.apoapsis)} at ${target.inclination.toFixed(1)}° (±${km(tol.altitude)}${tol.apoapsis ? ` perigee, ±${km(tol.apoapsis)} apogee` : ""}, ±${tol.inclination}°): ${ins.inSpec ? "IN SPEC" : "OUT OF SPEC"}.`,
   );
+  const relights = events.filter((e) => e.kind === "relight").length;
+  if (relights > 0) lines.push(`  Parking orbit, then ${relights} relight${relights === 1 ? "" : "s"} after coasting.`);
   if (ins.reachedOrbit) {
     lines.push(
       `  Periapsis ${signedKm(ins.periapsisError)}, apoapsis ${signedKm(ins.apoapsisError)}, inclination ${signedDeg(ins.inclinationError)}.`,
@@ -265,6 +282,8 @@ const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buff
     `combustion instability ${after} into the ${engine} burn. The pressure oscillation shook the stage apart.`,
   "burn-through": (engine, after) =>
     `chamber burn-through ${after} into the ${engine} burn. The jet through the liner cut into the stage.`,
+  "relight-failure": (engine) =>
+    `the ${engine} wouldn't relight after the coast. The stage and its payload are stranded in the parking orbit.`,
 };
 
 function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {

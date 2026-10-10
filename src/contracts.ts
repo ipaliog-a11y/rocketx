@@ -1,6 +1,6 @@
 import type { Contract } from "./sim/contracts.ts";
 import { hashSeed, rng } from "./sim/random.ts";
-import { circular, LEO_300, LEO_EQUATORIAL, SSO_500, SUBORBITAL_TEST } from "./missions.ts";
+import { circular, escape, gto, highCircular, LEO_300, LEO_EQUATORIAL, lunar, SSO_500, SUBORBITAL_TEST } from "./missions.ts";
 
 type Template = Omit<Contract, "postedDay">;
 
@@ -390,6 +390,119 @@ function generated(seed: number): Contract[] {
     });
   }
 
+
+  // High-energy work for a company that has grown: geostationary transfer,
+  // navigation orbits, the Moon and beyond, and a mega-constellation. These
+  // fly via a parking orbit, a coast and relights. Payloads are sized for
+  // what a 100 kN gas-generator booster with a vacuum upper and kick stage
+  // can do with typical engines, with a margin.
+  const BIG_FAILURES: Contract["refuses"] = [...FAILURE_TAGS, "relight-failure", "no-orbit"];
+  for (let day = int(380, 460); day < 1_100; day += int(120, 180)) {
+    const payload = step(between(150, 380), 10);
+    const payout = step(14_000 + 60 * payload + between(-1_500, 1_500), 100);
+    out.push({
+      id: id("geo"),
+      kind: "geo",
+      customer: pick(["Equinox Telecom", "Meridiana Broadcast", "Sahel Connect", "Polaris Relay"]),
+      title: `${payload} kg comsat to GTO`,
+      mission: gto(),
+      payloadMass: payload,
+      payout,
+      degradedShare: 0.3,
+      penalty: step(payout * 0.3, 100),
+      deadline: day + int(300, 400),
+      minReputation: 3,
+      postedDay: day,
+      refuses: BIG_FAILURES,
+    });
+  }
+  for (let day = int(340, 420); day < 1_100; day += int(150, 220)) {
+    const payload = step(between(100, 300), 10);
+    const payout = step(9_000 + 30 * payload, 100);
+    out.push({
+      id: id("navigation"),
+      kind: "navigation",
+      customer: pick(["Wayfinder Navigation", "Continental Positioning"]),
+      title: `${payload} kg navigation sat to 1,200 km, 55°`,
+      mission: highCircular(1_200, 55),
+      payloadMass: payload,
+      payout,
+      degradedShare: 0.5,
+      penalty: step(payout * 0.3, 100),
+      deadline: day + int(280, 360),
+      minReputation: 3,
+      postedDay: day,
+      refuses: [...FAILURE_TAGS, "relight-failure"],
+    });
+  }
+  for (let day = int(500, 600); day < 1_100; day += int(250, 350)) {
+    const payload = step(between(50, 250), 10);
+    const payout = step(20_000 + 60 * payload, 100);
+    out.push({
+      id: id("lunar"),
+      kind: "lunar",
+      customer: pick(["National Space Agency", "Selene Robotics", "Eurasian Space Agency"]),
+      title: `${payload} kg lunar probe: trans-lunar injection`,
+      mission: lunar(),
+      payloadMass: payload,
+      payout,
+      degradedShare: 0,
+      penalty: step(payout * 0.35, 100),
+      deadline: day + int(300, 380),
+      minReputation: 4,
+      postedDay: day,
+      refuses: BIG_FAILURES,
+    });
+  }
+  for (let day = int(620, 720); day < 1_100; day += int(300, 400)) {
+    const payload = step(between(30, 150), 10);
+    const c3 = Math.round(between(5, 12));
+    const payout = step(30_000 + 100 * payload + 400 * c3, 100);
+    out.push({
+      id: id("deep"),
+      kind: "deep-space",
+      customer: pick(["National Space Agency", "Eurasian Space Agency", "Asteroid Prospecting Ltd"]),
+      title: `${payload} kg deep-space probe, C3 ${c3} km²/s²`,
+      mission: escape(c3),
+      payloadMass: payload,
+      payout,
+      degradedShare: 0,
+      penalty: step(payout * 0.35, 100),
+      deadline: day + int(320, 400),
+      minReputation: 5,
+      postedDay: day,
+      refuses: BIG_FAILURES,
+    });
+  }
+  {
+    // Skyweb: a broadband mega-constellation, a batch every month. Two or
+    // three production lines and a big launcher keep up; one line can't.
+    const start = int(440, 520);
+    const count = 12;
+    const sats = int(20, 30);
+    const payload = sats * 25;
+    const base = step(12_000 + 20 * payload, 100);
+    let day = start;
+    for (let i = 0; i < count; i++, day += int(28, 35)) {
+      out.push({
+        id: `skyweb-${i + 1}`,
+        kind: "megaconstellation",
+        customer: "Skyweb",
+        title: `Skyweb batch ${i + 1} of ${count}: ${sats} × 25 kg to 550 km, 53°`,
+        seriesId: "skyweb",
+        seriesIndex: i + 1,
+        mission: circular(550, 53),
+        payloadMass: payload,
+        payout: base,
+        degradedShare: 0.3,
+        penalty: step(base * 0.25, 100),
+        deadline: day + 90,
+        minReputation: 3,
+        postedDay: day,
+        refuses: [],
+      });
+    }
+  }
   return out;
 }
 

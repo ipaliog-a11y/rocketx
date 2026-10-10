@@ -20,6 +20,11 @@ export type ContractKind =
   | "constellation"
   | "weather"
   | "agency"
+  | "geo"
+  | "navigation"
+  | "lunar"
+  | "deep-space"
+  | "megaconstellation"
   | "crew";
 
 export const KIND_LABELS: Record<ContractKind, string> = {
@@ -31,6 +36,11 @@ export const KIND_LABELS: Record<ContractKind, string> = {
   constellation: "Constellation",
   weather: "Weather",
   agency: "Space agency",
+  geo: "Geostationary",
+  navigation: "Navigation",
+  lunar: "Lunar",
+  "deep-space": "Deep space",
+  megaconstellation: "Mega-constellation",
   crew: "Crew",
 };
 
@@ -115,7 +125,10 @@ export function settle(contract: Contract, result: FlightResult): Settlement {
   }
 
   const insertion = result.summary.insertion;
-  if (result.outcome !== "orbit" || !insertion) return lost("no-orbit", "the payload never reached orbit.");
+  if ((result.outcome !== "orbit" && result.outcome !== "escape") || !insertion) {
+    const stranded = result.events.some((e) => e.kind === "coast");
+    return lost("no-orbit", stranded ? "the payload never left its parking orbit." : "the payload never reached orbit.");
+  }
   if (insertion.inSpec) {
     return {
       status: "delivered",

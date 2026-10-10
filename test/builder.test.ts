@@ -38,7 +38,7 @@ test("the drawing board refuses designs that can't work", () => {
     assert.ok(checkVehicle(s, engines, ["Meridian"]).problems.some((p) => pattern.test(p)), String(pattern));
   };
   bad((s) => (s.name = "meridian"), /already a design/);
-  bad((s) => (s.stages[1]!.diameter = 1.5), /can't be wider than the booster/);
+  bad((s) => (s.stages[1]!.diameter = 1.5), /can.t be wider than the stage below it/);
   bad((s) => (s.fairingDiameter = 0.8), /fairing can't be narrower/);
   bad((s) => (s.stages[0]!.engineCount = 40), /only \d+ Harrier-SL fit/);
   bad((s) => (s.stages[0]!.engine = "Harrier-Vac"), /separates at sea level/);

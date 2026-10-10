@@ -12,7 +12,13 @@ import { idealDeltaV, stackMass, type Stage, type Vehicle } from "./vehicle.ts";
  */
 
 /** Tank and fairing diameters the shop can tool for, m. */
-export const DIAMETERS = [0.6, 0.8, 1.0, 1.2, 1.5, 1.8];
+export const DIAMETERS = [0.6, 0.8, 1.0, 1.2, 1.5, 1.8, 2.4, 3.0];
+
+/** Stage names by position, for one-, two- and three-stage designs. */
+export function stageRole(count: number, index: number): string {
+  if (count === 1) return "core";
+  return ["booster", "upper", "kick stage"][index] ?? `stage ${index + 1}`;
+}
 
 /** Bulk density of kerosene and liquid oxygen together, kg/m³. */
 export const PROPELLANT_DENSITY = 1030;
@@ -39,7 +45,8 @@ const ENGINE_TW = { pressureFed: 40, pumped: 70 };
 /** Tank structure per kg of propellant: pressure-fed tanks hold the feed pressure. */
 const TANK_FRACTION = { pressureFed: 0.28, pumped: 0.06 };
 
-const pressureFed = (e: Engine) => e.parts?.cycle === "pressure-fed";
+/** Pressure-fed and storable engines need tanks that hold their feed pressure. */
+const pressureFed = (e: Engine) => e.parts?.cycle === "pressure-fed" || e.parts?.cycle === "storable";
 const area = (d: number) => (Math.PI * d * d) / 4;
 
 export function propellantFor(diameter: number, tankLength: number): number {
@@ -73,13 +80,13 @@ export function assembleVehicle(spec: VehicleSpec, engines: Record<string, Engin
     const pf = pressureFed(engine);
     const top = i === spec.stages.length - 1;
     // Avionics, thrust structure, and for a lower stage the interstage above it.
-    const base = two && top ? 15 + 25 * s.diameter * s.diameter : 40 + 60 * s.diameter * s.diameter;
+    const base = two && i > 0 ? 15 + 25 * s.diameter * s.diameter : 40 + 60 * s.diameter * s.diameter;
     const dry =
       engineMass(engine) * s.engineCount +
       propellantMass * (pf ? TANK_FRACTION.pressureFed : TANK_FRACTION.pumped) +
       base +
       (top ? fairingMass(spec.fairingDiameter) : 0);
-    const name = two ? `${spec.name} ${i === 0 ? "booster" : "upper"}` : `${spec.name} core`;
+    const name = `${spec.name} ${stageRole(spec.stages.length, i)}`;
     return { name, dryMass: Math.round(dry), propellantMass, engine, engineCount: s.engineCount, diameter: s.diameter };
   });
   const widest = Math.max(...spec.stages.map((s) => s.diameter));
@@ -145,10 +152,11 @@ export function checkVehicle(spec: VehicleSpec, engines: Record<string, Engine>,
   const name = spec.name.trim();
   if (name.length === 0) problems.push("The design needs a name.");
   else if (takenNames.some((n) => n.toLowerCase() === name.toLowerCase())) problems.push(`There is already a design called ${name}.`);
-  if (spec.stages.length < 1 || spec.stages.length > 2) problems.push("A design has one or two stages.");
+  if (spec.stages.length < 1 || spec.stages.length > 3) problems.push("A design has one, two or three stages.");
   for (const [i, s] of spec.stages.entries()) {
     const engine = engines[s.engine];
-    const label = spec.stages.length > 1 ? (i === 0 ? "Booster" : "Upper stage") : "Core";
+    const role = stageRole(spec.stages.length, i);
+    const label = role.charAt(0).toUpperCase() + role.slice(1);
     if (!engine) {
       problems.push(`${label}: no engine called ${s.engine}.`);
       continue;
@@ -161,7 +169,9 @@ export function checkVehicle(spec: VehicleSpec, engines: Record<string, Engine>,
     if (i === 0 && flowSeparates(engine, P_SEA_LEVEL)) problems.push(`${label}: the ${engine.name}'s bell separates at sea level. A booster needs a bell that works on the pad.`);
   }
   const [booster, upper] = spec.stages;
-  if (booster && upper && upper.diameter > booster.diameter) problems.push("The upper stage can't be wider than the booster.");
+  for (let i = 1; i < spec.stages.length; i++) {
+    if (spec.stages[i]!.diameter > spec.stages[i - 1]!.diameter) problems.push(`The ${stageRole(spec.stages.length, i)} can't be wider than the stage below it.`);
+  }
   const tanks = spec.stages.reduce((sum, s) => sum + s.tankLength, 0);
   if (booster && tanks / booster.diameter > MAX_SLENDERNESS) {
     problems.push(`${tanks.toFixed(1)} m of tank on a ${booster.diameter} m booster is too slender: it would bend in the wind. Keep tank length under ${MAX_SLENDERNESS}× the diameter.`);
@@ -182,7 +192,10 @@ export function checkVehicle(spec: VehicleSpec, engines: Record<string, Engine>,
 }
 
 /** Drawing office and tooling: what drawing up a design costs. */
-export const DESIGN_COSTS = { office: { cost: 60, days: 10 }, tank: { cost: 250, days: 20 }, fairing: { cost: 80, days: 5 } };
+export const DESIGN_COSTS = { office: { cost: 60, days: 10 }, tank: { cost: 250, days: 20 }, bigTank: { cost: 600, days: 30 }, fairing: { cost: 80, days: 5 } };
+
+/** Tanks from this diameter up need a bigger shop's tooling, m. */
+const BIG_TANK = 2.4;
 
 export type DesignQuote = { cost: number; days: number; newTanks: number[]; newFairing: boolean };
 
@@ -192,10 +205,11 @@ export function designQuote(spec: VehicleSpec, existing: Vehicle[]): DesignQuote
   const fairings = new Set(existing.map((v) => v.fairingDiameter));
   const newTanks = [...new Set(spec.stages.map((s) => s.diameter))].filter((d) => !tanks.has(d));
   const newFairing = !fairings.has(spec.fairingDiameter);
-  const { office, tank, fairing } = DESIGN_COSTS;
+  const { office, tank, bigTank, fairing } = DESIGN_COSTS;
+  const tooling = newTanks.map((d) => (d >= BIG_TANK ? bigTank : tank));
   return {
-    cost: office.cost + tank.cost * newTanks.length + (newFairing ? fairing.cost : 0),
-    days: office.days + tank.days * newTanks.length + (newFairing ? fairing.days : 0),
+    cost: office.cost + tooling.reduce((a, t) => a + t.cost, 0) + (newFairing ? fairing.cost : 0),
+    days: office.days + tooling.reduce((a, t) => a + t.days, 0) + (newFairing ? fairing.days : 0),
     newTanks,
     newFairing,
   };

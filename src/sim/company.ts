@@ -403,9 +403,9 @@ export function accept(company: Company, id: string): ActionResult {
   return { text: `Signed "${contract.title}" with ${contract.customer}: ${money(contract.payout)} on delivery by day ${contract.deadline}.`, notices: [] };
 }
 
-export function fire(company: Company, engine: Engine, seconds: number, facility: Facility): ActionResult {
-  const { value, notices } = viaCampaign(company, "test", `${engine.name} hot-fire`, () =>
-    hotFire(company.campaign, engine, seconds, facility),
+export function fire(company: Company, engine: Engine, seconds: number, facility: Facility, restart = false): ActionResult {
+  const { value, notices } = viaCampaign(company, "test", `${engine.name} ${restart ? "restart test" : "hot-fire"}`, () =>
+    hotFire(company.campaign, engine, seconds, facility, restart),
   );
   return { text: value.text, notices };
 }
@@ -725,7 +725,7 @@ export function bid(company: Company, contractId: string, key: string): Bid {
     fitsSchedule: company.day + build.days + COSTS.padDays <= contract.deadline,
     blockers,
     regimes,
-    unknowns: flightUnknowns(vehicle, company.campaign),
+    unknowns: flightUnknowns(vehicle, company.campaign, mission),
     forecast: { text: describeForecast(contract, forecast), delivers, result: forecast },
   };
 }
@@ -761,8 +761,13 @@ function describeForecast(contract: Contract, forecast: FlightResult): string {
     return `apogee ${(apogee / 1000).toFixed(0)} km against ${(contract.minApogee / 1000).toFixed(0)} km needed.`;
   }
   const orbit = forecast.summary.orbit;
-  if (forecast.outcome !== "orbit" || !orbit) return "no orbit with this payload.";
-  const ins = forecast.summary.insertion!;
+  const ins = forecast.summary.insertion;
+  if (forecast.outcome === "escape" && ins) {
+    return `escapes with C3 ${((2 * (orbit?.energy ?? 0)) / 1e6).toFixed(1)} km²/s², ${ins.inSpec ? "in spec" : "out of spec"}, ${Math.round(forecast.summary.propellantMargin)} kg margin.`;
+  }
+  if (forecast.outcome !== "orbit" || !orbit || !ins) {
+    return forecast.events.some((e) => e.kind === "coast") ? "reaches the parking orbit but not the target with this payload." : "no orbit with this payload.";
+  }
   return `${(orbit.periapsis / 1000).toFixed(0)} × ${(orbit.apoapsis / 1000).toFixed(0)} km, ${ins.inSpec ? "in spec" : "out of spec"}, ${Math.round(forecast.summary.propellantMargin)} kg margin.`;
 }
 

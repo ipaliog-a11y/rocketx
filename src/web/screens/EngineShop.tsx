@@ -28,7 +28,7 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 /** A name the player can keep: cycle, size and nozzle. */
 function suggestName(parts: EngineParts, taken: Record<string, unknown>): string {
-  const stem = { "pressure-fed": "Wren", "electric-pump": "Swift", "gas-generator": "Osprey" }[parts.cycle];
+  const stem = { "pressure-fed": "Wren", "electric-pump": "Swift", "gas-generator": "Osprey", storable: "Petrel" }[parts.cycle];
   const suffix = { "sea-level": "", altitude: "-A", vacuum: "-V", "large-vacuum": "-XV" }[parts.nozzle];
   const base = `${stem}-${parts.size}${suffix}`;
   let name = base;

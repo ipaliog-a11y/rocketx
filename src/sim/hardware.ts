@@ -19,6 +19,8 @@ export type EngineTruth = {
   instabilityOnset: number | null;
   /** Seconds the chamber wall survives at full thrust before it burns through. */
   thermalLife: number;
+  /** The engine won't restart once it has been shut down in vacuum. Left out: it restarts. */
+  relightFails?: boolean;
 };
 
 export type FailureMode =
@@ -26,7 +28,8 @@ export type FailureMode =
   | "combustion-instability"
   | "burn-through"
   | "flow-separation"
-  | "transonic-buffet";
+  | "transonic-buffet"
+  | "relight-failure";
 
 export const FAILURE_LABELS: Record<FailureMode, string> = {
   "hard-start": "hard start",
@@ -34,6 +37,7 @@ export const FAILURE_LABELS: Record<FailureMode, string> = {
   "burn-through": "burn-through",
   "flow-separation": "flow separation",
   "transonic-buffet": "transonic buffet",
+  "relight-failure": "relight failure",
 };
 
 /** Odds and ranges the seed draws from. Tuned so most designs have at least one surprise. */
@@ -55,6 +59,8 @@ export type PartTruth = {
   instabilityOnset: number | null;
   /** Chamber life as a share of the engine's rated life. */
   lifeFactor: number;
+  /** Cycle: won't restart in vacuum. */
+  relightFails?: boolean;
 };
 
 export type PartTruthTable = Record<string, PartTruth>;
@@ -66,8 +72,12 @@ export function rollPartTruth(key: string, seed: number): PartTruth {
   const between = ([lo, hi]: [number, number]) => lo + (hi - lo) * random();
   const { slot, option } = parsePartKey(key);
   switch (slot) {
-    case "cycle":
-      return { ...NEUTRAL, hardStart: random() < CYCLES[option as CycleOption].hardStart };
+    case "cycle": {
+      const spec = CYCLES[option as CycleOption];
+      const hardStart = random() < spec.hardStart;
+      // Rolled after the hard start so existing seeds keep their hard starts.
+      return { ...NEUTRAL, hardStart, relightFails: random() < spec.relightFails };
+    }
     case "injector": {
       const spec = INJECTORS[option as InjectorOption];
       const ispFactor = between(spec.isp);
@@ -99,6 +109,7 @@ export function combineTruth(engine: Engine, parts: PartTruthTable): EngineTruth
   return {
     ispFactor: cycle.ispFactor * injector.ispFactor * cooling.ispFactor * nozzle.ispFactor,
     hardStart: cycle.hardStart,
+    relightFails: cycle.relightFails ?? false,
     instabilityOnset: injector.instabilityOnset,
     thermalLife: (engine.ratedLife ?? DEFAULT_RATED_LIFE) * cooling.lifeFactor,
   };

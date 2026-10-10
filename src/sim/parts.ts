@@ -18,8 +18,8 @@ import type { FailureMode } from "./hardware.ts";
  */
 
 export type Slot = "cycle" | "injector" | "cooling" | "nozzle";
-export type ChamberSize = 9 | 25 | 35 | 50;
-export type CycleOption = "pressure-fed" | "electric-pump" | "gas-generator";
+export type ChamberSize = 3 | 9 | 25 | 35 | 50 | 100 | 250;
+export type CycleOption = "pressure-fed" | "electric-pump" | "gas-generator" | "storable";
 export type InjectorOption = "showerhead" | "pintle" | "coaxial";
 export type CoolingOption = "ablative" | "film" | "regenerative";
 export type NozzleOption = "sea-level" | "altitude" | "vacuum" | "large-vacuum";
@@ -33,7 +33,7 @@ export type EngineParts = {
   nozzle: NozzleOption;
 };
 
-export const SIZES: ChamberSize[] = [9, 25, 35, 50];
+export const SIZES: ChamberSize[] = [3, 9, 25, 35, 50, 100, 250];
 export const SLOTS: Slot[] = ["cycle", "injector", "cooling", "nozzle"];
 
 type Common = {
@@ -45,12 +45,13 @@ type Common = {
   develop: number;
 };
 
-export const CYCLES: Record<CycleOption, Common & { isp: number; hardStart: number; sizes: ChamberSize[] }> = {
+export const CYCLES: Record<CycleOption, Common & { isp: number; hardStart: number; relightFails: number; sizes: ChamberSize[] }> = {
   "pressure-fed": {
     label: "Pressure-fed",
     text: "Tank pressure pushes propellant in. Few moving parts and a gentle start, but heavy tanks keep chamber pressure and Isp low.",
     isp: 262,
     hardStart: 0.15,
+    relightFails: 0.08,
     cost: 0.85,
     develop: 300,
     sizes: [9, 25, 35, 50],
@@ -60,18 +61,30 @@ export const CYCLES: Record<CycleOption, Common & { isp: number; hardStart: numb
     text: "Battery-driven pumps. Better Isp than pressure-fed and simple to start, but the batteries limit it to small engines.",
     isp: 285,
     hardStart: 0.2,
+    relightFails: 0.1,
     cost: 1,
     develop: 350,
-    sizes: [9, 25, 35],
+    sizes: [9, 25, 35, 100],
   },
   "gas-generator": {
     label: "Gas generator",
     text: "A small burner drives a turbopump. High chamber pressure and the best Isp here, and the most complicated start sequence.",
     isp: 300,
     hardStart: 0.3,
+    relightFails: 0.3,
     cost: 1.25,
     develop: 450,
-    sizes: [25, 35, 50],
+    sizes: [25, 35, 50, 100, 250],
+  },
+  storable: {
+    label: "Storable (hypergolic)",
+    text: "Propellants that ignite on contact and keep for months. Lights every time, restarts after any coast; a kick-stage and deep-space engine.",
+    isp: 290,
+    hardStart: 0.03,
+    relightFails: 0.02,
+    cost: 1.1,
+    develop: 300,
+    sizes: [3, 9],
   },
 };
 
@@ -185,6 +198,7 @@ export const OWNER: Partial<Record<FailureMode, Slot>> = {
   "combustion-instability": "injector",
   "burn-through": "cooling",
   "flow-separation": "nozzle",
+  "relight-failure": "cycle",
 };
 
 /** A part's identity: one option built at one chamber size. */
