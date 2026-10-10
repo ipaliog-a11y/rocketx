@@ -214,3 +214,14 @@ svg text { font-family: var(--mono); }
 .option { text-align: left; cursor: pointer; gap: 6px; padding: 14px 16px; color: var(--text); font: inherit; }
 .option:disabled { opacity: 0.45; cursor: not-allowed; }
 .blueprint { background-color: #121820; background-image: linear-gradient(#18202a 1px, transparent 1px), linear-gradient(90deg, #18202a 1px, transparent 1px); background-size: 16px 16px; }
+
+/* Drawing board and factory */
+.stage-editor { margin: 0; gap: 14px; }
+.stage-editor legend { padding: 0 6px; }
+.editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; }
+.editor-grid label, .stepper { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); min-width: 0; }
+.editor-grid select { width: 100%; }
+.stepper .btn { min-height: 40px; min-width: 40px; padding: 0; justify-content: center; }
+.guide summary { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.guide summary::-webkit-details-marker { display: none; }
+.suggestions { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }

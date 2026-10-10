@@ -1,10 +1,11 @@
-import { applyForLicence, build, developEngine, refinePart, REFINE, fire, fixAero, fixEngine, fly, retune, tunnel, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { applyForLicence, build, buyLine, designVehicle, developEngine, LINE_COSTS, nextSlot, readyDay, refinePart, REFINE, retuneForMission, fire, fixAero, fixEngine, fly, retune, tunnel, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { COSTS, vehicleCost } from "../sim/cost.ts";
 import type { Engine } from "../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../sim/hardware.ts";
 import { LICENCE_LABELS, type Application } from "../sim/licence.ts";
 import { partLabel, type EngineParts } from "../sim/parts.ts";
+import type { DesignQuote, VehicleSpec } from "../sim/builder.ts";
 import type { Mission } from "../sim/mission.ts";
 import { FACILITIES, FIXES, HARDWARE_LOSS, type Facility } from "../sim/teststand.ts";
 import { AERO_FACILITIES, BUFFET_FIX, type AeroFacility } from "../sim/tunnel.ts";
@@ -62,11 +63,70 @@ export function deadlineRisks(company: Company, days: number, forContract?: stri
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** Order a vehicle: paid now, built on a production line while the company keeps working. */
 export function buildJob(company: Company, key: string): Job {
   const v = company.designs[key]!;
   const { cost, days } = vehicleCost(v);
-  return { title: `Build a ${v.name}?`, doing: `Building a ${v.name}`, verb: "Build", days, cost, alwaysAsk: true, run: (c) => build(c, key) };
+  const slot = nextSlot(company, key);
+  const queued = slot.startDay > company.day ? ` Line ${slot.line + 1} is busy until day ${slot.startDay}, so it starts then.` : "";
+  return {
+    title: `Order a ${v.name}?`,
+    doing: `Ordering a ${v.name}`,
+    verb: "Order",
+    days: 0,
+    cost,
+    alwaysAsk: true,
+    caveat: `Built on line ${slot.line + 1} in ${days} days: ready on day ${slot.readyDay}.${queued} The company keeps working meanwhile.`,
+    run: (c) => build(c, key),
+  };
 }
+
+export function lineJob(company: Company): Job | null {
+  const next = LINE_COSTS[company.lines.length - 1];
+  if (!next) return null;
+  return {
+    title: `Buy production line ${company.lines.length + 1}?`,
+    doing: "Buying a production line",
+    verb: "Buy",
+    days: 0,
+    cost: next.cost,
+    alwaysAsk: true,
+    caveat: `It takes orders from day ${company.day + next.days}, after ${next.days} days of setting up.`,
+    run: (c) => buyLine(c),
+  };
+}
+
+export function designJob(spec: VehicleSpec, quote: DesignQuote, onDone?: (key: string) => void): Job {
+  return {
+    title: `Draw up the ${spec.name.trim()}?`,
+    doing: `Drawing up the ${spec.name.trim()}`,
+    verb: "Draw it up",
+    days: quote.days,
+    cost: quote.cost,
+    alwaysAsk: true,
+    caveat:
+      quote.newTanks.length > 0 || quote.newFairing
+        ? `Includes tooling for ${[...quote.newTanks.map((d) => `${d} m tanks`), ...(quote.newFairing ? [`a ${spec.fairingDiameter} m fairing`] : [])].join(" and ")}.`
+        : "The shop already has the tooling.",
+    run: (c) => designVehicle(c, spec),
+    onDone: onDone ? (r) => onDone((r as ActionResult & { key: string }).key) : undefined,
+  };
+}
+
+export function retuneTestJob(company: Company, key: string, mission: Mission): Job {
+  const v = company.designs[key]!;
+  return {
+    title: `Re-tune the ${v.name} for a test flight to ${mission.name}?`,
+    doing: `Re-tuning the ${v.name}'s pitch programme`,
+    verb: "Re-tune",
+    days: RETUNE_COST.days,
+    cost: RETUNE_COST.cost,
+    run: (c) => retuneForMission(c, key, mission),
+  };
+}
+
+/** Days until a design's next vehicle is on the pad: 0 if one is built. */
+const waitForRollout = (company: Company, key: string) => Math.max(0, (readyDay(company, key) ?? company.day) - company.day);
 
 export function fireJob(engine: Engine, seconds: number, facility: Facility, expectedRun: number): Job {
   const f = FACILITIES[facility];
@@ -133,9 +193,9 @@ export function launchJob(company: Company, key: string, contract: Contract, onD
   const v = company.designs[key]!;
   return {
     title: `Launch the ${v.name} for ${contract.customer}?`,
-    doing: `${v.name} on the pad`,
+    doing: waitForRollout(company, key) > 0 ? `Waiting for the ${v.name} to roll out, then the pad` : `${v.name} on the pad`,
     verb: "Launch",
-    days: COSTS.padDays,
+    days: waitForRollout(company, key) + COSTS.padDays,
     cost: COSTS.launchFee,
     forContract: contract.id,
     run: (c) => fly(c, key, { contract: contract.id }),
@@ -147,9 +207,9 @@ export function testFlightJob(company: Company, key: string, mission: Mission, o
   const v = company.designs[key]!;
   return {
     title: `Fly the ${v.name} as a test flight?`,
-    doing: `${v.name} on the pad`,
+    doing: waitForRollout(company, key) > 0 ? `Waiting for the ${v.name} to roll out, then the pad` : `${v.name} on the pad`,
     verb: "Launch",
-    days: COSTS.padDays,
+    days: waitForRollout(company, key) + COSTS.padDays,
     cost: COSTS.launchFee,
     run: (c) => fly(c, key, { mission }),
     onDone,

@@ -82,6 +82,10 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 - Engines built from parts. An engine is a chamber size (9, 25, 35 or 50 kN) plus four parts: a feed cycle (pressure-fed, electric pump, gas generator), an injector (showerhead, pintle, coaxial swirl), chamber cooling (ablative liner, film, regenerative) and a nozzle (sea-level, altitude, vacuum, large vacuum). Each option publishes ranges, and each hidden quirk belongs to the part that causes it: hard start to the cycle, instability to the injector, chamber life to the cooling, flow separation to the nozzle, and the Isp shortfall to injector and nozzle. A part is one option at one size, so sister engines share parts: the two Harriers share cycle, injector and cooling
 - What tests learn lands on the parts. Firing Harrier-SL proves its injector for Harrier-Vac too; a burn-through at 60% of one engine's rated life predicts 60% of its sister's. A fix is a new revision of the part that owns the mode, paid once and applied to every engine built with it, and only that part's proof has to be redone
 - Engine development: put parts together into a new engine. Parts already in production are free to reuse and come with what tests know; new parts cost development money and time and start unproven. Refining an injector or nozzle (R&D against measured Isp) closes part of the gap to the top of its range, up to three times, and the gain has to be measured again. A design's stage can be re-engined while none of it is built
+- The drawing board: design a vehicle from one or two stages (diameter, tank length, engine and engine count) and a fairing. Propellant follows from tank volume and dry mass from a simple structures model (engine mass by thrust, tank structure by propellant, heavier for pressure-fed tanks, plus avionics, interstage and fairing). Redrawn presets come out within about 10% of the hand-drawn ones. The board refuses what can't work (a booster bell that separates on the pad, too many engines for the diameter, a stack too slender, liftoff thrust below weight) and warns about what is risky (low thrust to weight, a hammerhead fairing). Drawing up costs the office's time, plus tooling the first time a tank or fairing diameter is used
+- A sizing guide: say what the rocket is for (a contract, an orbit or an apogee, and a payload) and it searches stage sizes and the company's engines with the rocket equation against what the job takes, then offers the cheapest, a balanced and a most-margin design. Orbital picks re-tune into spec on typical engines; sounding picks are flown to confirm the apogee
+- Production lines. A build is an order: paid up front, built on a line while the company keeps testing and flying, and rolled out on its ready day. Orders queue on the line that frees first; a launch with the vehicle still on the line waits for rollout. A second and third line ($2.5M and $4M) build in parallel
+- Engines are priced from their parts, so a pressure-fed engine costs about half as much per kN as a gas-generator one
 - Achievements worked out from the record: first firing, first flight above 100 km, first orbit, the orbital licence, a fleet of five, $10M earned, a completed series and so on
 
 ## Balance
@@ -99,7 +103,15 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 
 Since engines share parts, testing one Harrier teaches about the other, so careful play reaches orbit sooner (median day 322, down from 406) and richer. Failures are shared too: a flaw in the shared cycle, injector or liner sinks both stages, and the greedy SSO bid now kills 25 of 30. Testing pays, and testing the wrong question costs nearly as much as not testing. Before the generated board, careful survived 24 of 30 with $15.1M: with more work posted, careful play is now comfortable and the money has nothing to buy. That waits on things worth spending on (a second pad and production line, bigger vehicles) rather than lower payouts. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
 
-Not modelled yet: running jobs in parallel (building while testing), loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
+Not modelled yet: running tests in parallel with each other, loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
+
+## Roadmap
+
+1. ~~Company, licences, contracts~~ (done)
+2. ~~Engines built from parts~~ (done)
+3. ~~Vehicle builder, sizing guide, production lines~~ (done)
+4. New regimes: coast and relight, transfer orbits, deep-space engines; crew (a launch-abort system, the crewed-flight licence, station flights); large constellations
+5. After that: reusable boosters (land and refurbish), the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
 
 ## Playing in the browser
 
@@ -113,7 +125,7 @@ A React + Vite front end (`src/web/`) on the same sim code the tests and the com
 - **Company:** the company's name (editable), its numbers, the licence ladder with an Apply button, where the money went, the fleet, achievements and the ledger.
 - **Contracts:** a filterable table and a month calendar of postings and deadlines, with a bid panel that only signs.
 - **Launch:** build, re-tune and fly signed contracts.
-- **Hangar:** design drawings, with an engine picker per stage that previews thrust to weight and Δv.
+- **Hangar:** design drawings with an engine picker per stage; a Drawing board with the sizing guide; a Factory with the production lines; and the flight record.
 - **Test stand:** firings, an Engine shop to develop engines from parts, and a Parts tab with each part's revision, record and maturity (prototype, fired, qualified, flight-proven).
 - **Tunnel:** wind-tunnel and CFD runs.
 

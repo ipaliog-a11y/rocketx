@@ -1,3 +1,4 @@
+import { engineUnitCost } from "./parts.ts";
 import type { Vehicle } from "./vehicle.ts";
 
 /**
@@ -26,7 +27,8 @@ export function vehicleCost(vehicle: Vehicle): { cost: number; days: number } {
   let cost = 0;
   let engines = 0;
   for (const stage of vehicle.stages) {
-    const engine = stage.engine.unitCost ?? COSTS.engineBase + (COSTS.enginePerKilonewton * stage.engine.thrustVac) / 1000;
+    const e = stage.engine;
+    const engine = e.unitCost ?? (e.parts ? engineUnitCost(e.parts, e.thrustVac) : COSTS.engineBase + (COSTS.enginePerKilonewton * e.thrustVac) / 1000);
     cost += engine * stage.engineCount + COSTS.structurePerKilogram * stage.dryMass;
     engines += stage.engineCount;
   }

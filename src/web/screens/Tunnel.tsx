@@ -8,6 +8,7 @@ import { Chip } from "../components/Bits.tsx";
 import { Plot, type Series } from "../components/Plot.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
 import { game } from "../game.ts";
+import { revisionLetter } from "../../sim/teststand.ts";
 import { fixAeroJob, tunnelJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
 
@@ -63,9 +64,15 @@ export function Tunnel({ company }: { company: Company }) {
           {all.map((s) => {
             const k = company.campaign.aeroKnowledge[s.key];
             const on = s.key === shape.key;
+            // A shape that has flown through Mach 1 and lived is as proven as a shape gets.
+            const flown = company.flights.some(
+              (f) => (f.outcome === "orbit" || f.outcome === "apogee") && Object.values(company.designs).some((d) => d.name === f.design && aeroShape(d).key === s.key),
+            );
             const state = k?.open.includes("transonic-buffet")
               ? { text: "BUFFET OPEN", tone: "bad" as const }
-              : k?.transonicRise != null
+              : flown && k?.transonicRise != null
+                ? { text: "FLIGHT-PROVEN", tone: "good" as const }
+                : k?.transonicRise != null
                 ? { text: "MEASURED", tone: "good" as const }
                 : k?.dragSource
                   ? { text: "PARTLY KNOWN", tone: "warn" as const }
@@ -83,7 +90,10 @@ export function Tunnel({ company }: { company: Company }) {
                   <Rocket vehicle={company.designs[s.design]!} scale={Math.min(9, 68 / height(company.designs[s.design]!))} />
                 </div>
                 <span className="stack" style={{ gap: 4, flex: 1, minWidth: 0 }}>
-                  <strong>{s.label}</strong>
+                  <strong>
+                    {s.label}
+                    {(k?.fixed.length ?? 0) > 0 && <span className="mono muted" style={{ fontWeight: 400 }}> · {revisionLetter(k!.fixed.length)}</span>}
+                  </strong>
                   <span className="muted" style={{ fontSize: 14 }}>
                     {s.users.join(", ")}
                   </span>

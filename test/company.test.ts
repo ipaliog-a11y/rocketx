@@ -7,6 +7,9 @@ import {
   bid,
   brief,
   build,
+  buyLine,
+  LINE_COSTS,
+  readyDay,
   fire,
   fly,
   newCompany,
@@ -120,14 +123,16 @@ test("signing needs the reputation and a record the customer accepts", () => {
   assert.throws(() => accept(c, "sounding"), /no longer open/);
 });
 
-test("a contract flown on time pays, and builds and launches cost cash and days", () => {
+test("a contract flown on time pays; a build costs cash up front and the launch waits for rollout", () => {
   const c = company();
   accept(c, "sounding");
   build(c, "pathfinder");
   const built = vehicleCost(PATHFINDER);
-  assert.equal(c.day, built.days);
-  assert.equal(c.cash, 12_000 - built.cost - built.days * COSTS.overheadPerDay);
-  assert.equal(c.inventory.pathfinder, 1);
+  assert.equal(c.day, 0, "the company keeps working while the line builds");
+  assert.equal(c.cash, 12_000 - built.cost);
+  assert.equal(c.inventory.pathfinder ?? 0, 0);
+  assert.deepEqual(c.orders, [{ design: "pathfinder", line: 0, startDay: 0, readyDay: built.days }]);
+  assert.equal(readyDay(c, "pathfinder"), built.days);
 
   const report = fly(c, "pathfinder", { contract: "sounding" });
   assert.equal(report.result.outcome, "apogee");
@@ -137,6 +142,29 @@ test("a contract flown on time pays, and builds and launches cost cash and days"
   assert.equal(c.cash, 12_000 - built.cost - COSTS.launchFee - days * COSTS.overheadPerDay + 1_500);
   assert.equal(c.closed.sounding, "delivered");
   assert.equal(reputation(c), 1);
+});
+
+test("orders queue on a busy line, and another line builds in parallel", () => {
+  const c = company(20_000);
+  const days = vehicleCost(PATHFINDER).days;
+  build(c, "pathfinder");
+  build(c, "pathfinder");
+  assert.deepEqual(c.orders.map((o) => o.readyDay), [days, 2 * days]);
+  const { notices } = wait(c, days);
+  assert.equal(c.inventory.pathfinder, 1);
+  assert.ok(notices.some((n) => /rolled out of line 1/.test(n)));
+
+  const cash = c.cash;
+  buyLine(c);
+  assert.equal(c.cash, cash - LINE_COSTS[0]!.cost);
+  assert.equal(c.lines.length, 2);
+  wait(c, LINE_COSTS[0]!.days);
+  build(c, "pathfinder");
+  build(c, "pathfinder");
+  const lines = c.orders.slice(-2).map((o) => o.line).sort();
+  assert.deepEqual(lines, [0, 1], "two lines take the two new orders");
+  buyLine(c);
+  assert.throws(() => buyLine(c), /as many as the site holds/);
 });
 
 test("flying needs a built vehicle and a signed contract", () => {
@@ -149,7 +177,8 @@ test("flying needs a built vehicle and a signed contract", () => {
 test("a missed deadline costs the penalty and a late mark", () => {
   const c = company();
   accept(c, "sounding");
-  for (let i = 0; i < 6; i++) build(c, "pathfinder");
+  build(c, "pathfinder");
+  wait(c, sounding.deadline + 1);
   assert.ok(c.day > sounding.deadline);
   assert.equal(c.closed.sounding, "late");
   assert.ok(c.ledger.some((e) => e.category === "penalty" && e.amount === -300));

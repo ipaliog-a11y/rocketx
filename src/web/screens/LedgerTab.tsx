@@ -12,6 +12,7 @@ export const LABELS: Record<Category, string> = {
   build: "Vehicles built",
   launch: "Launch fees",
   licence: "Licences",
+  facility: "Facilities",
   overhead: "Payroll",
   payout: "Contract payouts",
   penalty: "Penalties",

@@ -29,9 +29,9 @@ type State = {
   version: number;
 };
 
-const SAVE_KEY = "rocketx.save.v3";
+const SAVE_KEY = "rocketx.save.v4";
 /** Saves from before licences, the generated board or engines built from parts: they can't be carried over. */
-const OLD_SAVE_KEYS = ["rocketx.save.v1", "rocketx.save.v2"];
+const OLD_SAVE_KEYS = ["rocketx.save.v1", "rocketx.save.v2", "rocketx.save.v3"];
 
 /** Set when an old save was found and dropped, so the new-game screen can say so. Declared before the first load. */
 export let droppedOldSave = false;
@@ -176,6 +176,11 @@ export const game = {
   proceed<T extends ActionResult>(job: Job<T>): void {
     const company = state.company;
     if (!company) return;
+    if (job.days === 0) {
+      // Nothing to wait for: an order or a purchase happens at once.
+      game.act(job.run, job.onDone);
+      return;
+    }
     clockNotice(company, "now");
     const ms = progressMs(job.days);
     const id = nextProgress++;

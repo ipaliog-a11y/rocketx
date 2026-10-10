@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { reengine, type Company } from "../../sim/company.ts";
+import { readyDay, reengine, type Company } from "../../sim/company.ts";
 import { holds, missionLicence } from "../../sim/licence.ts";
 import { vehicleCost } from "../../sim/cost.ts";
 import { burnTime, idealDeltaV, stackMass } from "../../sim/vehicle.ts";
@@ -7,10 +7,12 @@ import { LEO_300, SUBORBITAL_TEST } from "../../missions.ts";
 import { Chip, Facts, Stack, Tabs } from "../components/Bits.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
 import { game } from "../game.ts";
-import { buildJob, testFlightJob } from "../jobs.ts";
+import { buildJob, retuneTestJob, testFlightJob } from "../jobs.ts";
+import { DrawingBoard } from "./DrawingBoard.tsx";
+import { Factory } from "./Factory.tsx";
 import { km, money } from "../format.ts";
 
-type Tab = "lineup" | "design" | "record";
+type Tab = "lineup" | "design" | "board" | "factory" | "record";
 
 /** Ideal Δv a 300 km orbit from Port Avery takes in this sim, losses included, m/s. */
 const LEO_NEEDS = 9_400;
@@ -30,12 +32,16 @@ export function Hangar({ company }: { company: Company }) {
           tabs={[
             ["lineup", "Line-up"],
             ["design", "Design"],
+            ["board", "Drawing board"],
+            ["factory", "Factory"],
             ["record", "Flight record"],
           ]}
         />
       </div>
       {tab === "lineup" && <LineUp company={company} open={(k) => (setKey(k), setTab("design"))} />}
-      {tab === "design" && <Design company={company} designKey={key} />}
+      {tab === "design" && <Design company={company} designKey={company.designs[key] ? key : "meridian"} />}
+      {tab === "board" && <DrawingBoard company={company} drawn={(k) => (setKey(k), setTab("design"))} />}
+      {tab === "factory" && <Factory company={company} />}
       {tab === "record" && <Record company={company} />}
     </div>
   );
@@ -86,6 +92,8 @@ function Design({ company, designKey }: { company: Company; designKey: string })
   const dv = idealDeltaV(v);
   const total = dv.reduce((a, b) => a + b, 0);
   const stock = company.inventory[designKey] ?? 0;
+  const ready = readyDay(company, designKey);
+  const inLine = company.orders.filter((o) => o.design === designKey).length;
   const turns = v.pitchProgram?.kind === "gravity-turn";
   const mission = turns ? LEO_300 : SUBORBITAL_TEST;
   const liftoff = stackMass(v, 0);
@@ -147,18 +155,29 @@ function Design({ company, designKey }: { company: Company; designKey: string })
         </p>
         <div className="actions">
           <button type="button" className="btn primary" onClick={() => game.schedule(buildJob(company, designKey))}>
-            Build one · {money(cost)} · {days} days
+            Order one · {money(cost)} · {days} days
           </button>
           <button
             type="button"
             className="btn"
-            disabled={stock === 0 || !holds(company, missionLicence(mission))}
-            title={!holds(company, missionLicence(mission)) ? "Orbital test flights need the orbital licence" : stock === 0 ? `Build a ${v.name} first` : undefined}
+            disabled={ready === null || !holds(company, missionLicence(mission))}
+            title={!holds(company, missionLicence(mission)) ? "Orbital test flights need the orbital licence" : ready === null ? `Order a ${v.name} first` : undefined}
             onClick={() => game.schedule(testFlightJob(company, designKey, mission, (r) => game.showFlight(r, designKey)))}
           >
             Test flight · {mission.target ? `LEO ${km(mission.target.apoapsis, 0)}` : "straight up"}
+            {ready !== null && ready > company.day ? ` on rollout, day ${ready}` : ""}
           </button>
+          {turns && (
+            <button type="button" className="btn" onClick={() => game.schedule(retuneTestJob(company, designKey, mission))}>
+              Re-tune for {mission.name}
+            </button>
+          )}
         </div>
+        {inLine > 0 && (
+          <span className="soft" style={{ fontSize: 14 }}>
+            {inLine} on the production line; the next rolls out on day {ready}.
+          </span>
+        )}
         <span className="muted" style={{ fontSize: 14 }}>
           A test flight earns no money, but telemetry teaches what the flight reached, and a design's first orbit counts as heritage with customers.
         </span>

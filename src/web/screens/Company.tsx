@@ -19,6 +19,7 @@ const SPEND: Array<[Category, string]> = [
   ["analysis", "#8a6bd1"],
   ["launch", "#2e6e8e"],
   ["licence", "#63c58a"],
+  ["facility", "#9aa86b"],
   ["overhead", "#5b6773"],
   ["penalty", "#ef6a5e"],
 ];
@@ -274,6 +275,7 @@ function FleetCard({ company }: { company: CompanyState }) {
               <th scope="col">Design</th>
               <th scope="col" className="num">Built</th>
               <th scope="col" className="num">Ready</th>
+              <th scope="col" className="num">On line</th>
               <th scope="col" className="num">Flown</th>
             </tr>
           </thead>
@@ -283,6 +285,7 @@ function FleetCard({ company }: { company: CompanyState }) {
                 <td>{v.name}</td>
                 <td className="num">{company.built[key] ?? 0}</td>
                 <td className="num">{company.inventory[key] ?? 0}</td>
+                <td className="num">{company.orders.filter((o) => o.design === key).length}</td>
                 <td className="num">{company.flights.filter((f) => f.design === v.name).length}</td>
               </tr>
             ))}

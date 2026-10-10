@@ -1,5 +1,6 @@
 import { simulateAscent, type FlightResult } from "./ascent.ts";
-import { aeroShape, rollAeroTruths } from "./airframe.ts";
+import { aeroShape, rollAeroTruth, rollAeroTruths } from "./airframe.ts";
+import { assembleVehicle, checkVehicle, designQuote, type VehicleSpec } from "./builder.ts";
 import { settle, type Contract, type Settlement, type Tag } from "./contracts.ts";
 import { COSTS, vehicleCost } from "./cost.ts";
 import { debrief } from "./debrief.ts";
@@ -49,7 +50,10 @@ import type { Vehicle } from "./vehicle.ts";
  * company can no longer afford a vehicle that could get there.
  */
 
-export type Category = "test" | "fix" | "rnd" | "analysis" | "build" | "launch" | "licence" | "overhead" | "payout" | "penalty";
+export type Category = "test" | "fix" | "rnd" | "analysis" | "build" | "facility" | "launch" | "licence" | "overhead" | "payout" | "penalty";
+
+/** A vehicle on a production line, paid for, rolling out on its ready day. */
+export type Order = { design: string; line: number; startDay: number; readyDay: number };
 
 /** How a contract ended. "withdrawn" is a series instance the customer pulled after a failure. */
 export type Closed = "delivered" | "degraded" | "failed" | "late" | "withdrawn";
@@ -86,6 +90,10 @@ export type Company = {
   designs: Record<string, Vehicle>;
   /** Built vehicles waiting for the pad, by design key. */
   inventory: Record<string, number>;
+  /** Production lines, each as the day it is next free. A line bought but not finished is free from its completion day. */
+  lines: number[];
+  /** Vehicles in production, oldest first. */
+  orders: Order[];
   /** Vehicles built over the run, by design key. */
   built: Record<string, number>;
   board: Contract[];
@@ -120,6 +128,8 @@ export function newCompany(
     campaign,
     designs: { ...designs },
     inventory: {},
+    lines: [0],
+    orders: [],
     built: {},
     board,
     accepted: [],
@@ -168,9 +178,14 @@ export function posted(company: Company): Contract[] {
   return company.board.filter((c) => c.postedDay <= company.day);
 }
 
-/** Deadlines that have passed, and whether the company can still pay its bills. */
+/** Deadlines that have passed, vehicles that rolled out, and whether the company can still pay its bills. */
 function tick(company: Company): string[] {
   const notices: string[] = [];
+  for (const order of company.orders.filter((o) => o.readyDay <= company.day)) {
+    company.inventory[order.design] = (company.inventory[order.design] ?? 0) + 1;
+    notices.push(`Day ${order.readyDay}: a ${company.designs[order.design]?.name ?? order.design} rolled out of line ${order.line + 1}.`);
+  }
+  company.orders = company.orders.filter((o) => o.readyDay > company.day);
   for (const id of [...company.accepted]) {
     const contract = contractOf(company, id);
     if (company.day <= contract.deadline) continue;
@@ -204,7 +219,7 @@ function stranded(company: Company): boolean {
   if (company.firstOrbitDay !== null) return false;
   const orbital = Object.entries(company.designs).filter(([, d]) => d.pitchProgram?.kind === "gravity-turn");
   if (orbital.length === 0) return false;
-  if (orbital.some(([key]) => (company.inventory[key] ?? 0) > 0)) return false;
+  if (orbital.some(([key]) => (company.inventory[key] ?? 0) > 0 || company.orders.some((o) => o.design === key))) return false;
   const licence = holds(company, "orbital") ? 0 : LICENCE_COSTS.orbital.fee;
   const cheapest = Math.min(...orbital.map(([, d]) => vehicleCost(d).cost + COSTS.launchFee)) + licence;
   const owed = company.accepted.reduce((sum, id) => sum + contractOf(company, id).payout, 0);
@@ -341,7 +356,9 @@ export function reengine(company: Company, key: string, stageIndex: number, engi
   if (!stage) throw new Error(`${design.name} has no stage ${stageIndex + 1}.`);
   const engine = company.campaign.engines[engineName];
   if (!engine) throw new Error(`No engine called ${engineName}.`);
-  if ((company.inventory[key] ?? 0) > 0) throw new Error(`${design.name} vehicles are already built with the old engines. Fly them first.`);
+  if ((company.inventory[key] ?? 0) > 0 || company.orders.some((o) => o.design === key)) {
+    throw new Error(`${design.name} vehicles are already built or on the line with the old engines. Fly them first.`);
+  }
   if (stage.engine.name === engine.name) return { text: `${stage.name} already flies the ${engine.name}.`, notices: [] };
   const was = stage.engine.name;
   company.designs[key] = { ...design, stages: design.stages.map((s, i) => (i === stageIndex ? { ...s, engine } : s)) };
@@ -416,6 +433,51 @@ export function fixAero(company: Company, key: string, mode: FailureMode): Actio
   return { text: value, notices };
 }
 
+/** Re-tune a design's pitch programme for a mission with the design's own payload: a test flight. */
+export function retuneForMission(company: Company, key: string, mission: Mission): ActionResult {
+  const design = designOf(company, key);
+  const { value, notices } = viaCampaign(company, "analysis", `${design.name} re-tune`, () => retuneFromTests(company.campaign, design, mission));
+  company.designs[key] = { ...design, pitchProgram: value.vehicle.pitchProgram };
+  return { text: value.text, notices };
+}
+
+/** A key for a new design's name, unique among the company's designs. */
+function designKey(company: Company, name: string): string {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "design";
+  let key = base;
+  for (let i = 2; company.designs[key]; i++) key = `${base}-${i}`;
+  return key;
+}
+
+/**
+ * Draw up a new design. The drawing office always costs something; new tank
+ * or fairing diameters need tooling the first time. A new outer shape is a
+ * new aerodynamic unknown for the tunnel.
+ */
+export function designVehicle(company: Company, spec: VehicleSpec): ActionResult & { key: string } {
+  alive(company);
+  const engines = company.campaign.engines;
+  const { problems } = checkVehicle(spec, engines, Object.values(company.designs).map((d) => d.name));
+  if (problems.length > 0) throw new Error(problems.join(" "));
+  const vehicle = assembleVehicle({ ...spec, name: spec.name.trim() }, engines);
+  const quote = designQuote(spec, Object.values(company.designs));
+  const key = designKey(company, vehicle.name);
+  const notices = charge(company, "rnd", quote.cost, quote.days, `${vehicle.name} design`);
+  company.designs[key] = vehicle;
+  const shape = aeroShape(vehicle);
+  const newShape = !company.campaign.aeroTruth[shape.key];
+  company.campaign.aeroTruth[shape.key] ??= rollAeroTruth(vehicle, company.seed);
+  const tooling = [
+    ...quote.newTanks.map((d) => `${d} m tank tooling`),
+    ...(quote.newFairing ? [`${spec.fairingDiameter} m fairing tooling`] : []),
+  ];
+  return {
+    key,
+    text: `${vehicle.name} drawn up: ${money(quote.cost)}, ${quote.days} days.${tooling.length > 0 ? ` New: ${tooling.join(", ")}.` : ""}${newShape ? ` Its ${shape.label} is a shape the tunnel has never seen.` : ""}`,
+    notices,
+  };
+}
+
 /** Re-tune a design's pitch programme for a contract's mission and payload. */
 export function retune(company: Company, key: string, contractId: string): ActionResult {
   const design = designOf(company, key);
@@ -428,16 +490,58 @@ export function retune(company: Company, key: string, contractId: string): Actio
   return { text: value.text, notices };
 }
 
+/** What the next order on the first free line would look like. */
+export function nextSlot(company: Company, key: string): { line: number; startDay: number; readyDay: number } {
+  const { days } = vehicleCost(designOf(company, key));
+  let line = 0;
+  company.lines.forEach((free, i) => {
+    if (free < company.lines[line]!) line = i;
+  });
+  const startDay = Math.max(company.day, company.lines[line]!);
+  return { line, startDay, readyDay: startDay + days };
+}
+
+/** When the next vehicle of a design is ready: today if one is on the ground, its ready day if one is on a line, else null. */
+export function readyDay(company: Company, key: string): number | null {
+  if ((company.inventory[key] ?? 0) > 0) return company.day;
+  const days = company.orders.filter((o) => o.design === key).map((o) => o.readyDay);
+  return days.length > 0 ? Math.min(...days) : null;
+}
+
+/**
+ * Order a vehicle. It is paid for now and goes on the production line that
+ * frees up first; the company keeps working while it is built, and it rolls
+ * out on its ready day.
+ */
 export function build(company: Company, key: string): ActionResult {
   alive(company);
   const design = designOf(company, key);
-  const { cost, days } = vehicleCost(design);
+  const { cost } = vehicleCost(design);
+  const slot = nextSlot(company, key);
   // On the books before the bill lands: a company that spends its last cash
   // on an orbital vehicle still has a vehicle that can reach orbit.
-  company.inventory[key] = (company.inventory[key] ?? 0) + 1;
+  company.orders.push({ design: key, ...slot });
+  company.lines[slot.line] = slot.readyDay;
   company.built[key] = (company.built[key] ?? 0) + 1;
-  const notices = charge(company, "build", cost, days, `${design.name} build`);
-  return { text: `Built a ${design.name}: ${money(cost)}, ${days} days. Ready on day ${company.day}.`, notices };
+  const notices = charge(company, "build", cost, 0, `${design.name} build`);
+  const queued = slot.startDay > company.day ? `, after the line's current job (starts day ${slot.startDay})` : "";
+  return { text: `Ordered a ${design.name} on line ${slot.line + 1}${queued}: ${money(cost)}. Ready on day ${slot.readyDay}.`, notices };
+}
+
+/** Production lines beyond the first: what each costs and how long it takes to set up. */
+export const LINE_COSTS = [
+  { cost: 2_500, days: 30 },
+  { cost: 4_000, days: 45 },
+];
+
+/** Buy another production line. Paid now; it starts taking orders once it is set up. */
+export function buyLine(company: Company): ActionResult {
+  alive(company);
+  const next = LINE_COSTS[company.lines.length - 1];
+  if (!next) throw new Error(`The company already runs ${company.lines.length} production lines, as many as the site holds.`);
+  company.lines.push(company.day + next.days);
+  const notices = charge(company, "facility", next.cost, 0, `Production line ${company.lines.length}`);
+  return { text: `Production line ${company.lines.length} bought: ${money(next.cost)}. It takes orders from day ${company.day + next.days}.`, notices };
 }
 
 export type FlightReport = ActionResult & {
@@ -456,15 +560,25 @@ export type FlightReport = ActionResult & {
 export function fly(company: Company, key: string, target: { contract: string } | { mission: Mission }): FlightReport {
   alive(company);
   const design = designOf(company, key);
-  if (!company.inventory[key]) throw new Error(`No ${design.name} built. Build one first.`);
+  const ready = readyDay(company, key);
+  if (ready === null) throw new Error(`No ${design.name} built. Build one first.`);
   const contract = "contract" in target ? contractOf(company, target.contract) : null;
   if (contract && !company.accepted.includes(contract.id)) throw new Error(`"${contract.title}" isn't signed.`);
   const mission = contract?.mission ?? (target as { mission: Mission }).mission;
   const needs = missionLicence(mission);
   if (!holds(company, needs)) throw new Error(`Flying to orbit needs an orbital licence. Apply on the company page.`);
+  const early: string[] = [];
+  if (ready > company.day) {
+    // Launch on rollout: the calendar runs, and the payroll with it, until the vehicle is ready.
+    early.push(...charge(company, "overhead", 0, ready - company.day, `waiting for the ${design.name} to roll out`));
+    alive(company);
+    if (contract && !company.accepted.includes(contract.id)) {
+      throw new Error(`The ${design.name} rolled out on day ${ready}, after "${contract.title}" was due.`);
+    }
+  }
   const vehicle = { ...design, payloadMass: contract?.payloadMass ?? design.payloadMass };
 
-  const notices = charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`);
+  const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`)];
   company.inventory[key]! -= 1;
   const result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth });
   const written = debrief(result, vehicle, mission, company.campaign);
@@ -694,6 +808,7 @@ export function summary(company: Company): string {
     build: "Vehicles built",
     launch: "Launch fees",
     licence: "Licences",
+    facility: "Facilities",
     overhead: "Overhead",
     payout: "Contract payouts",
     penalty: "Penalties",

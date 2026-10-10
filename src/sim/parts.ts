@@ -231,11 +231,15 @@ export function exitAreaFor(thrust: number, exitPressure: number): number {
   return 2e-6 * thrust * Math.sqrt(70_000 / exitPressure);
 }
 
-/** Unit cost of one engine, $k: the base price by thrust, scaled by its parts. */
+/**
+ * Unit cost of one engine, $k: the base price by thrust, scaled by its
+ * parts. The scale keeps a gas-generator Harrier at the price it always had;
+ * pressure-fed engines come out at about half the price per kN.
+ */
 export function engineUnitCost(parts: EngineParts, thrust: number): number {
   const base = 100 + (6 * thrust) / 1000;
   const mult = CYCLES[parts.cycle].cost * INJECTORS[parts.injector].cost * COOLINGS[parts.cooling].cost * NOZZLES[parts.nozzle].cost;
-  return Math.round(base * mult);
+  return Math.round(0.7 * base * mult);
 }
 
 /** Put the parts together: the engine's drawings. */

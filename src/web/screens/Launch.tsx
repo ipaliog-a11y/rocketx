@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { bid, type Company } from "../../sim/company.ts";
+import { bid, readyDay, type Company } from "../../sim/company.ts";
 import type { Contract } from "../../sim/contracts.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
@@ -91,6 +91,8 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
   }, [company, contract.id, design, version]);
   const v = company.designs[design]!;
   const built = company.inventory[design] ?? 0;
+  const ready = readyDay(company, design);
+  const onLine = company.orders.filter((o) => o.design === design).length;
   const turns = v.pitchProgram?.kind === "gravity-turn";
   const left = contract.deadline - company.day;
 
@@ -99,7 +101,7 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
       <div className="card blueprint" style={{ flex: "0 0 auto", alignItems: "center", padding: "20px 36px 0" }}>
         <Rocket vehicle={v} scale={Math.min(26, 300 / height(v))} />
         <span style={{ height: 2, width: 110, background: "var(--line-strong)" }} />
-        <span style={{ padding: "10px 0 14px" }}>{built > 0 ? <Chip tone="good">{built} READY</Chip> : <Chip tone="muted">NONE BUILT</Chip>}</span>
+        <span style={{ padding: "10px 0 14px" }}>{built > 0 ? <Chip tone="good">{built} READY</Chip> : onLine > 0 ? <Chip tone="warn">{`READY DAY ${ready}`}</Chip> : <Chip tone="muted">NONE BUILT</Chip>}</span>
       </div>
       <div className="grow card" style={{ flexBasis: 420 }}>
         <div className="stack" style={{ gap: 4 }}>
@@ -115,7 +117,13 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
             ["Launch", `${money(COSTS.launchFee)} · ${COSTS.padDays} d`],
           ]}
         />
-        {built === 0 && <Schedule day={company.day} deadline={contract.deadline} b={b} />}
+        {ready === null && <Schedule day={company.day} deadline={contract.deadline} b={b} />}
+        {ready !== null && ready > company.day && (
+          <span className={ready + 7 > contract.deadline ? "bad" : "soft"}>
+            A {v.name} is on the production line and rolls out on day {ready}
+            {ready + 7 > contract.deadline ? ", too late for this contract." : `. Launching then still makes day ${contract.deadline}.`}
+          </span>
+        )}
         {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
         <Findings b={b} />
         <Forecast b={b} />
@@ -123,14 +131,14 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
           <button
             type="button"
             className="btn primary"
-            disabled={built === 0}
-            title={built === 0 ? `Build a ${v.name} first` : undefined}
+            disabled={ready === null}
+            title={ready === null ? `Order a ${v.name} first` : undefined}
             onClick={() => game.schedule(launchJob(company, design, contract, (r) => game.showFlight(r, design)))}
           >
-            Launch {v.name}
+            {ready !== null && ready > company.day ? `Launch on rollout · day ${ready}` : `Launch ${v.name}`}
           </button>
           <button type="button" className="btn" onClick={() => game.schedule(buildJob(company, design))}>
-            Build · {money(b.build.cost)} · {b.build.days} d
+            Order · {money(b.build.cost)} · {b.build.days} d
           </button>
           {turns && contract.mission.target && (
             <button type="button" className="btn" onClick={() => game.schedule(retuneJob(company, design, contract))}>
