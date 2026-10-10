@@ -18,6 +18,8 @@ export const COSTS = {
   /** Range and pad fees for one launch campaign, $k and days on the pad. */
   launchFee: 100,
   padDays: 7,
+  /** Salaries, rent and the lights, per calendar day, $k. Time is money. */
+  overheadPerDay: 8,
 };
 
 export function vehicleCost(vehicle: Vehicle): { cost: number; days: number } {

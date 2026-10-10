@@ -32,6 +32,8 @@ export type Contract = {
   deadline: number;
   /** Net reputation needed before the customer will sign. */
   minReputation: number;
+  /** Day the contract appears on the board. */
+  postedDay: number;
   /** Tags on the company's record that make this customer walk away. */
   refuses: Tag[];
 };

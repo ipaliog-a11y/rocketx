@@ -2,13 +2,16 @@ import type { Contract } from "./sim/contracts.ts";
 import { hashSeed, rng } from "./sim/random.ts";
 import { LEO_300, LEO_EQUATORIAL, SSO_500, SUBORBITAL_TEST } from "./missions.ts";
 
-type Template = Omit<Contract, "payout" | "deadline"> & { payout: number; deadline: number };
+type Template = Omit<Contract, "postedDay">;
 
 /**
  * The opening board. Suborbital crumbs that a sounding rocket can earn,
  * LEO work that can recapitalise the company, one SSO contract that pays
  * well and punishes a greedy bid, and an equatorial customer the pad can't
  * serve. Payouts and deadlines vary by seed.
+ *
+ * Later, a rideshare broker posts LEO slots every few months, so a company
+ * that stumbles early has work to recover toward while the payroll runs.
  */
 const TEMPLATES: Template[] = [
   {
@@ -93,10 +96,32 @@ const TEMPLATES: Template[] = [
   },
 ];
 
+/** Rideshare slots: posted around these days, open for this long. */
+const RIDESHARE_POSTINGS = [200, 350, 500];
+const RIDESHARE_WINDOW = 240;
+
 export function generateBoard(seed: number): Contract[] {
   const random = rng(hashSeed(`${seed}:board`));
   const vary = (x: number, spread: number) => Math.round(x * (1 + spread * (2 * random() - 1)));
-  return TEMPLATES.map((t) => ({ ...t, payout: vary(t.payout, 0.15), deadline: vary(t.deadline, 0.2) }));
+  const opening = TEMPLATES.map((t) => ({ ...t, payout: vary(t.payout, 0.15), deadline: vary(t.deadline, 0.2), postedDay: 0 }));
+  const rideshares = RIDESHARE_POSTINGS.map((day, i): Contract => {
+    const postedDay = vary(day, 0.15);
+    return {
+      id: `rideshare-${i + 1}`,
+      customer: "Orbital Freight Exchange",
+      title: `Rideshare slot ${i + 1}: 150 kg to LEO 300 km`,
+      mission: LEO_300,
+      payloadMass: 150,
+      payout: vary(6_000, 0.15),
+      degradedShare: 0.5,
+      penalty: 1_500,
+      deadline: postedDay + RIDESHARE_WINDOW,
+      minReputation: 1,
+      refuses: [],
+      postedDay,
+    };
+  });
+  return [...opening, ...rideshares];
 }
 
 /** Starting cash, $k. Some companies start leaner than others. */

@@ -7,13 +7,16 @@ import {
   fixEngine,
   fly,
   newCompany,
+  posted,
   retune,
   reputation,
   status,
   summary,
   tunnel,
+  wait,
   type ActionResult,
 } from "./sim/company.ts";
+import { COSTS } from "./sim/cost.ts";
 import type { FailureMode } from "./sim/hardware.ts";
 import type { Facility } from "./sim/teststand.ts";
 import type { AeroFacility } from "./sim/tunnel.ts";
@@ -34,6 +37,7 @@ import { ENGINES, VEHICLES } from "./vehicles.ts";
  *   build:meridian                build a vehicle
  *   fly:meridian:leo-150          fly a built vehicle for a signed contract
  *   fly:pathfinder                fly a test flight (fly:meridian@leo-300 picks the mission)
+ *   wait:60                       let 60 days pass (the payroll still runs)
  *   status                        cash, calendar and what's signed
  *
  * npm run company -- --seed 3 board accept:sounding build:pathfinder fly:pathfinder:sounding
@@ -48,7 +52,9 @@ const board = generateBoard(seed);
 const company = newCompany(seed, startingCash(seed), VEHICLES, Object.values(ENGINES), board);
 const money = (k: number) => `$${(k / 1000).toFixed(2)}M`;
 
-console.log(`COMPANY RUN, seed ${seed}. ${money(company.cash)} in the bank, one pad at Port Avery, one stand, day 0.`);
+console.log(
+  `COMPANY RUN, seed ${seed}. ${money(company.cash)} in the bank, one pad at Port Avery, one stand, day 0. Overhead runs $${COSTS.overheadPerDay}k a day.`,
+);
 console.log("");
 
 for (const step of steps) {
@@ -86,6 +92,8 @@ function run(step: string): ActionResult | null {
     case "brief":
       console.log(brief(company, rest[0] ?? "", vehicleKey(rest[1])));
       return null;
+    case "wait":
+      return wait(company, Number(rest[0] ?? 0));
     case "accept":
       return accept(company, rest[0] ?? "");
     case "tunnel":
@@ -117,12 +125,15 @@ function run(step: string): ActionResult | null {
 }
 
 function boardText(): string {
-  const lines = ["CONTRACT BOARD"];
-  for (const c of company.board) {
-    const state = company.closed[c.id] ?? (company.accepted.includes(c.id) ? "signed" : "open");
+  const lines = [`CONTRACT BOARD, day ${company.day}`];
+  for (const c of posted(company)) {
+    const state =
+      company.closed[c.id] ?? (company.accepted.includes(c.id) ? "signed" : company.day > c.deadline ? "expired" : "open");
     const rep = c.minReputation > 0 ? `, reputation ${c.minReputation}+` : "";
     lines.push(`  ${c.id.padEnd(13)} ${c.title}. ${c.customer}. ${money(c.payout)}, penalty ${money(c.penalty)}, by day ${c.deadline}${rep}. [${state}]`);
   }
+  const coming = company.board.length - posted(company).length;
+  if (coming > 0) lines.push(`  (${coming} more contract${coming > 1 ? "s" : ""} will be posted later.)`);
   return lines.join("\n");
 }
 

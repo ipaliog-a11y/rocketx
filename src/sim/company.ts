@@ -30,7 +30,7 @@ import type { Vehicle } from "./vehicle.ts";
  * company can no longer afford a vehicle that could get there.
  */
 
-export type Category = "test" | "fix" | "analysis" | "build" | "launch" | "payout" | "penalty";
+export type Category = "test" | "fix" | "analysis" | "build" | "launch" | "overhead" | "payout" | "penalty";
 
 export type MoneyEntry = { day: number; category: Category; amount: number; note: string };
 export type RecordEntry = { day: number; tag: Tag; reputation: number; note: string };
@@ -99,7 +99,24 @@ function charge(company: Company, category: Category, amount: number, days: numb
   company.cash -= amount;
   company.day += days;
   if (amount !== 0) company.ledger.push({ day: company.day, category, amount: -amount, note });
+  const overhead = days * COSTS.overheadPerDay;
+  if (overhead > 0) {
+    company.cash -= overhead;
+    company.ledger.push({ day: company.day, category: "overhead", amount: -overhead, note: `${days} days` });
+  }
   return tick(company);
+}
+
+/** Let the calendar run: nothing happens but the payroll. */
+export function wait(company: Company, days: number): ActionResult {
+  alive(company);
+  const notices = charge(company, "overhead", 0, days, "waiting");
+  return { text: `Waited ${days} days: ${money(days * COSTS.overheadPerDay)} in overhead.`, notices };
+}
+
+/** Contracts on the board today. */
+export function posted(company: Company): Contract[] {
+  return company.board.filter((c) => c.postedDay <= company.day);
 }
 
 /** Deadlines that have passed, and whether the company can still pay its bills. */
@@ -171,6 +188,7 @@ export function accept(company: Company, id: string): ActionResult {
   alive(company);
   const contract = contractOf(company, id);
   if (company.accepted.includes(id) || company.closed[id]) throw new Error(`"${contract.title}" is no longer open.`);
+  if (company.day < contract.postedDay) throw new Error(`"${contract.title}" isn't on the board yet.`);
   if (company.day > contract.deadline) throw new Error(`"${contract.title}" has expired.`);
   if (reputation(company) < contract.minReputation) {
     throw new Error(`${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`);
@@ -279,7 +297,6 @@ export function fly(company: Company, key: string, target: { contract: string } 
       company.ledger.push({ day: company.day, category: "penalty", amount: -s.penalty, note: contract.title });
     }
     lines.push("", s.text);
-    notices.push(...tick(company));
   } else {
     const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
     if (failure?.mode) company.record.push({ day: company.day, tag: failure.mode, reputation: -1, note: `${design.name} test flight` });
@@ -289,6 +306,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
       lines.push("", `The ${design.name} has demonstrated orbit. Customers notice: reputation +1.`);
     }
   }
+  notices.push(...tick(company));
   return { text: lines.join("\n"), notices, result };
 }
 
@@ -418,6 +436,7 @@ export function summary(company: Company): string {
     analysis: "Analysis",
     build: "Vehicles built",
     launch: "Launch fees",
+    overhead: "Overhead",
     payout: "Contract payouts",
     penalty: "Penalties",
   };

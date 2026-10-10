@@ -9,8 +9,10 @@ import {
   fire,
   fly,
   newCompany,
+  posted,
   reputation,
   summary,
+  wait,
   type Company,
 } from "../src/sim/company.ts";
 import { settle, type Contract } from "../src/sim/contracts.ts";
@@ -36,6 +38,7 @@ const sounding: Contract = {
   deadline: 150,
   minReputation: 0,
   refuses: [],
+  postedDay: 0,
 };
 const leo: Contract = {
   id: "leo",
@@ -49,6 +52,7 @@ const leo: Contract = {
   deadline: 400,
   minReputation: 1,
   refuses: ["burn-through"],
+  postedDay: 0,
 };
 
 /** A company whose hidden hardware is perfect unless a test says otherwise. */
@@ -114,14 +118,15 @@ test("a contract flown on time pays, and builds and launches cost cash and days"
   build(c, "pathfinder");
   const built = vehicleCost(PATHFINDER);
   assert.equal(c.day, built.days);
-  assert.equal(c.cash, 12_000 - built.cost);
+  assert.equal(c.cash, 12_000 - built.cost - built.days * COSTS.overheadPerDay);
   assert.equal(c.inventory.pathfinder, 1);
 
   const report = fly(c, "pathfinder", { contract: "sounding" });
   assert.equal(report.result.outcome, "apogee");
   assert.equal(c.inventory.pathfinder, 0);
   assert.equal(c.day, built.days + COSTS.padDays);
-  assert.equal(c.cash, 12_000 - built.cost - COSTS.launchFee + 1_500);
+  const days = built.days + COSTS.padDays;
+  assert.equal(c.cash, 12_000 - built.cost - COSTS.launchFee - days * COSTS.overheadPerDay + 1_500);
   assert.equal(c.closed.sounding, "delivered");
   assert.equal(reputation(c), 1);
 });
@@ -165,7 +170,7 @@ test("before first orbit, a company that can't afford an orbital vehicle is fini
   assert.ok(out.notices.some((n) => /can't afford another try at LEO/.test(n)));
 
   // A built orbital vehicle, or money owed on a signed contract, keeps it alive.
-  const built = company(meridian);
+  const built = company(meridian + vehicleCost(MERIDIAN).days * COSTS.overheadPerDay);
   build(built, "meridian");
   assert.equal(built.dead, false);
 });
@@ -174,7 +179,7 @@ test("stand time is charged to the company", () => {
   const c = company();
   fire(c, KESTREL_SL, 30, "sea-level");
   const report = c.campaign.knowledge[KESTREL_SL.name]!.history[0]!;
-  assert.equal(c.cash, 12_000 - report.cost);
+  assert.equal(c.cash, 12_000 - report.cost - report.days * COSTS.overheadPerDay);
   assert.equal(c.day, report.days);
 });
 
@@ -216,4 +221,13 @@ test("the bid screen names new regimes, unknowns and a forecast", () => {
   assert.match(leoBrief, /Forecast from what's known/);
   assert.match(brief(c, "equatorial", "meridian"), /can't launch directly into 0°/);
   assert.match(brief(c, "sso-150", "meridian"), /Retrograde/);
+});
+
+test("time costs payroll, and later contracts appear on the board over time", () => {
+  const c = newCompany(1, 12_000, VEHICLES, Object.values(ENGINES), generateBoard(1));
+  assert.ok(!posted(c).some((x) => x.id.startsWith("rideshare")));
+  assert.throws(() => accept(c, "rideshare-1"), /isn't on the board yet/);
+  wait(c, 300);
+  assert.equal(c.cash, 12_000 - 300 * COSTS.overheadPerDay);
+  assert.ok(posted(c).some((x) => x.id === "rideshare-1"));
 });

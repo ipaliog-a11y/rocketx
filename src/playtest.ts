@@ -8,9 +8,11 @@ import {
   fixEngine,
   fly,
   newCompany,
+  posted,
   reputation,
   retune,
   tunnel,
+  wait,
   type Company,
 } from "./sim/company.ts";
 import type { Contract } from "./sim/contracts.ts";
@@ -42,6 +44,11 @@ type Outcome = {
   failed: number;
   note: string;
 };
+
+/** How long a bot keeps playing, days. About two years. */
+const HORIZON = 730;
+/** Demonstration flights a bot will pay for before giving up on heritage. */
+const MAX_DEMOS = 2;
 
 /** Fire past the flight burn by this much, so the burn itself is proven. */
 const DURATION_MARGIN = 1.1;
@@ -141,27 +148,41 @@ function play(seed: number, policy: Policy): Outcome {
     if (!proveShape(company, "meridian", policy === "cheap" ? "cfd" : "transonic")) note ||= "Meridian shape unproven";
   }
 
-  // No heritage yet: buy it with an orbital demonstration flight.
-  if (reputation(company) < 1 && !company.dead) {
-    note ||= "needed a demonstration flight";
-    const leo = contract("leo-150");
-    if (testing) guard(company, () => retune(company, "meridian", leo.id));
-    for (let tries = 0; tries < 2 && reputation(company) < 1 && !company.dead; tries++) {
-      if (!guard(company, () => build(company, "meridian"))) break;
-      guard(company, () => fly(company, "meridian", { mission: leo.mission }));
+  // Orbital work until the horizon: bid on what's posted, wait for more,
+  // and buy heritage with a demonstration flight if nobody will sign.
+  const considered = new Set<string>();
+  let demos = 0;
+  while (!company.dead && company.day < HORIZON) {
+    if (reputation(company) < 1) {
+      if (demos >= MAX_DEMOS) break;
+      demos += 1;
+      note ||= "needed a demonstration flight";
+      const leo = contract("leo-150");
+      if (testing) guard(company, () => retune(company, "meridian", leo.id));
+      if (guard(company, () => build(company, "meridian"))) guard(company, () => fly(company, "meridian", { mission: leo.mission }));
+      continue;
     }
-  }
-
-  const orbital = policy === "greedy" ? ["leo-200", "leo-150", "sso-150"] : ["leo-200", "leo-150"];
-  for (const id of orbital) {
-    const c = contract(id);
-    if (company.dead || !canSign(company, c, "meridian")) continue;
+    const wanted = posted(company).filter(
+      (c) =>
+        c.minApogee === undefined &&
+        !considered.has(c.id) &&
+        (policy === "greedy" || c.id !== "sso-150") &&
+        canSign(company, c, "meridian"),
+    );
+    const next = wanted[0];
+    if (!next) {
+      const upcoming = board.filter((c) => c.postedDay > company.day).map((c) => c.postedDay);
+      if (upcoming.length === 0) break;
+      guard(company, () => wait(company, Math.min(...upcoming) - company.day));
+      continue;
+    }
+    considered.add(next.id);
     if (testing) {
-      guard(company, () => retune(company, "meridian", c.id));
-      const greedyBid = policy === "greedy" && id === "sso-150";
-      if (!greedyBid && !forecastDelivers(company, "meridian", c)) continue;
+      guard(company, () => retune(company, "meridian", next.id));
+      const greedyBid = policy === "greedy" && next.id === "sso-150";
+      if (!greedyBid && !forecastDelivers(company, "meridian", next)) continue;
     }
-    deliver(company, "meridian", c);
+    deliver(company, "meridian", next);
   }
   if (company.firstOrbitDay === null) note ||= "never reached orbit";
 
