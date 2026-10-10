@@ -53,7 +53,8 @@ export type Finding = { mode: FailureMode; t: number; text: string };
 
 export type TestReport = {
   engine: string;
-  facility: Facility;
+  /** Where the data came from. A flight counts: telemetry sees what the stand would have. */
+  facility: Facility | "flight";
   planned: number;
   /** How long the engine actually ran, s. */
   fired: number;

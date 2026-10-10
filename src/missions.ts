@@ -6,8 +6,8 @@ export const PORT_AVERY: LaunchSite = { name: "Port Avery", latitude: 28.5 };
 /** Island pad near the equator. Cheap low inclinations, expensive logistics. */
 export const ISLA_SERRANO: LaunchSite = { name: "Isla Serrano", latitude: 5.2 };
 
-/** Sounding flight: no orbit asked for, just a look at the vehicle. */
-export const SUBORBITAL_TEST: Mission = { name: "Suborbital test flight", site: PORT_AVERY };
+/** Sounding flight: no orbit asked for, straight up and down. */
+export const SUBORBITAL_TEST: Mission = { name: "Suborbital flight", site: PORT_AVERY };
 
 /** Circular 300 km low Earth orbit, flown due east from Port Avery. */
 export const LEO_300: Mission = {

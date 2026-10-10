@@ -49,7 +49,7 @@ After first orbit the same loop scales: new regime, new ignorance, new chance to
 
 ## Status
 
-Prototype started. The domains are **engines + aerodynamics** (DESIGN.md §15). No name locked.
+Text prototype complete. All six steps of DESIGN.md §15 exist: one pad, one stand and one cash pile; two domains (**engines + aerodynamics**); suborbital and small LEO contracts; tests that reveal named failure modes; an ascent with a debrief; and a run that can die. It plays as a script of steps from the command line. No name locked.
 
 Built so far: a two-dimensional ascent sim in the plane of the trajectory, flown against a mission. It goes from the pad to orbit insertion, or to apogee if the vehicle falls short.
 
@@ -73,7 +73,12 @@ The trajectory stays in one plane. Plane changes, the out-of-plane part of the p
 
 A re-tune is only as good as the testing behind it. Tuned on the drawings and flown on real engines, Meridian misses. With accurate test data and engine failures set aside, re-tuning takes it from 0 to 13 of 25 seeds in spec. Of the rest, 3 buffet whatever the pitch, and 9 lack the Δv for a 200 kg payload once real Isp is known.
 
-Next: contracts that bid on these missions with cash and calendar, so a test campaign competes with the schedule.
+- Company and contracts. Cash, a calendar, and a reputation record tagged by what happened. One stand, one tunnel, one pad and one build shop, used one job at a time. A seeded board offers suborbital crumbs, LEO work, an SSO contract that punishes a greedy bid, and an equatorial customer the pad can't serve. Contracts have payouts, penalties, deadlines, a reputation bar, and customers who refuse certain records
+- The bid screen shows what a contract pays and risks, the build cost, regimes the design has never flown, everything on trust, and a forecast with the contract's payload
+- Vehicles cost cash and days to build. A launch uses one up. In-spec delivery pays in full, an out-of-spec orbit pays half, and a loss or a missed deadline costs the penalty. Flights are tests too: telemetry teaches what the flight reached
+- The run ends when the cash goes negative. The summary breaks down where the money went and what the record says
+
+Not modelled yet: running jobs in parallel (building while testing), loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
 
 ## Running
 
@@ -99,6 +104,14 @@ npm run campaign -- meridian --seed 1 harrier-sl@140 harrier-vac@5/altitude \
 npm run campaign -- meridian --seed 7 harrier-sl@140 harrier-vac@280/altitude \
   tunnel:transonic retune                                     # re-tune from what was measured
 npm run campaign -- fat-fairing --seed 1 tunnel:cfd          # CFD misses the buffet
+
+# A company run: the same steps plus contracts, builds and flights, against cash
+# and calendar. See src/company.ts for every step.
+npm run company -- --seed 3 board brief:sounding:pathfinder accept:sounding \
+  build:pathfinder fly:pathfinder:sounding accept:leo-150 harrier-sl@140 \
+  harrier-vac@280/altitude tunnel:meridian:transonic \
+  fix:aero:meridian:transonic-buffet tunnel:meridian:transonic \
+  retune:meridian:leo-150 build:meridian fly:meridian:leo-150
 npm run campaign -- fat-fairing --seed 1 tunnel:transonic \
   fix:aero:transonic-buffet tunnel:transonic
 npm test

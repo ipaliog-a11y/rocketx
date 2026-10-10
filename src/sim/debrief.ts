@@ -151,22 +151,24 @@ export function debrief(result: FlightResult, vehicle: Vehicle, mission: Mission
   lines.push(`  Inertial speed at shutdown     ${ms(summary.burnoutVelocity).padStart(9)}`);
 
   const notes: string[] = [];
-  if (drag / ideal > 0.12) {
+  // Loss shares only mean something for a whole ascent, not one cut short.
+  const whole = result.outcome !== "failure";
+  if (whole && drag / ideal > 0.12) {
     notes.push(
       `Drag took ${pct(drag / ideal)} of the Δv. The vehicle spent the ascent fighting the air instead of climbing. The frontal area or the transonic drag rise is the place to look.`,
     );
   }
-  if (backPressure / ideal > 0.12) {
+  if (whole && backPressure / ideal > 0.12) {
     notes.push(
       `Back-pressure took ${pct(backPressure / ideal)}. The nozzle exit is large for the air it fires into, so the atmosphere pushes back on it at low altitude.`,
     );
   }
-  if (steered && gravity / ideal > 0.2) {
+  if (whole && steered && gravity / ideal > 0.2) {
     notes.push(
       `Gravity took ${pct(gravity / ideal)}. The climb stayed steep for too long, so the engines spent their burn holding the vehicle up instead of building horizontal speed. A firmer pitch kick turns over sooner.`,
     );
   }
-  if (steering / ideal > 0.04) {
+  if (whole && steering / ideal > 0.04) {
     notes.push(
       `Steering took ${pct(steering / ideal)}. Thrust pointed well away from the direction of travel, so part of every newton went into bending the path. The pitch programme is fighting the trajectory the previous stage left behind.`,
     );

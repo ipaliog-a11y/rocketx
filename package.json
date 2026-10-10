@@ -10,6 +10,7 @@
   "scripts": {
     "sim": "node src/cli.ts",
     "campaign": "node src/campaign.ts",
+    "company": "node src/company.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
