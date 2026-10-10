@@ -19,7 +19,7 @@ export const COSTS = {
   launchFee: 100,
   padDays: 7,
   /** Salaries, rent and the lights, per calendar day, $k. Time is money. */
-  overheadPerDay: 8,
+  overheadPerDay: 5,
 };
 
 export function vehicleCost(vehicle: Vehicle): { cost: number; days: number } {

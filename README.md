@@ -78,6 +78,19 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 - Vehicles cost cash and days to build. A launch uses one up. In-spec delivery pays in full, an out-of-spec orbit pays half, and a loss or a missed deadline costs the penalty. Flights are tests too: telemetry teaches what the flight reached
 - The run ends when the cash goes negative. The summary breaks down where the money went and what the record says
 
+## Balance
+
+`npm run playtest` plays whole company runs with bots across seeds. The bots decide only from what a player sees: test reports, forecasts and the board. There are four strategies: careful (full-duration firings with fixes, a transonic tunnel run, re-tuning, and bids only on a good forecast), cheap (5 s startup firings and CFD only), reckless (no tests) and greedy (careful, plus the SSO bid regardless of forecast). Current results over 30 seeds and a two-year horizon:
+
+| Strategy | Survive | Reach orbit | Median cash at end |
+|---|---|---|---|
+| careful | 24 | 26 | $15.1M |
+| greedy | 15 | 26 | $6.7M |
+| cheap | 4 | 4 | $1.5M |
+| reckless | 0 | 2 | $2.2M |
+
+Testing pays, testing the wrong question costs nearly as much as not testing, and the greedy SSO bid halves survival. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
+
 Not modelled yet: running jobs in parallel (building while testing), loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
 
 ## Running

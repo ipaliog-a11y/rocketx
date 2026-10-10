@@ -36,7 +36,7 @@ type FacilitySpec = {
 
 export const FACILITIES: Record<Facility, FacilitySpec> = {
   "sea-level": { name: "sea-level stand", ambient: P_SEA_LEVEL, setup: 25, perSecond: 1.5, days: 4 },
-  altitude: { name: "altitude cell", ambient: 3_000, setup: 200, perSecond: 4, days: 10 },
+  altitude: { name: "altitude cell", ambient: 3_000, setup: 200, perSecond: 1.5, days: 10 },
 };
 
 /** Cost and delay of building a replacement engine after a test destroys one. */
