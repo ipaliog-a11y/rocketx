@@ -11,6 +11,7 @@
     "sim": "node src/cli.ts",
     "campaign": "node src/campaign.ts",
     "company": "node src/company.ts",
+    "playtest": "node src/playtest.ts",
     "test": "node --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
