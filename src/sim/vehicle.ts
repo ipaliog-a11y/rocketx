@@ -1,6 +1,7 @@
 import type { DragCurve } from "./aero.ts";
 import { G0 } from "./constants.ts";
 import { massFlow, type Engine } from "./engine.ts";
+import type { PitchProgram } from "./guidance.ts";
 
 export type Stage = {
   name: string;
@@ -22,11 +23,18 @@ export type Vehicle = {
   /** Payload fairing diameter, m. A fat fairing on a skinny stack sets the area. */
   fairingDiameter: number;
   dragCurve: DragCurve;
+  /** How the vehicle steers on the way up. Vertical when left out. */
+  pitchProgram?: PitchProgram;
   limits: {
     /** Structural load budget for dynamic pressure, Pa. */
     maxDynamicPressure: number;
     /** Axial acceleration limit, in g. */
     maxAcceleration: number;
+    /**
+     * Side-load budget: dynamic pressure times angle of attack, Pa·deg.
+     * Turning hard in thick air bends the stack. No limit when left out.
+     */
+    maxQAlpha?: number;
   };
 };
 

@@ -1,5 +1,6 @@
 import { SLENDER_ROCKET } from "./sim/aero.ts";
 import type { Engine } from "./sim/engine.ts";
+import type { PitchProgram } from "./sim/guidance.ts";
 import type { Vehicle } from "./sim/vehicle.ts";
 
 /** Pressure-fed kerosene engine with a short sea-level bell. */
@@ -85,10 +86,85 @@ export const PATHFINDER_TWO_STAGE: Vehicle = {
   ],
 };
 
+
+/** Pump-fed kerosene engine for an orbital booster, nine to a core. */
+export const HARRIER_SL: Engine = {
+  name: "Harrier-SL",
+  thrustVac: 24_500,
+  ispVac: 311,
+  exitArea: 0.055,
+  exitPressure: 60_000,
+};
+
+/** Vacuum Harrier for the upper stage. */
+export const HARRIER_VAC: Engine = {
+  name: "Harrier-Vac",
+  thrustVac: 26_000,
+  ispVac: 343,
+  exitArea: 0.35,
+  exitPressure: 2_000,
+};
+
+const MERIDIAN_TURN = {
+  kind: "gravity-turn",
+  kickSpeed: 60,
+  kickAngle: 7,
+  kickDuration: 5,
+  upperStage: { startPitch: 10, endPitch: 0 },
+} as const satisfies PitchProgram;
+
+/**
+ * Small two-stage orbital launcher. Gravity turn on the booster, then the
+ * upper stage ramps its pitch down to level for a direct insertion.
+ */
+export const MERIDIAN: Vehicle = {
+  name: "Meridian",
+  stages: [
+    {
+      name: "Meridian booster",
+      dryMass: 950,
+      propellantMass: 9_250,
+      engine: HARRIER_SL,
+      engineCount: 9,
+      diameter: 1.2,
+    },
+    {
+      name: "Meridian upper",
+      dryMass: 250,
+      propellantMass: 2_050,
+      engine: HARRIER_VAC,
+      engineCount: 1,
+      diameter: 1.2,
+    },
+  ],
+  payloadMass: 200,
+  fairingDiameter: 1.2,
+  dragCurve: SLENDER_ROCKET,
+  pitchProgram: MERIDIAN_TURN,
+  limits: { maxDynamicPressure: 50_000, maxAcceleration: 8, maxQAlpha: 30_000 },
+};
+
+/** Meridian with a timid 2° kick: it climbs too steeply and stages too high. */
+export const MERIDIAN_LOFTED: Vehicle = {
+  ...MERIDIAN,
+  name: "Meridian, 2° kick",
+  pitchProgram: { ...MERIDIAN_TURN, kickAngle: 2 },
+};
+
+/** Meridian kicking 12° at 100 m/s: turns over hard in thick air. */
+export const MERIDIAN_HARD_KICK: Vehicle = {
+  ...MERIDIAN,
+  name: "Meridian, 12° kick",
+  pitchProgram: { ...MERIDIAN_TURN, kickSpeed: 100, kickAngle: 12 },
+};
+
 export const VEHICLES: Record<string, Vehicle> = {
   pathfinder: PATHFINDER,
   "fat-fairing": PATHFINDER_FAT_FAIRING,
   "vac-bell": PATHFINDER_VAC_BELL,
   overfuelled: PATHFINDER_OVERFUELLED,
   "two-stage": PATHFINDER_TWO_STAGE,
+  meridian: MERIDIAN,
+  "meridian-lofted": MERIDIAN_LOFTED,
+  "meridian-hard-kick": MERIDIAN_HARD_KICK,
 };

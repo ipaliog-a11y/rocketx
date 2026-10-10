@@ -5,6 +5,9 @@ import { MU_EARTH, R_EARTH } from "../src/sim/constants.ts";
 import { debrief } from "../src/sim/debrief.ts";
 import { idealDeltaV, type Vehicle } from "../src/sim/vehicle.ts";
 import {
+  MERIDIAN,
+  MERIDIAN_HARD_KICK,
+  MERIDIAN_LOFTED,
   PATHFINDER,
   PATHFINDER_FAT_FAIRING,
   PATHFINDER_OVERFUELLED,
@@ -18,10 +21,11 @@ const near = (actual: number, expected: number, tolerance: number) =>
 const kinds = (v: Vehicle) => simulateAscent(v).events.map((e) => e.kind);
 
 test("burnout velocity equals delivered Δv minus every loss", () => {
-  for (const vehicle of [PATHFINDER, PATHFINDER_FAT_FAIRING, PATHFINDER_VAC_BELL, PATHFINDER_TWO_STAGE]) {
+  const vehicles = [PATHFINDER, PATHFINDER_FAT_FAIRING, PATHFINDER_VAC_BELL, PATHFINDER_TWO_STAGE, MERIDIAN, MERIDIAN_LOFTED];
+  for (const vehicle of vehicles) {
     const { summary } = simulateAscent(vehicle);
-    const { gravity, drag, backPressure } = summary.losses;
-    near(summary.burnoutVelocity, summary.idealDeltaV - gravity - drag - backPressure, 1e-6);
+    const { gravity, drag, backPressure, steering } = summary.losses;
+    near(summary.burnoutVelocity, summary.idealDeltaV - gravity - drag - backPressure - steering, 1e-6);
   }
 });
 
@@ -111,4 +115,63 @@ test("debrief names the physics, not a reliability score", () => {
   assert.match(text, /over-expanded/);
   assert.match(text, /Lost to back-pressure/);
   assert.doesNotMatch(text, /reliability/i);
+});
+
+test("a vertical flight stays on the pad's local vertical", () => {
+  const { samples, summary } = simulateAscent(PATHFINDER);
+  for (const x of samples) near(x.downrange, 0, 1e-6);
+  near(summary.losses.steering, 0, 1e-9);
+});
+
+test("Meridian's gravity turn reaches a stable orbit", () => {
+  const result = simulateAscent(MERIDIAN);
+  assert.equal(result.outcome, "orbit");
+  const orbit = result.summary.orbit!;
+  assert.ok(orbit.periapsis > 160_000, `periapsis ${orbit.periapsis}`);
+  assert.ok(orbit.eccentricity < 0.05);
+  const order = result.events.map((e) => e.kind).filter((k) => ["liftoff", "pitch-kick", "staging", "orbit"].includes(k));
+  assert.deepEqual(order, ["liftoff", "pitch-kick", "staging", "orbit"]);
+  assert.match(debrief(result, MERIDIAN), /^Orbit .* × .*, eccentricity/m);
+});
+
+test("the orbit converges as the step shrinks", () => {
+  const coarse = simulateAscent(MERIDIAN, { dt: 0.1 }).summary.orbit!;
+  const fine = simulateAscent(MERIDIAN, { dt: 0.01 }).summary.orbit!;
+  near(coarse.periapsis, fine.periapsis, 500);
+  near(coarse.apoapsis, fine.apoapsis, 500);
+});
+
+test("the pitch programme turns the trajectory over", () => {
+  const { samples } = simulateAscent(MERIDIAN);
+  const last = samples[samples.length - 1]!;
+  assert.ok(last.downrange > 500_000);
+  assert.ok(Math.abs(last.flightPathAngle) < 5, `ended at ${last.flightPathAngle}°`);
+  assert.ok(samples.some((x) => x.pitch < 89 && x.t < 30), "no kick in the first 30 s");
+});
+
+test("a timid kick lofts the vehicle and pays for it in gravity loss", () => {
+  const good = simulateAscent(MERIDIAN).summary;
+  const lofted = simulateAscent(MERIDIAN_LOFTED);
+  assert.equal(lofted.outcome, "apogee");
+  assert.ok(lofted.summary.losses.gravity > good.losses.gravity + 500);
+  assert.ok(lofted.summary.losses.steering > good.losses.steering);
+  assert.match(debrief(lofted, MERIDIAN_LOFTED), /Short of orbit/);
+});
+
+test("a hard kick in thick air blows the side-load budget", () => {
+  const result = simulateAscent(MERIDIAN_HARD_KICK);
+  assert.ok(result.events.some((e) => e.kind === "q-alpha-limit-exceeded"));
+  assert.ok(result.summary.maxQAlpha.value > MERIDIAN.limits.maxQAlpha!);
+  assert.ok(!simulateAscent(MERIDIAN).events.some((e) => e.kind === "q-alpha-limit-exceeded"));
+  assert.match(debrief(result, MERIDIAN_HARD_KICK), /turned while the air was still thick/);
+});
+
+test("a pitch schedule is followed", () => {
+  const scheduled: Vehicle = {
+    ...MERIDIAN,
+    pitchProgram: { kind: "schedule", points: [[0, 90], [10, 90], [110, 30], [400, 0]] },
+  };
+  const { samples } = simulateAscent(scheduled);
+  const at60 = samples.find((x) => Math.abs(x.t - 60) < 0.5)!;
+  near(at60.pitch, 60, 0.5);
 });
