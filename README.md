@@ -90,14 +90,14 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 
 | Strategy | Survive | Reach orbit | Median cash at end |
 |---|---|---|---|
-| careful | 30 | 30 | $30.4M |
-| greedy | 12 | 30 | −$0.7M |
-| cheap | 6 | 3 | $4.0M |
-| reckless | 18* | 1 | $4.8M |
+| careful | 30 | 30 | $35.3M |
+| greedy | 5 | 29 | −$1.3M |
+| cheap | 12 | 8 | $4.1M |
+| reckless | 17* | 0 | $4.7M |
 
-\* Reckless bots that never earn the orbital licence stop trying and sit on their cash, so they count as alive. Only one of 30 reached orbit.
+\* Reckless bots that never earn the orbital licence stop trying and sit on their cash, so they count as alive. None reached orbit.
 
-Testing pays, testing the wrong question costs nearly as much as not testing, and the greedy SSO bid kills more than half the companies. Before the generated board, careful survived 24 of 30 with $15.1M: with more work posted, careful play is now comfortable and the money has nothing to buy. That waits on things worth spending on (a second pad and production line, bigger vehicles) rather than lower payouts. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
+Since engines share parts, testing one Harrier teaches about the other, so careful play reaches orbit sooner (median day 322, down from 406) and richer. Failures are shared too: a flaw in the shared cycle, injector or liner sinks both stages, and the greedy SSO bid now kills 25 of 30. Testing pays, and testing the wrong question costs nearly as much as not testing. Before the generated board, careful survived 24 of 30 with $15.1M: with more work posted, careful play is now comfortable and the money has nothing to buy. That waits on things worth spending on (a second pad and production line, bigger vehicles) rather than lower payouts. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
 
 Not modelled yet: running jobs in parallel (building while testing), loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
 
