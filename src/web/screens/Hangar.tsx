@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { build, fly, type Company } from "../../sim/company.ts";
+import { fly, type Company } from "../../sim/company.ts";
 import { vehicleCost } from "../../sim/cost.ts";
 import { burnTime, idealDeltaV, stackMass } from "../../sim/vehicle.ts";
 import { LEO_300, SUBORBITAL_TEST } from "../../missions.ts";
@@ -143,7 +143,7 @@ function Design({ company, designKey }: { company: Company; designKey: string })
             : "Straight up the whole flight. A sounding rocket: it never turns over, so it can't reach orbit."}
         </p>
         <div className="actions">
-          <button type="button" className="btn primary" onClick={() => game.act((c) => build(c, designKey))}>
+          <button type="button" className="btn primary" onClick={() => game.askBuild(designKey)}>
             Build one · {money(cost)} · {days} days
           </button>
           <button

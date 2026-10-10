@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { reputation, summary } from "../sim/company.ts";
 import { COSTS } from "../sim/cost.ts";
+import { BuildConfirm } from "./components/BuildConfirm.tsx";
 import { game, useGame } from "./game.ts";
 import { money, signed } from "./format.ts";
 import { Board } from "./screens/Board.tsx";
@@ -97,6 +98,8 @@ export function App() {
           </div>
         ))}
       </div>
+
+      {state.pendingBuild && !company.dead && <BuildConfirm company={company} designKey={state.pendingBuild} />}
 
       {state.busy && <div className="busy">{state.busy}</div>}
 

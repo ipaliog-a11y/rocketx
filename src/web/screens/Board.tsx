@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { accept, bid, build, fly, posted, reputation, retune, wait, type Company } from "../../sim/company.ts";
+import { accept, bid, fly, posted, reputation, retune, wait, type Company } from "../../sim/company.ts";
 import type { Contract } from "../../sim/contracts.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { Chip, Facts } from "../components/Bits.tsx";
@@ -234,7 +234,7 @@ function BidPanel({
             Launch {b.designName}
           </button>
         )}
-        <button type="button" className="btn" onClick={() => game.act((c) => build(c, design))}>
+        <button type="button" className="btn" onClick={() => game.askBuild(design)}>
           Build · {money(b.build.cost)} · {b.build.days} d
         </button>
         {turns && contract.mission.target && open && (

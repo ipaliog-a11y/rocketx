@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { newCompany, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { build, newCompany, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { Vehicle } from "../sim/vehicle.ts";
 import { generateBoard, startingCash } from "../contracts.ts";
 import { MERIDIAN, PATHFINDER, PATHFINDER_FAT_FAIRING, PATHFINDER_TWO_STAGE } from "../vehicles.ts";
@@ -27,12 +27,14 @@ type State = {
   flight: { id: number; report: FlightReport; design: string } | null;
   notices: Notice[];
   busy: string | null;
+  /** A build waiting on the player's go-ahead: the design key. */
+  pendingBuild: string | null;
   version: number;
 };
 
 const SAVE_KEY = "rocketx.save.v1";
 
-let state: State = { company: load(), flight: null, notices: [], busy: null, version: 0 };
+let state: State = { company: load(), flight: null, notices: [], busy: null, pendingBuild: null, version: 0 };
 const listeners = new Set<() => void>();
 let nextNotice = 1;
 let nextFlight = 1;
@@ -107,6 +109,24 @@ export const game = {
       save();
       emit();
     }
+  },
+
+  /** Ask before a build: it spends money and calendar the player can't get back. */
+  askBuild(key: string): void {
+    state.pendingBuild = key;
+    emit();
+  },
+
+  cancelBuild(): void {
+    state.pendingBuild = null;
+    emit();
+  },
+
+  confirmBuild(): void {
+    const key = state.pendingBuild;
+    state.pendingBuild = null;
+    if (key) game.act((c) => build(c, key));
+    else emit();
   },
 
   /** Same as act, but shows a busy screen first: re-tunes take a few seconds. */
