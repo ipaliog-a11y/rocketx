@@ -4,13 +4,30 @@ import { settle, type Contract, type Settlement, type Tag } from "./contracts.ts
 import { COSTS, vehicleCost } from "./cost.ts";
 import { debrief } from "./debrief.ts";
 import type { Engine } from "./engine.ts";
-import { FAILURE_LABELS, rollTruths, type FailureMode } from "./hardware.ts";
+import { combineTruth, FAILURE_LABELS, rollPartTruths, rollTruths, type FailureMode } from "./hardware.ts";
 import type { Mission } from "./mission.ts";
 import { holds, LICENCE_LABELS, LICENCE_COSTS, missionLicence, nextLicence, requiredLicence, type Licence } from "./licence.ts";
+import {
+  assembleEngine,
+  developmentCost,
+  INJECTORS,
+  NOZZLES,
+  parsePartKey,
+  partKeys,
+  partLabel,
+  partsProblems,
+  type EngineParts,
+  type InjectorOption,
+  type NozzleOption,
+} from "./parts.ts";
 import { learnFromFlight } from "./telemetry.ts";
 import {
   applyFix,
   believedHardware,
+  enginesUsing,
+  partKnowledgeOf,
+  refreshFromParts,
+  revisionLetter,
   flightUnknowns,
   hotFire,
   newCampaign,
@@ -32,7 +49,7 @@ import type { Vehicle } from "./vehicle.ts";
  * company can no longer afford a vehicle that could get there.
  */
 
-export type Category = "test" | "fix" | "analysis" | "build" | "launch" | "licence" | "overhead" | "payout" | "penalty";
+export type Category = "test" | "fix" | "rnd" | "analysis" | "build" | "launch" | "licence" | "overhead" | "payout" | "penalty";
 
 /** How a contract ended. "withdrawn" is a series instance the customer pulled after a failure. */
 export type Closed = "delivered" | "degraded" | "failed" | "late" | "withdrawn";
@@ -90,7 +107,10 @@ export function newCompany(
   board: Contract[],
   name = "Untitled Launch Co.",
 ): Company {
-  const campaign = newCampaign(rollTruths(engines, seed), rollAeroTruths(Object.values(designs), seed));
+  const campaign = newCampaign(rollTruths(engines, seed), rollAeroTruths(Object.values(designs), seed), {
+    engines,
+    partTruth: rollPartTruths(engines, seed),
+  });
   return {
     name,
     seed,
@@ -232,6 +252,101 @@ function viaCampaign<T>(company: Company, category: Category, note: string, act:
 }
 
 export type ActionResult = { text: string; notices: string[] };
+
+/** What refining a part costs, and how far it can go. */
+export const REFINE = { cost: 120, days: 15, max: 3, step: 0.006 };
+
+/** Every part some engine of the company's is built from: developed, so free to reuse. */
+export function developedParts(company: Company): string[] {
+  return [...new Set(Object.values(company.campaign.engines).flatMap((e) => (e.parts ? Object.values(partKeys(e.parts)) : [])))];
+}
+
+/**
+ * Develop a new engine from parts. Parts the company already builds come
+ * free, with everything tests have learned about them; new parts cost
+ * development money and time, and bring new unknowns.
+ */
+export function developEngine(company: Company, parts: EngineParts, name: string): ActionResult {
+  alive(company);
+  const clean = name.trim();
+  if (clean.length === 0) throw new Error("The engine needs a name.");
+  if (company.campaign.engines[clean]) throw new Error(`There is already an engine called ${clean}.`);
+  const problems = partsProblems(parts);
+  if (problems.length > 0) throw new Error(problems.join(" "));
+  const { cost, days, newParts } = developmentCost(parts, developedParts(company));
+  const engine = assembleEngine(parts, clean);
+  const notices = charge(company, "rnd", cost, days, `${clean} development`);
+  rollPartTruths([engine], company.seed, company.campaign.partTruth);
+  company.campaign.truth[clean] = combineTruth(engine, company.campaign.partTruth);
+  company.campaign.engines[clean] = engine;
+  refreshFromParts(company.campaign);
+  const reused = 4 - newParts.length;
+  return {
+    text: `${clean} developed: ${(engine.thrustVac / 1000).toFixed(1)} kN, Isp ${engine.ispVac} s on paper. ${newParts.length === 0 ? "Every part was already in production." : `New parts: ${newParts.map(partLabel).join(", ")}.`}${reused > 0 ? ` ${reused} part${reused === 1 ? "" : "s"} reused, with what tests know about them.` : ""} ${money(cost)}, ${days} days.`,
+    notices,
+  };
+}
+
+/**
+ * Refine an injector or nozzle: tune elements and contour against measured
+ * Isp. Each round closes part of the gap to the best the part can do, and
+ * the gain is only known once it is measured again.
+ */
+export function refinePart(company: Company, key: string): ActionResult {
+  alive(company);
+  const { slot, option } = parsePartKey(key);
+  if (slot !== "injector" && slot !== "nozzle") throw new Error("Only injectors and nozzles can be refined: they set how much of the design Isp the engine delivers.");
+  const users = enginesUsing(company.campaign, key);
+  if (users.length === 0) throw new Error(`No engine uses ${partLabel(key)}.`);
+  const part = partKnowledgeOf(company.campaign, key);
+  if (part.refinements >= REFINE.max) throw new Error(`${partLabel(key)} has been refined as far as it goes.`);
+  if (!users.some((e) => company.campaign.knowledge[e.name]?.measuredIspFactor != null)) {
+    throw new Error(`Measure Isp on an engine with ${partLabel(key)} first: refining needs to know how far off it is.`);
+  }
+  const top = slot === "injector" ? INJECTORS[option as InjectorOption].isp[1] : NOZZLES[option as NozzleOption].ispRange[1];
+  const truth = company.campaign.partTruth[key];
+  if (truth) {
+    const before = truth.ispFactor;
+    const after = Math.min(top, before + REFINE.step);
+    truth.ispFactor = after;
+    for (const e of users) {
+      const t = company.campaign.truth[e.name];
+      if (t) t.ispFactor *= after / before;
+    }
+  }
+  for (const e of users) {
+    const k = company.campaign.knowledge[e.name];
+    if (k) k.measuredIspFactor = null;
+  }
+  part.refinements += 1;
+  part.revision += 1;
+  part.notes.push(`${revisionLetter(part.revision)}: refined against measured Isp.`);
+  const notices = charge(company, "rnd", REFINE.cost, REFINE.days, `${partLabel(key)} refinement`);
+  return {
+    text: `${partLabel(key)} goes to ${revisionLetter(part.revision)}: elements and contour tuned against the measured Isp. Fire it again to see what it gained. ${money(REFINE.cost)}, ${REFINE.days} days.`,
+    notices,
+  };
+}
+
+/**
+ * Put a different engine on one stage of a design. Same tanks and engine
+ * count; the thrust, Isp and burn time change, so the trajectory wants a
+ * re-tune. Only while none of the design are built: vehicles on the ground
+ * keep the engines they were built with.
+ */
+export function reengine(company: Company, key: string, stageIndex: number, engineName: string): ActionResult {
+  alive(company);
+  const design = designOf(company, key);
+  const stage = design.stages[stageIndex];
+  if (!stage) throw new Error(`${design.name} has no stage ${stageIndex + 1}.`);
+  const engine = company.campaign.engines[engineName];
+  if (!engine) throw new Error(`No engine called ${engineName}.`);
+  if ((company.inventory[key] ?? 0) > 0) throw new Error(`${design.name} vehicles are already built with the old engines. Fly them first.`);
+  if (stage.engine.name === engine.name) return { text: `${stage.name} already flies the ${engine.name}.`, notices: [] };
+  const was = stage.engine.name;
+  company.designs[key] = { ...design, stages: design.stages.map((s, i) => (i === stageIndex ? { ...s, engine } : s)) };
+  return { text: `${design.name}: ${stage.name} now flies ${stage.engineCount} × ${engine.name} instead of ${was}. Re-tune the trajectory before an orbital flight.`, notices: [] };
+}
 
 /** Rename the company. Customers don't mind. */
 export function rename(company: Company, name: string): void {
@@ -574,6 +689,7 @@ export function summary(company: Company): string {
   const labels: Record<Category, string> = {
     test: "Tests",
     fix: "Fixes",
+    rnd: "R&D",
     analysis: "Analysis",
     build: "Vehicles built",
     launch: "Launch fees",

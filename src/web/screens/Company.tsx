@@ -3,7 +3,7 @@ import { achievements, type Achievement } from "../../sim/achievements.ts";
 import { reputation, type Category, type Company as CompanyState } from "../../sim/company.ts";
 import { LICENCE_LABELS, LICENCE_ORDER, licenceRank, nextLicence } from "../../sim/licence.ts";
 import { Chip, Stack, Tabs } from "../components/Bits.tsx";
-import { DESIGNS, game } from "../game.ts";
+import { game } from "../game.ts";
 import { licenceJob } from "../jobs.ts";
 import { money, shortDate, signed } from "../format.ts";
 import { LABELS, LedgerTab } from "./LedgerTab.tsx";
@@ -13,6 +13,7 @@ type Tab = "overview" | "achievements" | "ledger";
 /** Spend categories, in the order and colours the money bar uses. */
 const SPEND: Array<[Category, string]> = [
   ["build", "#5bb8e3"],
+  ["rnd", "#d9c35b"],
   ["test", "#f0a43a"],
   ["fix", "#c9822a"],
   ["analysis", "#8a6bd1"],
@@ -277,7 +278,7 @@ function FleetCard({ company }: { company: CompanyState }) {
             </tr>
           </thead>
           <tbody>
-            {Object.entries(DESIGNS).map(([key, v]) => (
+            {Object.entries(company.designs).map(([key, v]) => (
               <tr key={key}>
                 <td>{v.name}</td>
                 <td className="num">{company.built[key] ?? 0}</td>

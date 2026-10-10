@@ -1,14 +1,14 @@
-import { applyForLicence, build, fire, fixAero, fixEngine, fly, retune, tunnel, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { applyForLicence, build, developEngine, refinePart, REFINE, fire, fixAero, fixEngine, fly, retune, tunnel, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { COSTS, vehicleCost } from "../sim/cost.ts";
 import type { Engine } from "../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../sim/hardware.ts";
 import { LICENCE_LABELS, type Application } from "../sim/licence.ts";
+import { partLabel, type EngineParts } from "../sim/parts.ts";
 import type { Mission } from "../sim/mission.ts";
 import { FACILITIES, FIXES, HARDWARE_LOSS, type Facility } from "../sim/teststand.ts";
 import { AERO_FACILITIES, BUFFET_FIX, type AeroFacility } from "../sim/tunnel.ts";
 import { RETUNE_COST } from "../sim/tuning.ts";
-import { DESIGNS } from "./designs.ts";
 import { money } from "./format.ts";
 
 /**
@@ -62,8 +62,8 @@ export function deadlineRisks(company: Company, days: number, forContract?: stri
 
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export function buildJob(key: string): Job {
-  const v = DESIGNS[key]!;
+export function buildJob(company: Company, key: string): Job {
+  const v = company.designs[key]!;
   const { cost, days } = vehicleCost(v);
   return { title: `Build a ${v.name}?`, doing: `Building a ${v.name}`, verb: "Build", days, cost, alwaysAsk: true, run: (c) => build(c, key) };
 }
@@ -116,10 +116,11 @@ export function fixAeroJob(key: string, shape: string): Job {
   };
 }
 
-export function retuneJob(key: string, contract: Contract): Job {
+export function retuneJob(company: Company, key: string, contract: Contract): Job {
+  const v = company.designs[key]!;
   return {
-    title: `Re-tune the ${DESIGNS[key]!.name} for ${contract.payloadMass} kg?`,
-    doing: `Re-tuning the ${DESIGNS[key]!.name}'s pitch programme`,
+    title: `Re-tune the ${v.name} for ${contract.payloadMass} kg?`,
+    doing: `Re-tuning the ${v.name}'s pitch programme`,
     verb: "Re-tune",
     days: RETUNE_COST.days,
     cost: RETUNE_COST.cost,
@@ -128,8 +129,8 @@ export function retuneJob(key: string, contract: Contract): Job {
   };
 }
 
-export function launchJob(key: string, contract: Contract, onDone: (r: FlightReport) => void): Job<FlightReport> {
-  const v = DESIGNS[key]!;
+export function launchJob(company: Company, key: string, contract: Contract, onDone: (r: FlightReport) => void): Job<FlightReport> {
+  const v = company.designs[key]!;
   return {
     title: `Launch the ${v.name} for ${contract.customer}?`,
     doing: `${v.name} on the pad`,
@@ -142,8 +143,8 @@ export function launchJob(key: string, contract: Contract, onDone: (r: FlightRep
   };
 }
 
-export function testFlightJob(key: string, mission: Mission, onDone: (r: FlightReport) => void): Job<FlightReport> {
-  const v = DESIGNS[key]!;
+export function testFlightJob(company: Company, key: string, mission: Mission, onDone: (r: FlightReport) => void): Job<FlightReport> {
+  const v = company.designs[key]!;
   return {
     title: `Fly the ${v.name} as a test flight?`,
     doing: `${v.name} on the pad`,
@@ -169,5 +170,33 @@ export function licenceJob(application: Application): Job {
     cost: application.fee,
     alwaysAsk: true,
     run: (c) => applyForLicence(c),
+  };
+}
+
+export function developJob(parts: EngineParts, name: string, quote: { cost: number; days: number; newParts: string[] }): Job {
+  return {
+    title: `Develop the ${name}?`,
+    doing: `Developing the ${name}${quote.newParts.length > 0 ? `: ${quote.newParts.length} new part${quote.newParts.length === 1 ? "" : "s"}` : ""}`,
+    verb: "Develop",
+    days: quote.days,
+    cost: quote.cost,
+    alwaysAsk: true,
+    caveat:
+      quote.newParts.length > 0
+        ? `New parts bring new unknowns: ${quote.newParts.map(partLabel).join(", ")}. Nothing about them is proven until they fire.`
+        : "Every part is already in production, with what tests have learned about it.",
+    run: (c) => developEngine(c, parts, name),
+  };
+}
+
+export function refineJob(key: string): Job {
+  return {
+    title: `Refine the ${partLabel(key)}?`,
+    doing: `Refining the ${partLabel(key)}`,
+    verb: "Refine",
+    days: REFINE.days,
+    cost: REFINE.cost,
+    caveat: "The gain only shows once Isp is measured again: the next firing or flight.",
+    run: (c) => refinePart(c, key),
   };
 }

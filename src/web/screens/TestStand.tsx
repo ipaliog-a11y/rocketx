@@ -3,20 +3,26 @@ import type { Company } from "../../sim/company.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { flowSeparates, type Engine } from "../../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../../sim/hardware.ts";
-import { FACILITIES, FIXES, HARDWARE_LOSS, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
+import { partKeys, partLabel } from "../../sim/parts.ts";
+import { FACILITIES, FIXES, HARDWARE_LOSS, revisionLetter, seenAt as seenAtKnown, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
 import { burnTime } from "../../sim/vehicle.ts";
-import { Chip, ProofBar } from "../components/Bits.tsx";
+import { Chip, ProofBar, Tabs } from "../components/Bits.tsx";
 import { isVacuumBell, Nozzle } from "../components/Rocket.tsx";
-import { DESIGNS, game } from "../game.ts";
+import { game } from "../game.ts";
 import { fireJob, fixEngineJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
+import { EngineShop } from "./EngineShop.tsx";
+import { Parts } from "./Parts.tsx";
 
 type EngineUse = { engine: Engine; burn: number; upper: boolean; usedBy: string[] };
 
-/** Every engine the company's designs use, with the longest burn any of them asks of it. */
-function engineUses(): EngineUse[] {
+/**
+ * Every engine the company has, with the longest burn any design asks of it.
+ * An engine no design flies yet is planned against its rated life.
+ */
+function engineUses(company: Company): EngineUse[] {
   const uses = new Map<string, EngineUse>();
-  for (const design of Object.values(DESIGNS)) {
+  for (const design of Object.values(company.designs)) {
     design.stages.forEach((stage, i) => {
       const u = uses.get(stage.engine.name) ?? { engine: stage.engine, burn: 0, upper: false, usedBy: [] };
       u.burn = Math.max(u.burn, burnTime(stage));
@@ -25,33 +31,57 @@ function engineUses(): EngineUse[] {
       uses.set(stage.engine.name, u);
     });
   }
+  for (const engine of Object.values(company.campaign.engines)) {
+    if (!uses.has(engine.name)) uses.set(engine.name, { engine, burn: engine.ratedLife ?? 120, upper: engine.exitPressure < 40_000, usedBy: [] });
+  }
   return [...uses.values()];
 }
 
-/** When the stand last saw an open failure mode, seconds into the firing. */
-function seenAt(known: EngineKnowledge | undefined, mode: FailureMode): number | undefined {
-  if (!known?.open.includes(mode)) return undefined;
-  return [...known.history].reverse().flatMap((r) => r.findings).find((f) => f.mode === mode)?.t;
-}
+/** When an open failure mode shows up, seconds into the firing: seen on this engine or on one sharing the part. */
+const seenAt = (known: EngineKnowledge | undefined, mode: FailureMode): number | undefined => seenAtKnown(known, mode);
 
 function statusOf(known: EngineKnowledge | undefined, burn: number): { text: string; tone: "good" | "warn" | "bad" | "muted" } {
-  if (!known || known.firings === 0) return { text: "NEVER FIRED", tone: "muted" };
-  if (known.open.length > 0) return { text: known.open.map((m) => FAILURE_LABELS[m].toUpperCase()).join(" · "), tone: "bad" };
+  if (known && known.open.length > 0) return { text: known.open.map((m) => FAILURE_LABELS[m].toUpperCase()).join(" · "), tone: "bad" };
+  const inherited = known !== undefined && (known.startupProven || known.provenDuration > 0);
+  if (!known || (known.firings === 0 && !inherited)) return { text: "NEVER FIRED", tone: "muted" };
   if (known.provenDuration >= burn && known.measuredIspFactor !== null) return { text: "PROVEN", tone: "good" };
   return { text: "PARTLY PROVEN", tone: "warn" };
 }
 
-export function TestStand({ company }: { company: Company }) {
-  const uses = engineUses();
-  const [selected, setSelected] = useState(uses[0]!.engine.name);
-  const use = uses.find((u) => u.engine.name === selected) ?? uses[0]!;
+type Tab = "firing" | "shop" | "parts";
 
+export function TestStand({ company }: { company: Company }) {
+  const [tab, setTab] = useState<Tab>("firing");
   return (
     <div className="screen">
       <div className="screen-head">
         <h1>Test stand</h1>
-        <span className="muted">A firing proves only what it reaches. Bars show proven running against the longest flight burn.</span>
+        <Tabs<Tab>
+          label="Test stand views"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            ["firing", "Firing"],
+            ["shop", "Engine shop"],
+            ["parts", "Parts"],
+          ]}
+        />
       </div>
+      {tab === "firing" && <Firing company={company} />}
+      {tab === "shop" && <EngineShop company={company} done={() => setTab("firing")} />}
+      {tab === "parts" && <Parts company={company} />}
+    </div>
+  );
+}
+
+function Firing({ company }: { company: Company }) {
+  const uses = engineUses(company);
+  const [selected, setSelected] = useState(uses[0]!.engine.name);
+  const use = uses.find((u) => u.engine.name === selected) ?? uses[0]!;
+
+  return (
+    <>
+      <span className="muted">A firing proves only what it reaches. Bars show proven running against the longest flight burn. Engines that share a part share what the stand learns about it.</span>
       <div className="row">
         <section className="side stack" aria-label="Engines" style={{ flexBasis: 420 }}>
           {uses.map((u) => {
@@ -75,8 +105,9 @@ export function TestStand({ company }: { company: Company }) {
                     <Chip tone={st.tone}>{st.text}</Chip>
                   </span>
                   <span className="muted" style={{ fontSize: 14 }}>
-                    {u.usedBy.join(" / ")} · {u.burn.toFixed(0)} s burn
+                    {u.usedBy.length > 0 ? `${u.usedBy.join(" / ")} · ${u.burn.toFixed(0)} s burn` : `No design flies it yet · ${u.burn.toFixed(0)} s rated`}
                   </span>
+                  {u.engine.parts && <PartLine company={company} engine={u.engine} />}
                   <ProofBar
                     proven={known?.provenDuration ?? 0}
                     required={u.burn}
@@ -90,7 +121,22 @@ export function TestStand({ company }: { company: Company }) {
         </section>
         <EngineDetail key={use.engine.name} company={company} use={use} />
       </div>
-    </div>
+    </>
+  );
+}
+
+/** The engine's parts in one line, with their revisions. */
+function PartLine({ company, engine }: { company: Company; engine: Engine }) {
+  const keys = partKeys(engine.parts!);
+  return (
+    <span className="soft" style={{ fontSize: 13 }}>
+      {Object.values(keys)
+        .map((k) => {
+          const rev = company.campaign.parts[k]?.revision ?? 0;
+          return `${partLabel(k).split(" · ")[0]}${rev > 0 ? ` ${revisionLetter(rev)}` : ""}`;
+        })
+        .join(" · ")}
+    </span>
   );
 }
 
@@ -162,7 +208,7 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
             {fix ? (
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 20px" }}>
                 <span style={{ flex: "1 1 260px" }}>
-                  <strong>Fix: {fix.name}.</strong> <span className="soft">{fix.text} Earlier firings stop counting.</span>
+                  <strong>Fix: {fix.name}.</strong> <span className="soft">{fix.text} {engine.parts ? "A new revision of the part: every engine built with it gets the fix, and what was proven about that part has to be proven again." : "Earlier firings stop counting."}</span>
                 </span>
                 <span className="mono soft">
                   {money(fix.cost)} · {fix.days} days

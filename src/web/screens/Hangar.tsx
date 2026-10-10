@@ -1,12 +1,12 @@
 import { useState } from "react";
-import type { Company } from "../../sim/company.ts";
+import { reengine, type Company } from "../../sim/company.ts";
 import { holds, missionLicence } from "../../sim/licence.ts";
 import { vehicleCost } from "../../sim/cost.ts";
 import { burnTime, idealDeltaV, stackMass } from "../../sim/vehicle.ts";
 import { LEO_300, SUBORBITAL_TEST } from "../../missions.ts";
 import { Chip, Facts, Stack, Tabs } from "../components/Bits.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
-import { DESIGNS, game } from "../game.ts";
+import { game } from "../game.ts";
 import { buildJob, testFlightJob } from "../jobs.ts";
 import { km, money } from "../format.ts";
 
@@ -49,7 +49,7 @@ function LineUp({ company, open }: { company: Company; open: (key: string) => vo
         Every design to the same scale. Choose one to open its drawing.
       </p>
       <div className="card blueprint" style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-around", gap: 28, paddingBottom: 0, position: "relative" }}>
-        {Object.entries(DESIGNS).map(([key, v]) => {
+        {Object.entries(company.designs).map(([key, v]) => {
           const dv = idealDeltaV(v).reduce((a, b) => a + b, 0);
           const stock = company.inventory[key] ?? 0;
           return (
@@ -81,7 +81,7 @@ function LineUp({ company, open }: { company: Company; open: (key: string) => vo
 const COLOURS = ["#e8ecef", "#5bb8e3", "#2e6e8e", "#f0a43a", "#8a5a1e"];
 
 function Design({ company, designKey }: { company: Company; designKey: string }) {
-  const v = DESIGNS[designKey]!;
+  const v = company.designs[designKey]!;
   const { cost, days } = vehicleCost(v);
   const dv = idealDeltaV(v);
   const total = dv.reduce((a, b) => a + b, 0);
@@ -123,6 +123,7 @@ function Design({ company, designKey }: { company: Company; designKey: string })
             ["Build", `${money(cost)} · ${days} d`],
           ]}
         />
+        <Engines company={company} designKey={designKey} />
         <div className="stack" style={{ gap: 8 }}>
           <p className="label">Where the mass goes at liftoff</p>
           <Stack parts={mass} label={mass.map((m) => m.name).join(", ")} />
@@ -145,7 +146,7 @@ function Design({ company, designKey }: { company: Company; designKey: string })
             : "Straight up the whole flight. A sounding rocket: it never turns over, so it can't reach orbit."}
         </p>
         <div className="actions">
-          <button type="button" className="btn primary" onClick={() => game.schedule(buildJob(designKey))}>
+          <button type="button" className="btn primary" onClick={() => game.schedule(buildJob(company, designKey))}>
             Build one · {money(cost)} · {days} days
           </button>
           <button
@@ -153,7 +154,7 @@ function Design({ company, designKey }: { company: Company; designKey: string })
             className="btn"
             disabled={stock === 0 || !holds(company, missionLicence(mission))}
             title={!holds(company, missionLicence(mission)) ? "Orbital test flights need the orbital licence" : stock === 0 ? `Build a ${v.name} first` : undefined}
-            onClick={() => game.schedule(testFlightJob(designKey, mission, (r) => game.showFlight(r, designKey)))}
+            onClick={() => game.schedule(testFlightJob(company, designKey, mission, (r) => game.showFlight(r, designKey)))}
           >
             Test flight · {mission.target ? `LEO ${km(mission.target.apoapsis, 0)}` : "straight up"}
           </button>
@@ -169,7 +170,7 @@ function Design({ company, designKey }: { company: Company; designKey: string })
 function Record({ company }: { company: Company }) {
   return (
     <section className="row" aria-label="Flight record">
-      {Object.entries(DESIGNS).map(([key, v]) => {
+      {Object.entries(company.designs).map(([key, v]) => {
         const xp = company.experience[key];
         const flights = company.flights.filter((f) => f.design === v.name);
         return (
@@ -206,5 +207,74 @@ function Record({ company }: { company: Company }) {
         );
       })}
     </section>
+  );
+}
+
+/**
+ * Which engine each stage flies. Swapping keeps the tanks and engine count,
+ * so the preview shows what changes: thrust to weight, burn time and Δv.
+ */
+function Engines({ company, designKey }: { company: Company; designKey: string }) {
+  const v = company.designs[designKey]!;
+  const engines = Object.values(company.campaign.engines);
+  const [picks, setPicks] = useState<Record<number, string>>({});
+  const built = company.inventory[designKey] ?? 0;
+  const g = 9.80665;
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <p className="label">Engines</p>
+      {v.stages.map((stage, i) => {
+        const pick = picks[i] ?? stage.engine.name;
+        const engine = company.campaign.engines[pick] ?? stage.engine;
+        const preview = { ...v, stages: v.stages.map((s, j) => (j === i ? { ...s, engine } : s)) };
+        const mass = stackMass(preview, i);
+        const tw = (engine.thrustVac * stage.engineCount) / (mass * g);
+        const dvNow = idealDeltaV(v)[i]!;
+        const dvNew = idealDeltaV(preview)[i]!;
+        const changed = pick !== stage.engine.name;
+        return (
+          <div key={i} className="card" style={{ padding: "12px 14px", gap: 8, background: "var(--raised)" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 14px", alignItems: "center" }}>
+              <strong style={{ flex: "1 1 140px" }}>
+                {stage.name} · {stage.engineCount} ×
+              </strong>
+              <label className="sr-only" htmlFor={`engine-${i}`}>
+                Engine for {stage.name}
+              </label>
+              <select id={`engine-${i}`} value={pick} onChange={(e) => setPicks({ ...picks, [i]: e.target.value })} style={{ flex: "2 1 200px" }}>
+                {engines.map((e) => (
+                  <option key={e.name} value={e.name}>
+                    {e.name} · {(e.thrustVac / 1000).toFixed(1)} kN · {e.ispVac} s
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="mono soft" style={{ fontSize: 13 }}>
+              T/W {tw.toFixed(2)} · burn {burnTime(preview.stages[i]!).toFixed(0)} s · Δv {(dvNew / 1000).toFixed(2)} km/s
+              {changed && <span className={dvNew >= dvNow ? "good" : "bad"}> ({dvNew >= dvNow ? "+" : "−"}{Math.abs(dvNew - dvNow).toFixed(0)} m/s)</span>}
+            </span>
+            {changed && (
+              <div className="actions">
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={built > 0}
+                  onClick={() => game.act((c) => reengine(c, designKey, i, pick), () => setPicks({ ...picks, [i]: pick }))}
+                >
+                  Fit {pick}
+                </button>
+                {built > 0 ? (
+                  <span className="muted" style={{ fontSize: 14 }}>
+                    {built} built with the old engines. Fly them first.
+                  </span>
+                ) : (
+                  i === 0 && tw < 1.2 && <span className="bad" style={{ fontSize: 14 }}>Too little thrust to leave the pad well.</span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

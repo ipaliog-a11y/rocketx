@@ -10,7 +10,7 @@ This repo holds early design decisions only. Nothing here is a build spec.
 |---|---|
 | [README.md](README.md) | Pitch, pillars, non-goals, loop |
 | [DESIGN.md](DESIGN.md) | Decisions from the first design pass, with rationale |
-| [src/sim/](src/sim/) | Simulation core: atmosphere, aero, engines, ascent, debrief |
+| [src/sim/](src/sim/) | Simulation core: atmosphere, aero, engines and their parts, ascent, debrief |
 
 ## Pitch
 
@@ -71,7 +71,7 @@ The trajectory stays in one plane. Plane changes, the out-of-plane part of the p
 
 - Pitch programme re-tuning. The trajectory office searches the gravity turn's kick angle and upper-stage ramp against the company's model of the vehicle: measured Isp and drag where tests measured them, the drawings where not, and known buffet. Inside half the tolerance it prefers propellant margin. Engine failures are left out, since no pitch steers around them. A re-tune is adopted only if its prediction reaches orbit
 
-A re-tune is only as good as the testing behind it. Tuned on the drawings and flown on real engines, Meridian misses. With accurate test data and engine failures set aside, re-tuning takes it from 0 to 13 of 25 seeds in spec. Of the rest, 3 buffet whatever the pitch, and 9 lack the Δv for a 200 kg payload once real Isp is known.
+A re-tune is only as good as the testing behind it. Tuned on the drawings and flown on real engines, Meridian misses. With accurate test data and engine failures set aside, re-tuning took it from 0 to 13 of 25 seeds in spec (measured before engines were built from parts). Of the rest, 3 buffet whatever the pitch, and 9 lack the Δv for a 200 kg payload once real Isp is known.
 
 - Company and contracts. Cash, a calendar, and a reputation record tagged by what happened. One stand, one tunnel, one pad and one build shop, used one job at a time. A seeded board offers suborbital crumbs, LEO work, an SSO contract that punishes a greedy bid, and an equatorial customer the pad can't serve. Contracts have payouts, penalties, deadlines, a reputation bar, and customers who refuse certain records
 - The bid screen shows what a contract pays and risks, the build cost, regimes the design has never flown, everything on trust, and a forecast with the contract's payload
@@ -79,6 +79,9 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 - The run ends when the cash goes negative. The summary breaks down where the money went and what the record says
 - Launch licences. A new company holds only the suborbital licence. The orbital one needs two flights above 100 km without losing the vehicle, a reputation of 0 or better, $250k and a 20-day review. Orbital contracts and orbital test flights are refused without it. A crewed-flight tier is on the map, but nothing can earn it yet
 - A generated board on top of the hand-tested contracts: about 80 contracts per seed over three years, across sounding science, microgravity, technology demos, rideshares, smallsats, weather, constellations, space agencies and crew. Payloads and orbits stay inside what the preset launchers reach with typical engines, with a margin. Recurring series (a university's aurora campaign, three constellations, the rideshare broker) post an instance every month or two. Deliver one and the rest pay 5% more; fail or miss one and the customer withdraws the rest
+- Engines built from parts. An engine is a chamber size (9, 25, 35 or 50 kN) plus four parts: a feed cycle (pressure-fed, electric pump, gas generator), an injector (showerhead, pintle, coaxial swirl), chamber cooling (ablative liner, film, regenerative) and a nozzle (sea-level, altitude, vacuum, large vacuum). Each option publishes ranges, and each hidden quirk belongs to the part that causes it: hard start to the cycle, instability to the injector, chamber life to the cooling, flow separation to the nozzle, and the Isp shortfall to injector and nozzle. A part is one option at one size, so sister engines share parts: the two Harriers share cycle, injector and cooling
+- What tests learn lands on the parts. Firing Harrier-SL proves its injector for Harrier-Vac too; a burn-through at 60% of one engine's rated life predicts 60% of its sister's. A fix is a new revision of the part that owns the mode, paid once and applied to every engine built with it, and only that part's proof has to be redone
+- Engine development: put parts together into a new engine. Parts already in production are free to reuse and come with what tests know; new parts cost development money and time and start unproven. Refining an injector or nozzle (R&D against measured Isp) closes part of the gap to the top of its range, up to three times, and the gain has to be measured again. A design's stage can be re-engined while none of it is built
 - Achievements worked out from the record: first firing, first flight above 100 km, first orbit, the orbital licence, a fleet of five, $10M earned, a completed series and so on
 
 ## Balance
@@ -110,7 +113,9 @@ A React + Vite front end (`src/web/`) on the same sim code the tests and the com
 - **Company:** the company's name (editable), its numbers, the licence ladder with an Apply button, where the money went, the fleet, achievements and the ledger.
 - **Contracts:** a filterable table and a month calendar of postings and deadlines, with a bid panel that only signs.
 - **Launch:** build, re-tune and fly signed contracts.
-- **Hangar, Test stand, Tunnel:** design drawings, engine firings and wind-tunnel runs.
+- **Hangar:** design drawings, with an engine picker per stage that previews thrust to weight and Δv.
+- **Test stand:** firings, an Engine shop to develop engines from parts, and a Parts tab with each part's revision, record and maturity (prototype, fired, qualified, flight-proven).
+- **Tunnel:** wind-tunnel and CFD runs.
 
 Anything that uses up days asks first when it would cost a signed contract its deadline, then plays a short progress bar while the days pass. Launches replay the flight the sim just flew, then show the debrief. The run saves to the browser's local storage. `npm run build` writes a static site to `dist/`.
 
@@ -133,9 +138,9 @@ npm run sim -- pathfinder --json
 # fix:aero:transonic-buffet fixes something a test found, retune re-tunes the pitch
 # programme from what has been measured so far. --reveal shows the hidden truth.
 npm run campaign -- meridian --seed 1
-npm run campaign -- meridian --seed 1 harrier-sl@140 harrier-vac@5/altitude \
-  fix:harrier-vac:hard-start harrier-vac@280/altitude --reveal
-npm run campaign -- meridian --seed 7 harrier-sl@140 harrier-vac@280/altitude \
+npm run campaign -- meridian --seed 6 harrier-sl@5 fix:harrier-sl:hard-start \
+  harrier-vac@280/altitude --reveal       # the Harriers share a cycle: one fix covers both
+npm run campaign -- meridian --seed 4 harrier-sl@140 harrier-vac@280/altitude \
   tunnel:transonic retune                                     # re-tune from what was measured
 npm run campaign -- fat-fairing --seed 1 tunnel:cfd          # CFD misses the buffet
 
@@ -143,7 +148,7 @@ npm run campaign -- fat-fairing --seed 1 tunnel:cfd          # CFD misses the bu
 # and calendar. See src/company.ts for every step.
 npm run company -- --seed 3 board brief:sounding:pathfinder accept:sounding \
   build:pathfinder fly:pathfinder:sounding build:pathfinder fly:pathfinder \
-  licence accept:leo-150 harrier-sl@140 \
+  licence accept:leo-150 harrier-sl@5 fix:harrier-sl:hard-start harrier-sl@140 \
   harrier-vac@280/altitude tunnel:meridian:transonic \
   fix:aero:meridian:transonic-buffet tunnel:meridian:transonic \
   retune:meridian:leo-150 build:meridian fly:meridian:leo-150

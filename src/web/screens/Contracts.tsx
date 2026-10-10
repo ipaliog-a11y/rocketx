@@ -5,7 +5,7 @@ import { COSTS } from "../../sim/cost.ts";
 import { holds, LICENCE_LABELS, requiredLicence, type Licence } from "../../sim/licence.ts";
 import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
 import { Chip, Facts, Tabs } from "../components/Bits.tsx";
-import { DESIGNS, defaultDesign, game } from "../game.ts";
+import { defaultDesign, game } from "../game.ts";
 import { waitJob } from "../jobs.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
 
@@ -378,7 +378,7 @@ function BidPanel({ company, version, contract, design, setDesign, goTo }: { com
         <span className="soft">Announced: the customer posts this on day {contract.postedDay}. You can sign it then.</span>
       ) : (
         <>
-          <DesignSelect label="Bid it with" value={design} onChange={setDesign} designs={DESIGNS} inventory={company.inventory} />
+          <DesignSelect label="Bid it with" value={design} onChange={setDesign} designs={company.designs} inventory={company.inventory} />
           {open && <Schedule day={company.day} deadline={contract.deadline} b={b} />}
           {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
           <Findings b={b} />

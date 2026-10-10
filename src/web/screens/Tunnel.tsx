@@ -7,7 +7,7 @@ import { AERO_FACILITIES, BUFFET_FIX, believedAero, type AeroFacility } from "..
 import { Chip } from "../components/Bits.tsx";
 import { Plot, type Series } from "../components/Plot.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
-import { DESIGNS, game } from "../game.ts";
+import { game } from "../game.ts";
 import { fixAeroJob, tunnelJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
 
@@ -19,9 +19,9 @@ const SEES: Record<AeroFacility, Array<[boolean | "partly", string]>> = {
 };
 
 /** The company's shapes: designs that share an outer mould line share a shape. */
-function shapes(): Array<{ key: string; label: string; design: string; users: string[] }> {
+function shapes(company: Company): Array<{ key: string; label: string; design: string; users: string[] }> {
   const out = new Map<string, { key: string; label: string; design: string; users: string[] }>();
-  for (const [design, v] of Object.entries(DESIGNS)) {
+  for (const [design, v] of Object.entries(company.designs)) {
     const s = aeroShape(v);
     const entry = out.get(s.key) ?? { key: s.key, label: s.label, design, users: [] };
     entry.users.push(v.name);
@@ -31,10 +31,10 @@ function shapes(): Array<{ key: string; label: string; design: string; users: st
 }
 
 export function Tunnel({ company }: { company: Company }) {
-  const all = shapes();
+  const all = shapes(company);
   const [selected, setSelected] = useState(all[all.length - 1]!.key);
   const shape = all.find((s) => s.key === selected) ?? all[0]!;
-  const vehicle = DESIGNS[shape.design]!;
+  const vehicle = company.designs[shape.design]!;
   const known = company.campaign.aeroKnowledge[shape.key];
   const believed = believedAero(company.campaign)[shape.key];
   const buffetOpen = known?.open.includes("transonic-buffet") ?? false;
@@ -80,7 +80,7 @@ export function Tunnel({ company }: { company: Company }) {
                 style={{ textAlign: "left", cursor: "pointer", flexDirection: "row", alignItems: "center", gap: 16, borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
               >
                 <div style={{ transform: "rotate(-90deg)", flex: "0 0 72px", width: 72, height: 72, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Rocket vehicle={DESIGNS[s.design]!} scale={Math.min(9, 68 / height(DESIGNS[s.design]!))} />
+                  <Rocket vehicle={company.designs[s.design]!} scale={Math.min(9, 68 / height(company.designs[s.design]!))} />
                 </div>
                 <span className="stack" style={{ gap: 4, flex: 1, minWidth: 0 }}>
                   <strong>{s.label}</strong>

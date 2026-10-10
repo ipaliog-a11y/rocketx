@@ -4,7 +4,7 @@ import type { FlightReport } from "../../sim/company.ts";
 import { FAILURE_LABELS } from "../../sim/hardware.ts";
 import { Chip, Facts } from "../components/Bits.tsx";
 import { niceMax, Plot, ticks, type Marker } from "../components/Plot.tsx";
-import { DESIGNS, game } from "../game.ts";
+import { game } from "../game.ts";
 import { km, kPa, money } from "../format.ts";
 
 /** The watched launch: a replay of the flight the sim just flew, then the debrief. */
@@ -79,7 +79,7 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
 
   if (samples.length === 0) return null;
   const now = at(samples, t);
-  const vehicle = DESIGNS[design];
+  const vehicle = game.snapshot().company?.designs[design];
   const budget = vehicle?.limits.maxDynamicPressure ?? 50_000;
   const target = r.summary.insertion?.target;
 

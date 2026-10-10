@@ -26,7 +26,7 @@ export function vehicleCost(vehicle: Vehicle): { cost: number; days: number } {
   let cost = 0;
   let engines = 0;
   for (const stage of vehicle.stages) {
-    const engine = COSTS.engineBase + (COSTS.enginePerKilonewton * stage.engine.thrustVac) / 1000;
+    const engine = stage.engine.unitCost ?? COSTS.engineBase + (COSTS.enginePerKilonewton * stage.engine.thrustVac) / 1000;
     cost += engine * stage.engineCount + COSTS.structurePerKilogram * stage.dryMass;
     engines += stage.engineCount;
   }

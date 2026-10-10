@@ -5,7 +5,7 @@ import { COSTS } from "../../sim/cost.ts";
 import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
 import { Chip, Facts } from "../components/Bits.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
-import { DESIGNS, defaultDesign, game } from "../game.ts";
+import { defaultDesign, game } from "../game.ts";
 import { buildJob, launchJob, retuneJob, signedContracts } from "../jobs.ts";
 import { km, money } from "../format.ts";
 
@@ -89,7 +89,7 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
     const raw = bid(company, contract.id, design);
     return { ...raw, blockers: raw.blockers.filter((t) => t !== "Already signed.") };
   }, [company, contract.id, design, version]);
-  const v = DESIGNS[design]!;
+  const v = company.designs[design]!;
   const built = company.inventory[design] ?? 0;
   const turns = v.pitchProgram?.kind === "gravity-turn";
   const left = contract.deadline - company.day;
@@ -106,7 +106,7 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
           <p className="label">{contract.customer}</p>
           <h2>{contract.title}</h2>
         </div>
-        <DesignSelect label="Fly it on" value={design} onChange={setDesign} designs={DESIGNS} inventory={company.inventory} />
+        <DesignSelect label="Fly it on" value={design} onChange={setDesign} designs={company.designs} inventory={company.inventory} />
         <Facts
           items={[
             ["Payload", `${contract.payloadMass} kg`],
@@ -125,15 +125,15 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
             className="btn primary"
             disabled={built === 0}
             title={built === 0 ? `Build a ${v.name} first` : undefined}
-            onClick={() => game.schedule(launchJob(design, contract, (r) => game.showFlight(r, design)))}
+            onClick={() => game.schedule(launchJob(company, design, contract, (r) => game.showFlight(r, design)))}
           >
             Launch {v.name}
           </button>
-          <button type="button" className="btn" onClick={() => game.schedule(buildJob(design))}>
+          <button type="button" className="btn" onClick={() => game.schedule(buildJob(company, design))}>
             Build · {money(b.build.cost)} · {b.build.days} d
           </button>
           {turns && contract.mission.target && (
-            <button type="button" className="btn" onClick={() => game.schedule(retuneJob(design, contract))}>
+            <button type="button" className="btn" onClick={() => game.schedule(retuneJob(company, design, contract))}>
               Re-tune for {contract.payloadMass} kg
             </button>
           )}

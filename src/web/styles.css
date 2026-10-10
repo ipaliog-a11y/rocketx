@@ -206,3 +206,11 @@ svg text { font-family: var(--mono); }
   .ev { min-height: 8px; height: 8px; padding: 0; }
   .ev-text { display: none; }
 }
+
+/* Engine shop */
+.slot { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.slot legend { margin-bottom: 10px; padding: 0; }
+.options { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.option { text-align: left; cursor: pointer; gap: 6px; padding: 14px 16px; color: var(--text); font: inherit; }
+.option:disabled { opacity: 0.45; cursor: not-allowed; }
+.blueprint { background-color: #121820; background-image: linear-gradient(#18202a 1px, transparent 1px), linear-gradient(90deg, #18202a 1px, transparent 1px); background-size: 16px 16px; }

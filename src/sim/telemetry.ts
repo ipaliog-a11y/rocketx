@@ -1,6 +1,6 @@
 import type { FlightResult } from "./ascent.ts";
 import { aeroShape, BUFFET_BAND } from "./airframe.ts";
-import type { Campaign, EngineKnowledge, TestReport } from "./teststand.ts";
+import { knowledgeOf, learnParts, refreshFromParts, type Campaign, type TestReport } from "./teststand.ts";
 import type { Vehicle } from "./vehicle.ts";
 
 /** Running needed before telemetry can pin down Isp, s. */
@@ -22,7 +22,7 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
     const burned = (end?.t ?? result.events[result.events.length - 1]!.t) - ignition.t;
     const truth = campaign.truth[stage.engine.name];
     if (!truth) return;
-    const known = (campaign.knowledge[stage.engine.name] ??= blankEngine());
+    const known = knowledgeOf(campaign, stage.engine);
     known.firings += 1;
     const report: TestReport = {
       engine: stage.engine.name,
@@ -39,6 +39,7 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
     if (end?.kind === "engine-failure" && end.mode) {
       report.findings.push({ mode: end.mode, t: burned, text: `${end.mode} at ${burned.toFixed(1)} s in flight` });
       if (!known.open.includes(end.mode)) known.open.push(end.mode);
+      known.seen[end.mode] = burned;
     }
     if (burned > 0.3) known.startupProven = true;
     known.provenDuration = Math.max(known.provenDuration, burned);
@@ -47,7 +48,9 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
       if (index > 0) known.altitudeTested = true;
     }
     known.history.push(report);
+    learnParts(campaign, stage.engine, burned, report.findings, "flight", burned >= STEADY_STATE && index > 0);
   });
+  refreshFromParts(campaign);
 
   // Through the transonic band and out the other side: the airframe's real
   // drag and any buffet are on the recorder.
@@ -73,17 +76,4 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
   known.transonicRise = aero.transonicRise;
   known.buffet = aero.buffet;
   if (aero.buffet > 0 && !known.open.includes("transonic-buffet")) known.open.push("transonic-buffet");
-}
-
-function blankEngine(): EngineKnowledge {
-  return {
-    firings: 0,
-    startupProven: false,
-    provenDuration: 0,
-    measuredIspFactor: null,
-    altitudeTested: false,
-    open: [],
-    fixed: [],
-    history: [],
-  };
 }

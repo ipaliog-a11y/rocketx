@@ -7,6 +7,7 @@ import { money, signed } from "../format.ts";
 export const LABELS: Record<Category, string> = {
   test: "Tests",
   fix: "Fixes",
+  rnd: "R&D",
   analysis: "Analysis",
   build: "Vehicles built",
   launch: "Launch fees",

@@ -1,4 +1,5 @@
 import { G0 } from "./constants.ts";
+import type { EngineParts } from "./parts.ts";
 
 export type Engine = {
   name: string;
@@ -15,6 +16,10 @@ export type Engine = {
    * real hardware may fall short, and only a long enough firing tells.
    */
   ratedLife?: number;
+  /** What the engine is built from. Engines without parts keep their quirks to themselves. */
+  parts?: EngineParts;
+  /** Price of one engine, $k. Left out: the cost model's thrust formula. */
+  unitCost?: number;
 };
 
 /** Rated life assumed when a design doesn't state one, s. */

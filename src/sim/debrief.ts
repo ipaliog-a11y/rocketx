@@ -284,14 +284,19 @@ function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign
 
   if (!campaign) return;
   const known = campaign.knowledge[engine];
-  if (!known || known.firings === 0) {
+  const inherited = known !== undefined && (known.startupProven || known.provenDuration > 0 || known.open.length > 0);
+  if (!known || (known.firings === 0 && !inherited)) {
     lines.push(
       e.mode === "hard-start"
         ? `  ${engine} was never fired on the stand. Any firing would have shown the hard start.`
         : `  ${engine} was never fired on the stand. A ${Math.ceil(into)} s firing would have found this.`,
     );
   } else if (known.open.includes(e.mode)) {
-    lines.push(`  The stand had already seen this on ${engine}. It flew unfixed.`);
+    lines.push(
+      known.firings === 0
+        ? `  The stand had already seen this on an engine that shares ${engine}'s parts. It flew unfixed.`
+        : `  The stand had already seen this on ${engine}. It flew unfixed.`,
+    );
   } else if (e.mode === "hard-start") {
     lines.push(`  No firing of the current ${engine} hardware got past ignition.`);
   } else {
