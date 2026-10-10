@@ -94,14 +94,14 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 
 | Strategy | Survive | Reach orbit | Median cash at end |
 |---|---|---|---|
-| careful | 30 | 30 | $35.3M |
-| greedy | 5 | 29 | −$1.3M |
-| cheap | 12 | 8 | $4.1M |
-| reckless | 17* | 0 | $4.7M |
+| careful | 29 | 29 | $34.9M |
+| greedy | 5 | 28 | −$0.9M |
+| cheap | 15 | 8 | $4.4M |
+| reckless | 10* | 3 | $3.8M |
 
-\* Reckless bots that never earn the orbital licence stop trying and sit on their cash, so they count as alive. None reached orbit.
+\* Some reckless bots never earn the orbital licence; they stop trying and sit on their cash, so they count as alive.
 
-Since engines share parts, testing one Harrier teaches about the other, so careful play reaches orbit sooner (median day 322, down from 406) and richer. Failures are shared too: a flaw in the shared cycle, injector or liner sinks both stages, and the greedy SSO bid now kills 25 of 30. Testing pays, and testing the wrong question costs nearly as much as not testing. Before the generated board, careful survived 24 of 30 with $15.1M: with more work posted, careful play is now comfortable and the money has nothing to buy. That waits on things worth spending on (a second pad and production line, bigger vehicles) rather than lower payouts. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
+Since engines share parts, testing one Harrier teaches about the other, so careful play reaches orbit sooner (median day 322, down from 406 before parts) and richer. Failures are shared too: a flaw in the shared cycle, injector or liner sinks both stages, and the greedy SSO bid kills 25 of 30. Student payloads and recovery flights give a company with a bad record a way back, so fewer runs stall; reckless bots now fly more and fail more. The bots build and launch straight away, so they don't use parallel builds or the drawing board. Testing pays, and testing the wrong question costs nearly as much as not testing. Before the generated board, careful survived 24 of 30 with $15.1M: with more work posted, careful play is now comfortable and the money has nothing to buy. That waits on things worth spending on (a second pad and production line, bigger vehicles) rather than lower payouts. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
 
 Not modelled yet: running tests in parallel with each other, loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
 
