@@ -1,0 +1,22 @@
+{
+  "name": "rocketx",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Research-first launch company game: simulation core",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "sim": "node src/cli.ts",
+    "campaign": "node src/campaign.ts",
+    "company": "node src/company.ts",
+    "playtest": "node src/playtest.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3"
+  }
+}
