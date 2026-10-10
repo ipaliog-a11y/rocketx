@@ -1,4 +1,6 @@
 import type { FlightEvent, FlightResult } from "./ascent.ts";
+import { R_EARTH } from "./constants.ts";
+import { EARTH_ROTATION, type Mission } from "./mission.ts";
 import { ATMOSPHERE_TOP } from "./atmosphere.ts";
 import { SHORT_LIVED_PERIAPSIS } from "./orbit.ts";
 import type { Vehicle } from "./vehicle.ts";
@@ -14,6 +16,10 @@ const ms = (v: number) => `${Math.round(v)} m/s`;
 const tPlus = (t: number) => `T+${t.toFixed(1)} s`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const kPaDeg = (x: number) => `${(x / 1000).toFixed(1)} kPa·deg`;
+const sign = (x: number) => (x >= 0 ? "+" : "−");
+const signedKm = (m: number) => `${sign(m)}${km(Math.abs(m))}`;
+const signedDeg = (d: number) => `${sign(d)}${Math.abs(d).toFixed(2)}°`;
+const latitude = (lat: number) => `${Math.abs(lat).toFixed(1)}° ${lat >= 0 ? "N" : "S"}`;
 
 function eventLine(e: FlightEvent, vehicle: Vehicle): string {
   const mach = e.altitude < ATMOSPHERE_TOP ? `M${e.mach.toFixed(2)}` : "";
@@ -31,6 +37,7 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     "q-alpha-limit-exceeded": `Side-load budget exceeded, q·α ${kPaDeg(e.value ?? 0)}`,
     "accel-limit-exceeded": `Acceleration limit exceeded, ${e.value?.toFixed(1)} g`,
     meco: `Engine cutoff, ${stage}`,
+    cutoff: `Guidance cutoff on target energy, ${Math.round(e.value ?? 0)} kg propellant left`,
     staging: `Stage separation, ${stage} ignites`,
     orbit: "Orbit insertion",
     apogee: "Apogee",
@@ -40,10 +47,21 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
   return `  ${at}  ${label[e.kind]}`;
 }
 
-export function debrief(result: FlightResult, vehicle: Vehicle): string {
+export function debrief(result: FlightResult, vehicle: Vehicle, mission: Mission): string {
   const { summary, events } = result;
   const lines: string[] = [];
   lines.push(`DEBRIEF: ${vehicle.name}`);
+  lines.push(
+    `${mission.name}, from ${mission.site.name} (${latitude(mission.site.latitude)})` +
+      (mission.target ? `, azimuth ${summary.azimuth.toFixed(1)}°, inclination ${summary.inclination.toFixed(1)}°.` : "."),
+  );
+  if (Math.abs(summary.rotationBoost) >= 1) {
+    lines.push(
+      summary.rotationBoost > 0
+        ? `The Earth's spin gave the vehicle ${ms(summary.rotationBoost)} along its track before it left the pad.`
+        : `This track runs against the Earth's spin: the vehicle starts ${ms(-summary.rotationBoost)} in the wrong direction and has to cancel it.`,
+    );
+  }
   lines.push("");
 
   if (result.outcome === "no-liftoff") {
@@ -64,16 +82,22 @@ export function debrief(result: FlightResult, vehicle: Vehicle): string {
     if (orbit.periapsis < SHORT_LIVED_PERIAPSIS) {
       lines.push("  Periapsis is low enough that air drag will bring the payload down within days.");
     }
-  } else if (result.outcome === "apogee") {
-    lines.push(`Apogee ${km(summary.apogee)} at ${tPlus(summary.apogeeTime)}.`);
+  } else if (result.outcome === "apogee" || result.outcome === "impact") {
+    lines.push(
+      result.outcome === "apogee"
+        ? `Apogee ${km(summary.apogee)} at ${tPlus(summary.apogeeTime)}.`
+        : "The vehicle came back down without climbing any further after shutdown.",
+    );
     if (steered && orbit) {
       const short = orbit.circularSpeed - summary.burnoutVelocity;
       lines.push(
-        `Short of orbit. Burnout at ${km(summary.burnoutAltitude)}, ${ms(summary.burnoutVelocity)}, flight path ${summary.burnoutFlightPathAngle.toFixed(1)}° above the horizon. A circular orbit at that height needs ${ms(orbit.circularSpeed)} flying level${short > 0 ? `, so about ${ms(short)} more` : ""}.`,
+        `Short of orbit. Burnout at ${km(summary.burnoutAltitude)}, ${ms(summary.burnoutVelocity)}, flight path ${Math.abs(summary.burnoutFlightPathAngle).toFixed(1)}° ${summary.burnoutFlightPathAngle >= 0 ? "above" : "below"} the horizon. A circular orbit at that height needs ${ms(orbit.circularSpeed)} flying level${short > 0 ? `, so about ${ms(short)} more` : ""}.`,
       );
     }
-  } else if (result.outcome === "impact") lines.push("The vehicle came back down before reaching apogee.");
-  else lines.push("The flight was still going when the simulation stopped.");
+  } else lines.push("The flight was still going when the simulation stopped.");
+
+  if (summary.insertion) insertionLines(result, vehicle, mission, lines);
+  lines.push("");
 
   const limit = vehicle.limits.maxDynamicPressure;
   const q = summary.maxQ;
@@ -105,7 +129,8 @@ export function debrief(result: FlightResult, vehicle: Vehicle): string {
   if (steered) {
     lines.push(`  Lost to steering               ${ms(-steering).padStart(9)}  ${pct(steering / ideal).padStart(4)}`);
   }
-  lines.push(`  Velocity at burnout            ${ms(summary.burnoutVelocity).padStart(9)}`);
+  lines.push(`  Ground speed at shutdown       ${ms(summary.burnoutGroundSpeed).padStart(9)}`);
+  lines.push(`  Inertial speed at shutdown     ${ms(summary.burnoutVelocity).padStart(9)}`);
 
   const notes: string[] = [];
   if (drag / ideal > 0.12) {
@@ -154,4 +179,62 @@ export function debrief(result: FlightResult, vehicle: Vehicle): string {
   lines.push("Timeline:");
   for (const e of events) lines.push(eventLine(e, vehicle));
   return lines.join("\n");
+}
+
+function insertionLines(result: FlightResult, vehicle: Vehicle, mission: Mission, lines: string[]): void {
+  const { summary, events } = result;
+  const ins = summary.insertion!;
+  const target = ins.target;
+  const tol = target.tolerance;
+  lines.push("");
+  lines.push(
+    `Target ${km(target.periapsis)} × ${km(target.apoapsis)} at ${target.inclination.toFixed(1)}° (±${km(tol.altitude)}, ±${tol.inclination}°): ${ins.inSpec ? "IN SPEC" : "OUT OF SPEC"}.`,
+  );
+  if (ins.reachedOrbit) {
+    lines.push(
+      `  Periapsis ${signedKm(ins.periapsisError)}, apoapsis ${signedKm(ins.apoapsisError)}, inclination ${signedDeg(ins.inclinationError)}.`,
+    );
+  }
+
+  const last = vehicle.stages[vehicle.stages.length - 1]!;
+  if (events.some((e) => e.kind === "cutoff")) {
+    lines.push(
+      `  Guidance cut off with ${Math.round(summary.propellantMargin)} kg of propellant left in the ${last.name}, ${pct(summary.propellantMargin / last.propellantMass)} of its load.`,
+    );
+  } else if (summary.burnoutTime > 0) {
+    lines.push("  The last stage burned to depletion before the orbit had the target's energy.");
+    const dueEast = EARTH_ROTATION * R_EARTH * Math.cos((mission.site.latitude * Math.PI) / 180);
+    if (summary.rotationBoost < dueEast - 50) {
+      lines.push(
+        `  This inclination gets ${ms(summary.rotationBoost)} from the Earth's spin. Due east from ${mission.site.name} gets ${ms(dueEast)}. The difference has to come out of the propellant.`,
+      );
+    }
+  }
+  if (ins.inSpec) return;
+
+  const site = mission.site;
+  if (Math.abs(ins.inclinationError) > tol.inclination && target.inclination < Math.abs(site.latitude)) {
+    lines.push(
+      `  ${site.name} sits at ${latitude(site.latitude)}, and no launch from there goes directly into an orbit inclined less than that. ${target.inclination.toFixed(1)}° needs a plane change in orbit or a pad nearer the equator.`,
+    );
+  }
+
+  const shapeOff = Math.abs(ins.periapsisError) > tol.altitude || Math.abs(ins.apoapsisError) > tol.altitude;
+  if (ins.reachedOrbit && shapeOff) {
+    const fpa = summary.burnoutFlightPathAngle;
+    const at = `Cutoff came at ${km(summary.burnoutAltitude)}`;
+    if (Math.abs(fpa) > 1) {
+      lines.push(
+        `  ${at} while still ${fpa > 0 ? "climbing" : "descending"} at ${Math.abs(fpa).toFixed(1)}°, so the right energy went into an ellipse. The upper-stage pitch ramp should bring the vehicle level by cutoff.`,
+      );
+    } else if (summary.burnoutAltitude < target.periapsis) {
+      lines.push(
+        `  ${at}, below the target, so the right energy went into an ellipse: low periapsis, high apoapsis. The pitch programme needs to carry the vehicle higher before levelling out.`,
+      );
+    } else {
+      lines.push(
+        `  ${at}, above the target, so the orbit sags below it on the far side. The pitch programme levels out too high.`,
+      );
+    }
+  }
 }

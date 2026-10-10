@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MU_EARTH, R_EARTH } from "../src/sim/constants.ts";
 import { commandedPitch, kickDue, type GuidanceInput, type PitchProgram } from "../src/sim/guidance.ts";
+import { EARTH_ROTATION, launchGeometry, scoreInsertion } from "../src/sim/mission.ts";
 import { isOrbit, orbitFrom } from "../src/sim/orbit.ts";
+import { LEO_300, LEO_EQUATORIAL, PORT_AVERY, SSO_500 } from "../src/missions.ts";
 
 const near = (actual: number, expected: number, tolerance: number) =>
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} not within ${tolerance} of ${expected}`);
@@ -78,4 +80,42 @@ test("too slow or too low is not an orbit", () => {
   const low = R_EARTH + 80_000;
   assert.equal(isOrbit(orbitFrom(0, low, Math.sqrt(MU_EARTH / low), 0)), false);
   assert.equal(isOrbit(orbitFrom(0, r, 2 * Math.sqrt(MU_EARTH / r), 0)), false);
+});
+
+test("due east from a pad gives an inclination equal to its latitude", () => {
+  const g = launchGeometry({ name: "east", site: PORT_AVERY });
+  near(g.azimuth, 90, 1e-9);
+  near(g.inclination, 28.5, 1e-9);
+  near(g.rotationRate, EARTH_ROTATION * Math.cos(28.5 * DEG), 1e-15);
+});
+
+test("a sun-synchronous target flies north-west against the spin", () => {
+  const g = launchGeometry(SSO_500);
+  near(g.inclination, 97.4, 1e-9);
+  assert.ok(g.azimuth > 270 && g.azimuth < 360, `azimuth ${g.azimuth}`);
+  assert.ok(g.rotationRate < 0);
+});
+
+test("an inclination below the pad's latitude falls back to due east", () => {
+  const g = launchGeometry(LEO_EQUATORIAL);
+  near(g.azimuth, 90, 1e-9);
+  near(g.inclination, 28.5, 1e-9);
+});
+
+test("a still Earth contributes no rotation", () => {
+  assert.equal(launchGeometry(LEO_300, false).rotationRate, 0);
+});
+
+test("insertion is in spec only inside every tolerance", () => {
+  const target = LEO_300.target!;
+  const r = R_EARTH + 300_000;
+  const circular = orbitFrom(0, r, Math.sqrt(MU_EARTH / r), 0);
+  assert.equal(scoreInsertion(target, circular, 28.5, true).inSpec, true);
+  assert.equal(scoreInsertion(target, circular, 28.7, true).inSpec, false);
+  assert.equal(scoreInsertion(target, circular, 28.5, false).inSpec, false);
+  const fast = orbitFrom(0, r, Math.sqrt(MU_EARTH / r) * 1.01, 0);
+  const report = scoreInsertion(target, fast, 28.5, true);
+  assert.equal(report.inSpec, false);
+  assert.ok(report.apoapsisError > 15_000);
+  near(report.periapsisError, 0, 1);
 });

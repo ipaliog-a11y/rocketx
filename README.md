@@ -51,20 +51,22 @@ After first orbit the same loop scales: new regime, new ignorance, new chance to
 
 Prototype started. The domains are **engines + aerodynamics** (DESIGN.md §15). No name locked.
 
-Built so far: a two-dimensional ascent sim in the plane of the trajectory. It flies from the pad to orbit insertion, or to apogee if the vehicle falls short.
+Built so far: a two-dimensional ascent sim in the plane of the trajectory, flown against a mission. It goes from the pad to orbit insertion, or to apogee if the vehicle falls short.
 
 - US Standard Atmosphere 1976 up to 86 km, vacuum above 150 km
 - Drag from a Mach-dependent Cd curve with a transonic rise. Frontal area comes from the widest stage or the fairing
 - Engine thrust falls with ambient pressure (F = F_vac − p·A_e). Nozzle flow separation is flagged by the Summerfield criterion
+- Earth rotation: the share of the spin that lies in the trajectory plane moves the pad and the air. Due east from 28.5° N starts the vehicle at 408 m/s; a retrograde sun-synchronous track starts it 60 m/s backwards
+- Missions: a launch site plus an optional insertion target (periapsis, apoapsis, inclination, tolerances). The launch azimuth comes from the target inclination. A pad can't reach an inclination below its own latitude
 - Three pitch programmes: vertical; a gravity turn (pitch kick, then prograde) with an optional upper-stage pitch ramp; or a time-based pitch schedule
-- Orbit insertion with periapsis, apoapsis and eccentricity, or how far short of orbit the vehicle fell
+- Guidance cuts the last stage off once the orbit has the target's energy. The insertion is scored in or out of spec, and leftover propellant is the margin
 - Staging, max-q, Mach 1, load-budget, side-load (q·α) and acceleration-limit events
-- Δv bookkeeping: delivered Δv split into gravity, drag, back-pressure and steering losses
-- A text debrief that names the physics
+- Δv bookkeeping relative to the ground: delivered Δv split into gravity, drag, back-pressure and steering losses
+- A text debrief that names the physics, including why an insertion missed
 
-The Earth doesn't rotate yet, so a launch gets no free eastward ~465 m/s.
+The trajectory stays in one plane. Plane changes, the out-of-plane part of the pad's motion and coast-and-relight insertions aren't modelled.
 
-Next: Earth rotation, an insertion target per contract so insertion error can be scored, then test-stand runs that reveal failure modes before flight.
+Next: test-stand runs that reveal failure modes before flight, then contracts that bid on these missions.
 
 ## Running
 
@@ -73,9 +75,11 @@ Needs Node 22.18 or newer, which runs TypeScript directly. The sim has no runtim
 ```sh
 npm install          # TypeScript, only needed for typecheck
 npm run sim          # fly Pathfinder and print the debrief
-npm run sim -- meridian      # small orbital launcher
-npm run sim -- fat-fairing   # also: vac-bell, overfuelled, two-stage,
-                             # meridian-lofted, meridian-hard-kick
+npm run sim -- meridian                 # small orbital launcher, LEO 300 km
+npm run sim -- meridian sso-500         # missions: suborbital, leo-300,
+                                        # sso-500, leo-equatorial
+npm run sim -- fat-fairing              # also: vac-bell, overfuelled, two-stage,
+                                        # meridian-lofted, meridian-hard-kick
 npm run sim -- pathfinder --json
 npm test
 npm run typecheck

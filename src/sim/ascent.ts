@@ -3,14 +3,18 @@ import { atmosphereAt } from "./atmosphere.ts";
 import { G0, MU_EARTH, R_EARTH } from "./constants.ts";
 import { flowSeparates, massFlow, thrustAt } from "./engine.ts";
 import { commandedPitch, kickDue, VERTICAL } from "./guidance.ts";
+import { launchGeometry, scoreInsertion, targetSemiMajorAxis, type InsertionReport, type Mission } from "./mission.ts";
 import { isOrbit, orbitFrom, type OrbitElements } from "./orbit.ts";
 import { burnTime, stackMass, type Stage, type Vehicle } from "./vehicle.ts";
 
 /**
  * Two-dimensional ascent in the plane of the trajectory. Position and
  * velocity are inertial, measured from Earth's centre, with the pad at
- * (0, R) and downrange along +x. Earth does not rotate, so the pad gives
- * no free eastward velocity and air moves with the ground.
+ * (0, R) and downrange along +x.
+ *
+ * The ground and the air turn with the Earth at the in-plane rotation rate
+ * from the mission's launch geometry, so the pad starts with a free
+ * horizontal velocity and aerodynamics see the air-relative flow.
  */
 
 export type EventKind =
@@ -25,6 +29,7 @@ export type EventKind =
   | "q-alpha-limit-exceeded"
   | "accel-limit-exceeded"
   | "meco"
+  | "cutoff"
   | "staging"
   | "orbit"
   | "apogee"
@@ -40,7 +45,7 @@ export type FlightEvent = {
   mach: number;
   /** Stage index active at the event. */
   stage: number;
-  /** Event-specific number: q for max-q, T/W for liftoff, pressure for separation. */
+  /** Event-specific number: q for max-q, T/W for liftoff, pressure for separation, kg left for cutoff. */
   value?: number;
 };
 
@@ -51,9 +56,12 @@ export type Sample = {
   downrange: number;
   /** Inertial speed, m/s. */
   velocity: number;
+  /** Speed relative to the ground and the air, m/s. */
+  airSpeed: number;
   verticalVelocity: number;
+  /** Inertial horizontal speed, m/s. */
   horizontalVelocity: number;
-  /** Rate of change of speed, m/s². */
+  /** Rate of change of air speed, m/s². */
   acceleration: number;
   mass: number;
   mach: number;
@@ -62,17 +70,21 @@ export type Sample = {
   drag: number;
   /** Thrust direction above the local horizon, deg. */
   pitch: number;
-  /** Velocity direction above the local horizon, deg. */
+  /** Air-relative velocity direction above the local horizon, deg. */
   flightPathAngle: number;
   /** Angle between thrust and the airflow, deg. */
   angleOfAttack: number;
   stage: number;
 };
 
+/**
+ * Where the engines' Δv went, measured against the ground. Starting from
+ * rest on the pad, ground speed at burnout is the delivered Δv minus these.
+ */
 export type Losses = {
-  /** Δv spent holding the vehicle up against gravity while burning, m/s. */
+  /** Δv spent holding the vehicle up against gravity (net of centrifugal), m/s. */
   gravity: number;
-  /** Δv spent pushing air out of the way while burning, m/s. */
+  /** Δv spent pushing air out of the way, m/s. */
   drag: number;
   /** Δv lost to ambient pressure on the nozzle exit (F_vac − F), m/s. */
   backPressure: number;
@@ -85,6 +97,7 @@ export type Outcome = "no-liftoff" | "orbit" | "apogee" | "impact" | "timeout";
 
 export type FlightResult = {
   vehicle: string;
+  mission: string;
   outcome: Outcome;
   events: FlightEvent[];
   samples: Sample[];
@@ -94,13 +107,27 @@ export type FlightResult = {
     maxQ: { value: number; t: number; altitude: number; velocity: number; mach: number; stage: number };
     /** Peak dynamic pressure × angle of attack, Pa·deg. */
     maxQAlpha: { value: number; t: number; altitude: number; mach: number };
+    /** Inertial speed at final shutdown, m/s. */
     burnoutVelocity: number;
+    /** Ground-relative speed at final shutdown, m/s. */
+    burnoutGroundSpeed: number;
     burnoutAltitude: number;
     burnoutTime: number;
+    /** Inertial flight-path angle at final shutdown, deg. */
     burnoutFlightPathAngle: number;
     burnoutDownrange: number;
-    /** Orbit the vehicle was on at final burnout. */
+    /** Propellant left in the last stage at shutdown, kg. */
+    propellantMargin: number;
+    /** Launch azimuth flown, deg clockwise from north. */
+    azimuth: number;
+    /** Inclination of the trajectory plane, deg. */
+    inclination: number;
+    /** Inertial speed the pad gave the vehicle before it moved, m/s. */
+    rotationBoost: number;
+    /** Orbit the vehicle was on at final shutdown. */
     orbit: OrbitElements | null;
+    /** Scored against the mission's target, when it has one. */
+    insertion: InsertionReport | null;
     /** Integrated vacuum Δv actually delivered, m/s. */
     idealDeltaV: number;
     losses: Losses;
@@ -114,6 +141,8 @@ export type AscentOptions = {
   sampleInterval?: number;
   /** Give up after this much flight time, s. */
   maxTime?: number;
+  /** False holds the Earth still. For checking the physics against closed forms. */
+  rotatingEarth?: boolean;
 };
 
 /** [x, y, vx, vy, mass, gravity, drag, back-pressure, steering, ideal Δv] */
@@ -132,14 +161,25 @@ type Phase = {
   kickStart: number | null;
 };
 
+type Context = {
+  vehicle: Vehicle;
+  /** In-plane rotation rate of the Earth and its air, rad/s. */
+  omega: number;
+};
+
 /** Everything the integrator and the event checks need at one instant. */
 type Snapshot = {
   altitude: number;
+  radius: number;
+  /** Inertial speed. */
   speed: number;
-  /** Unit vectors: local up, local horizontal (downrange), velocity direction. */
+  /** Speed relative to the rotating air. */
+  airSpeed: number;
+  /** Unit vectors: local up, local horizontal (downrange), air-relative velocity direction. */
   up: [number, number];
   horizontal: [number, number];
   heading: [number, number];
+  /** Air-relative flight-path angle, rad. */
   flightPathAngle: number;
   pitch: number;
   thrustDir: [number, number];
@@ -152,15 +192,21 @@ type Snapshot = {
   gravity: number;
 };
 
-function snapshot(vehicle: Vehicle, phase: Phase, t: number, s: State): Snapshot {
-  const r = Math.hypot(s[X], s[Y]);
-  const altitude = r - R_EARTH;
-  const up: [number, number] = [s[X] / r, s[Y] / r];
+function snapshot(ctx: Context, phase: Phase, t: number, s: State): Snapshot {
+  const { vehicle, omega } = ctx;
+  const radius = Math.hypot(s[X], s[Y]);
+  const altitude = radius - R_EARTH;
+  const up: [number, number] = [s[X] / radius, s[Y] / radius];
   const horizontal: [number, number] = [up[1], -up[0]];
   const speed = Math.hypot(s[VX], s[VY]);
-  const vUp = s[VX] * up[0] + s[VY] * up[1];
-  const vHorizontal = s[VX] * horizontal[0] + s[VY] * horizontal[1];
-  const flightPathAngle = speed > 1e-9 ? Math.atan2(vUp, vHorizontal) : Math.PI / 2;
+
+  // The air moves with the ground: ω × r, which points along +horizontal.
+  const rx = s[VX] - omega * s[Y];
+  const ry = s[VY] + omega * s[X];
+  const airSpeed = Math.hypot(rx, ry);
+  const vUp = rx * up[0] + ry * up[1];
+  const vHorizontal = rx * horizontal[0] + ry * horizontal[1];
+  const flightPathAngle = airSpeed > 1e-9 ? Math.atan2(vUp, vHorizontal) : Math.PI / 2;
 
   const stageBurnFraction = phase.burning ? Math.min(1, (t - phase.ignitedAt) / burnTime(phase.stage)) : 1;
   const pitch = commandedPitch(vehicle.pitchProgram ?? VERTICAL, {
@@ -174,15 +220,17 @@ function snapshot(vehicle: Vehicle, phase: Phase, t: number, s: State): Snapshot
     Math.cos(pitch) * horizontal[0] + Math.sin(pitch) * up[0],
     Math.cos(pitch) * horizontal[1] + Math.sin(pitch) * up[1],
   ];
-  const heading: [number, number] = speed > 1e-9 ? [s[VX] / speed, s[VY] / speed] : thrustDir;
+  const heading: [number, number] = airSpeed > 1e-9 ? [rx / airSpeed, ry / airSpeed] : thrustDir;
   const cosAlpha = Math.min(1, Math.max(-1, thrustDir[0] * heading[0] + thrustDir[1] * heading[1]));
 
   const atm = atmosphereAt(altitude);
-  const mach = speed / atm.speedOfSound;
-  const q = dynamicPressure(atm.density, speed);
+  const mach = airSpeed / atm.speedOfSound;
+  const q = dynamicPressure(atm.density, airSpeed);
   return {
     altitude,
+    radius,
     speed,
+    airSpeed,
     up,
     horizontal,
     heading,
@@ -195,28 +243,31 @@ function snapshot(vehicle: Vehicle, phase: Phase, t: number, s: State): Snapshot
     mach,
     q,
     pressure: atm.pressure,
-    gravity: MU_EARTH / (r * r),
+    gravity: MU_EARTH / (radius * radius),
   };
 }
 
-function derivative(vehicle: Vehicle, phase: Phase, t: number, s: State): State {
+function derivative(ctx: Context, phase: Phase, t: number, s: State): State {
   const m = s[M];
-  const k = snapshot(vehicle, phase, t, s);
+  const k = snapshot(ctx, phase, t, s);
   const ax = (k.thrust * k.thrustDir[0] - k.drag * k.heading[0]) / m - k.gravity * k.up[0];
   const ay = (k.thrust * k.thrustDir[1] - k.drag * k.heading[1]) / m - k.gravity * k.up[1];
   if (!phase.burning) return [s[VX], s[VY], ax, ay, 0, 0, 0, 0, 0, 0];
 
-  // Rates that split d|v|/dt into what the engines gave and where it went.
+  // Rates that split the change in ground-relative speed into what the
+  // engines gave and where it went. In the rotating frame Coriolis is
+  // perpendicular to the motion and drops out; centrifugal offsets gravity.
   const { engine, engineCount } = phase.stage;
   const thrustVac = engineCount * engine.thrustVac;
   const cosAlpha = Math.cos(k.angleOfAttack);
+  const netGravity = k.gravity - ctx.omega * ctx.omega * k.radius;
   return [
     s[VX],
     s[VY],
     ax,
     ay,
     -engineCount * massFlow(engine),
-    k.gravity * Math.sin(k.flightPathAngle),
+    netGravity * Math.sin(k.flightPathAngle),
     k.drag / m,
     (thrustVac - k.thrust) / m,
     (k.thrust * (1 - cosAlpha)) / m,
@@ -224,12 +275,12 @@ function derivative(vehicle: Vehicle, phase: Phase, t: number, s: State): State 
   ];
 }
 
-function rk4(vehicle: Vehicle, phase: Phase, t: number, s: State, dt: number): State {
+function rk4(ctx: Context, phase: Phase, t: number, s: State, dt: number): State {
   const add = (a: State, b: State, k: number): State => a.map((x, i) => x + k * b[i]!) as State;
-  const k1 = derivative(vehicle, phase, t, s);
-  const k2 = derivative(vehicle, phase, t + dt / 2, add(s, k1, dt / 2));
-  const k3 = derivative(vehicle, phase, t + dt / 2, add(s, k2, dt / 2));
-  const k4 = derivative(vehicle, phase, t + dt, add(s, k3, dt));
+  const k1 = derivative(ctx, phase, t, s);
+  const k2 = derivative(ctx, phase, t + dt / 2, add(s, k1, dt / 2));
+  const k3 = derivative(ctx, phase, t + dt / 2, add(s, k2, dt / 2));
+  const k4 = derivative(ctx, phase, t + dt, add(s, k3, dt));
   return s.map((x, i) => x + (dt / 6) * (k1[i]! + 2 * k2[i]! + 2 * k3[i]! + k4[i]!)) as State;
 }
 
@@ -242,16 +293,30 @@ function frontalArea(vehicle: Vehicle, stageIndex: number): number {
   return referenceArea(diameter);
 }
 
-function downrangeOf(s: State): number {
-  return R_EARTH * Math.atan2(s[X], s[Y]);
+function specificEnergy(s: State): number {
+  return (s[VX] * s[VX] + s[VY] * s[VY]) / 2 - MU_EARTH / Math.hypot(s[X], s[Y]);
 }
 
-export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): FlightResult {
+function verticalSpeed(s: State): number {
+  const r = Math.hypot(s[X], s[Y]);
+  return (s[VX] * s[X] + s[VY] * s[Y]) / r;
+}
+
+export function simulateAscent(vehicle: Vehicle, mission: Mission, options: AscentOptions = {}): FlightResult {
   const dt = options.dt ?? 0.05;
   const sampleInterval = options.sampleInterval ?? 1;
   const maxTime = options.maxTime ?? 3600;
   if (vehicle.stages.length === 0) throw new Error(`${vehicle.name} has no stages`);
   const program = vehicle.pitchProgram ?? VERTICAL;
+  const geometry = launchGeometry(mission, options.rotatingEarth ?? true);
+  const ctx: Context = { vehicle, omega: geometry.rotationRate };
+  const lastStage = vehicle.stages.length - 1;
+
+  // Guidance shuts the last stage down once the orbit has the target's
+  // energy. Where the energy lands between periapsis and apoapsis is up to
+  // the pitch programme.
+  const target = mission.target;
+  const cutoffEnergy = target ? -MU_EARTH / (2 * targetSemiMajorAxis(target, R_EARTH)) : Infinity;
 
   const events: FlightEvent[] = [];
   const samples: Sample[] = [];
@@ -259,7 +324,8 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
   let t = 0;
   let stageIndex = 0;
   let propellant = vehicle.stages[0]!.propellantMass;
-  let s: State = [0, R_EARTH, 0, 0, stackMass(vehicle, 0), 0, 0, 0, 0, 0];
+  const rotationBoost = ctx.omega * R_EARTH;
+  let s: State = [0, R_EARTH, rotationBoost, 0, stackMass(vehicle, 0), 0, 0, 0, 0, 0];
   let phase: Phase = {
     stage: vehicle.stages[0]!,
     stageIndex: 0,
@@ -278,24 +344,29 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
   let outcome: Outcome = "timeout";
   let maxQ = { value: 0, t: 0, altitude: 0, velocity: 0, mach: 0, stage: 0 };
   let maxQAlpha = { value: 0, t: 0, altitude: 0, mach: 0 };
-  let burnout = { t: 0, altitude: 0, velocity: 0, flightPathAngle: 0, downrange: 0 };
+  let burnout = { t: 0, altitude: 0, velocity: 0, groundSpeed: 0, flightPathAngle: 0, downrange: 0 };
   let orbit: OrbitElements | null = null;
   let apogee = { t: 0, altitude: 0 };
+
+  const downrange = () => R_EARTH * (Math.atan2(s[X], s[Y]) - ctx.omega * t);
 
   const event = (kind: EventKind, k: Snapshot, value?: number) => {
     events.push({ kind, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, value });
   };
 
   const record = (k: Snapshot) => {
-    const d = derivative(vehicle, phase, t, s);
+    const d = derivative(ctx, phase, t, s);
+    const vUp = verticalSpeed(s);
     samples.push({
       t,
       altitude: k.altitude,
-      downrange: downrangeOf(s),
+      downrange: downrange(),
       velocity: k.speed,
-      verticalVelocity: k.speed * Math.sin(k.flightPathAngle),
-      horizontalVelocity: k.speed * Math.cos(k.flightPathAngle),
-      acceleration: d[VX] * k.heading[0] + d[VY] * k.heading[1],
+      airSpeed: k.airSpeed,
+      verticalVelocity: vUp,
+      horizontalVelocity: Math.sqrt(Math.max(0, k.speed * k.speed - vUp * vUp)),
+      acceleration:
+        (d[VX] - ctx.omega * s[VY]) * k.heading[0] + (d[VY] + ctx.omega * s[VX]) * k.heading[1],
       mass: s[M],
       mach: k.mach,
       dynamicPressure: k.q,
@@ -309,13 +380,13 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
   };
 
   const ignite = () => {
-    const k = snapshot(vehicle, phase, t, s);
+    const k = snapshot(ctx, phase, t, s);
     event("ignition", k);
     if (flowSeparates(phase.stage.engine, k.pressure)) event("flow-separation", k, k.pressure);
   };
 
   ignite();
-  const pad = snapshot(vehicle, phase, 0, s);
+  const pad = snapshot(ctx, phase, 0, s);
   const thrustToWeight = pad.thrust / (s[M] * pad.gravity);
   if (thrustToWeight <= 1) {
     event("no-liftoff", pad, thrustToWeight);
@@ -325,15 +396,28 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
 
   while (outcome === "timeout" && t < maxTime) {
     const flow = phase.burning ? phase.stage.engineCount * massFlow(phase.stage.engine) : 0;
-    const step = phase.burning ? Math.min(dt, propellant / flow) : dt;
-    const prevVerticalSpeed = s[VX] * (s[X] / Math.hypot(s[X], s[Y])) + s[VY] * (s[Y] / Math.hypot(s[X], s[Y]));
-    const prevSpeed = Math.hypot(s[VX], s[VY]);
+    let step = phase.burning ? Math.min(dt, propellant / flow) : dt;
+    const prev = s;
+    const prevVerticalSpeed = verticalSpeed(s);
+    const prevAirSpeed = snapshot(ctx, phase, t, s).airSpeed;
 
-    s = rk4(vehicle, phase, t, s, step);
+    s = rk4(ctx, phase, t, prev, step);
+
+    // Energy cutoff: if this step carried the last stage past the target
+    // energy, redo it with the step trimmed to land on the target.
+    let guidanceCutoff = false;
+    if (phase.burning && stageIndex === lastStage && specificEnergy(s) >= cutoffEnergy) {
+      const before = specificEnergy(prev);
+      const fraction = (cutoffEnergy - before) / (specificEnergy(s) - before);
+      step *= Math.min(1, Math.max(0, fraction));
+      s = rk4(ctx, phase, t, prev, step);
+      guidanceCutoff = true;
+    }
+
     t += step;
     if (phase.burning) propellant = Math.max(0, propellant - flow * step);
 
-    let k = snapshot(vehicle, phase, t, s);
+    let k = snapshot(ctx, phase, t, s);
 
     if (!liftedOff && k.altitude > 0) {
       liftedOff = true;
@@ -346,22 +430,25 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
       break;
     }
 
-    if (phase.kickStart === null && kickDue(program, k.speed) && program.kind === "gravity-turn") {
+    if (phase.kickStart === null && kickDue(program, k.airSpeed) && program.kind === "gravity-turn") {
       // Start the kick at the interpolated moment the speed crossed, not at the
       // end of the step, so the trajectory doesn't depend on the step size.
-      const crossed = (program.kickSpeed - prevSpeed) / (k.speed - prevSpeed);
+      const crossed = (program.kickSpeed - prevAirSpeed) / (k.airSpeed - prevAirSpeed);
       phase = { ...phase, kickStart: t - step * (1 - Math.min(1, Math.max(0, crossed))) };
-      event("pitch-kick", k, program.kind === "gravity-turn" ? program.kickAngle : undefined);
+      event("pitch-kick", k, program.kickAngle);
     }
 
-    if (k.q > maxQ.value) maxQ = { value: k.q, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex };
+    // Ascent loads only. A vehicle that falls back meets thick air again, but
+    // that is reentry, not the ascent the airframe was sized for.
+    const ascending = phase.burning || verticalSpeed(s) > 0;
+    if (ascending && k.q > maxQ.value) maxQ = { value: k.q, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex };
     const qAlpha = k.q * k.angleOfAttack * DEG;
     if (phase.burning && qAlpha > maxQAlpha.value) maxQAlpha = { value: qAlpha, t, altitude: k.altitude, mach: k.mach };
-    if (!passedMach1 && k.mach >= 1) {
+    if (ascending && !passedMach1 && k.mach >= 1) {
       passedMach1 = true;
       event("mach-1", k);
     }
-    if (!qLimitHit && k.q > vehicle.limits.maxDynamicPressure) {
+    if (ascending && !qLimitHit && k.q > vehicle.limits.maxDynamicPressure) {
       qLimitHit = true;
       event("q-limit-exceeded", k, k.q);
     }
@@ -376,27 +463,30 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
       event("accel-limit-exceeded", k, axialG);
     }
 
-    if (phase.burning && propellant <= 1e-9) {
-      event("meco", k);
+    if (phase.burning && (propellant <= 1e-9 || guidanceCutoff)) {
+      if (guidanceCutoff) event("cutoff", k, propellant);
+      else event("meco", k);
+      const inertialFpa = Math.asin(Math.max(-1, Math.min(1, verticalSpeed(s) / k.speed)));
       burnout = {
         t,
         altitude: k.altitude,
         velocity: k.speed,
-        flightPathAngle: k.flightPathAngle * DEG,
-        downrange: downrangeOf(s),
+        groundSpeed: k.airSpeed,
+        flightPathAngle: inertialFpa * DEG,
+        downrange: downrange(),
       };
-      const next = vehicle.stages[stageIndex + 1];
+      const next = guidanceCutoff ? undefined : vehicle.stages[stageIndex + 1];
       if (next) {
         s[M] -= phase.stage.dryMass;
         stageIndex += 1;
         propellant = next.propellantMass;
         phase = { ...phase, stage: next, stageIndex, ignitedAt: t, area: frontalArea(vehicle, stageIndex) };
-        k = snapshot(vehicle, phase, t, s);
+        k = snapshot(ctx, phase, t, s);
         event("staging", k);
         ignite();
       } else {
         phase = { ...phase, burning: false };
-        k = snapshot(vehicle, phase, t, s);
+        k = snapshot(ctx, phase, t, s);
         orbit = orbitFrom(s[X], s[Y], s[VX], s[VY]);
         if (isOrbit(orbit)) {
           event("orbit", k, orbit.periapsis);
@@ -407,8 +497,7 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
       }
     }
 
-    const verticalSpeed = k.speed * Math.sin(k.flightPathAngle);
-    if (!phase.burning && prevVerticalSpeed > 0 && verticalSpeed <= 0) {
+    if (!phase.burning && prevVerticalSpeed > 0 && verticalSpeed(s) <= 0) {
       apogee = { t, altitude: k.altitude };
       event("apogee", k);
       outcome = "apogee";
@@ -423,7 +512,8 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
   }
 
   if (outcome === "timeout") {
-    events.push({ kind: "timeout", t, altitude: Math.hypot(s[X], s[Y]) - R_EARTH, velocity: Math.hypot(s[VX], s[VY]), mach: 0, stage: stageIndex });
+    const k = snapshot(ctx, phase, t, s);
+    events.push({ kind: "timeout", t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex });
   }
   if (maxQ.value > 0) {
     const { value, ...at } = maxQ;
@@ -431,8 +521,15 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
     events.sort((a, b) => a.t - b.t);
   }
 
+  const finalOrbit = orbit ?? orbitFrom(s[X], s[Y], s[VX], s[VY]);
+  const insertion =
+    target && outcome !== "no-liftoff"
+      ? scoreInsertion(target, finalOrbit, geometry.inclination, outcome === "orbit")
+      : null;
+
   return {
     vehicle: vehicle.name,
+    mission: mission.name,
     outcome,
     events,
     samples,
@@ -442,11 +539,17 @@ export function simulateAscent(vehicle: Vehicle, options: AscentOptions = {}): F
       maxQ,
       maxQAlpha,
       burnoutVelocity: burnout.velocity,
+      burnoutGroundSpeed: burnout.groundSpeed,
       burnoutAltitude: burnout.altitude,
       burnoutTime: burnout.t,
       burnoutFlightPathAngle: burnout.flightPathAngle,
       burnoutDownrange: burnout.downrange,
+      propellantMargin: phase.burning ? 0 : propellant,
+      azimuth: geometry.azimuth,
+      inclination: geometry.inclination,
+      rotationBoost,
       orbit,
+      insertion,
       idealDeltaV: s[9],
       losses: { gravity: s[5], drag: s[6], backPressure: s[7], steering: s[8] },
     },

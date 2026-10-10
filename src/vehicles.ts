@@ -110,7 +110,7 @@ const MERIDIAN_TURN = {
   kickSpeed: 60,
   kickAngle: 7,
   kickDuration: 5,
-  upperStage: { startPitch: 10, endPitch: 0 },
+  upperStage: { startPitch: 25, endPitch: -15 },
 } as const satisfies PitchProgram;
 
 /**
