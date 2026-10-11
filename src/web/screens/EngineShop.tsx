@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { developedParts, type Company } from "../../sim/company.ts";
+import { twinOf } from "../../sim/schedule.ts";
 import { P_SEA_LEVEL } from "../../sim/constants.ts";
 import { flowSeparates, ispAt, thrustAt } from "../../sim/engine.ts";
 import {
@@ -83,7 +84,7 @@ function Option({
   );
 }
 
-export function EngineShop({ company, done }: { company: Company; done: () => void }) {
+export function EngineShop({ company, done, show }: { company: Company; done: () => void; show: (engine: string) => void }) {
   const [parts, setParts] = useState<EngineParts>({ size: 25, cycle: "gas-generator", injector: "coaxial", cooling: "film", nozzle: "vacuum" });
   const [name, setName] = useState(() => suggestName(parts, company.campaign.engines));
   const [named, setNamed] = useState(false);
@@ -99,6 +100,7 @@ export function EngineShop({ company, done }: { company: Company; done: () => vo
   const quote = developmentCost(parts, developed);
   const problems = partsProblems(parts);
   const taken = company.campaign.engines[name.trim()] !== undefined;
+  const twin = twinOf(company, parts);
   const separates = flowSeparates(engine, P_SEA_LEVEL);
   const keyFor = (slot: Slot, option: string) => partKey({ ...parts, [slot]: option } as EngineParts, slot);
 
@@ -242,6 +244,20 @@ export function EngineShop({ company, done }: { company: Company; done: () => vo
             {p}
           </span>
         ))}
+        {twin ? (
+          <div className="stack" style={{ gap: 8 }}>
+            <span className="warn">
+              This is the {twin}: the same parts at the same size{company.campaign.engines[twin] ? "" : ", already being developed"}. A second one would cost money and teach nothing.
+            </span>
+            {company.campaign.engines[twin] && (
+              <span className="actions">
+                <button type="button" className="btn primary" onClick={() => show(twin)}>
+                  Open the {twin} on the stand
+                </button>
+              </span>
+            )}
+          </div>
+        ) : (
         <div className="actions">
           <button
             type="button"
@@ -252,6 +268,7 @@ export function EngineShop({ company, done }: { company: Company; done: () => vo
             Develop · {money(quote.cost)} · {quote.days} d
           </button>
         </div>
+        )}
         <span className="muted" style={{ fontSize: 14 }}>
           Ranges are what the parts promise. The real numbers sit somewhere inside, and only firings say where.
         </span>

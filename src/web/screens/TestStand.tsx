@@ -75,7 +75,16 @@ export function TestStand({ company }: { company: Company }) {
         />
       </div>
       {tab === "firing" && <Firing company={company} focus={focus} />}
-      {tab === "shop" && <EngineShop company={company} done={() => setTab("firing")} />}
+      {tab === "shop" && (
+        <EngineShop
+          company={company}
+          done={() => setTab("firing")}
+          show={(engine) => {
+            setFocus({ engine });
+            setTab("firing");
+          }}
+        />
+      )}
       {tab === "parts" && (
         <Parts
           company={company}

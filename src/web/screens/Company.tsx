@@ -7,8 +7,9 @@ import { game } from "../game.ts";
 import { licenceJob } from "../jobs.ts";
 import { money, shortDate, signed } from "../format.ts";
 import { LABELS, LedgerTab } from "./LedgerTab.tsx";
+import { Work } from "./Work.tsx";
 
-type Tab = "overview" | "achievements" | "ledger";
+export type CompanyTab = "overview" | "work" | "achievements" | "ledger";
 
 /** Spend categories, in the order and colours the money bar uses. */
 const SPEND: Array<[Category, string]> = [
@@ -24,8 +25,7 @@ const SPEND: Array<[Category, string]> = [
   ["penalty", "#ef6a5e"],
 ];
 
-export function Company({ company }: { company: CompanyState }) {
-  const [tab, setTab] = useState<Tab>("overview");
+export function Company({ company, tab, setTab }: { company: CompanyState; tab: CompanyTab; setTab: (t: CompanyTab) => void }) {
   const list = achievements(company);
   const earned = list.filter((a) => a.earned).length;
 
@@ -33,18 +33,20 @@ export function Company({ company }: { company: CompanyState }) {
     <div className="screen">
       <div className="screen-head">
         <NameEditor company={company} />
-        <Tabs<Tab>
+        <Tabs<CompanyTab>
           label="Company views"
           value={tab}
           onChange={setTab}
           tabs={[
             ["overview", "Overview"],
+            ["work", company.tasks.length > 0 ? `Work · ${company.tasks.length}` : "Work"],
             ["achievements", `Achievements ${earned}/${list.length}`],
             ["ledger", "Ledger"],
           ]}
         />
       </div>
       {tab === "overview" && <Overview company={company} list={list} openAchievements={() => setTab("achievements")} />}
+      {tab === "work" && <Work company={company} />}
       {tab === "achievements" && <Achievements list={list} />}
       {tab === "ledger" && <LedgerTab company={company} />}
     </div>

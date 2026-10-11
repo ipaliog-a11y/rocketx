@@ -144,7 +144,7 @@ test("refining needs measured Isp, moves the truth up within the range, and clea
 
 test("re-engining a design is refused while any are built", () => {
   const c = company();
-  developEngine(c, { ...KESTREL_SL.parts!, size: 9, nozzle: "vacuum" }, "Kestrel-Vac 9");
+  developEngine(c, { ...KESTREL_SL.parts!, size: 9, nozzle: "large-vacuum" }, "Kestrel-Vac 9");
   reengine(c, "two-stage", 1, "Kestrel-Vac 9");
   assert.equal(c.designs["two-stage"]!.stages[1]!.engine.name, "Kestrel-Vac 9");
   build(c, "two-stage");

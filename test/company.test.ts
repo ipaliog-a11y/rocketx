@@ -8,6 +8,7 @@ import {
   brief,
   build,
   buyLine,
+  LEARNING,
   LINE_COSTS,
   readyDay,
   fire,
@@ -149,7 +150,8 @@ test("orders queue on a busy line, and another line builds in parallel", () => {
   const days = vehicleCost(PATHFINDER).days;
   build(c, "pathfinder");
   build(c, "pathfinder");
-  assert.deepEqual(c.orders.map((o) => o.readyDay), [days, 2 * days]);
+  // The second takes less time: the line learned on the first.
+  assert.deepEqual(c.orders.map((o) => o.readyDay), [days, days + Math.round(days * LEARNING.rate)]);
   const { notices } = wait(c, days);
   assert.equal(c.inventory.pathfinder, 1);
   assert.ok(notices.some((n) => /rolled out of line 1/.test(n)));

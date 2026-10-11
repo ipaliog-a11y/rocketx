@@ -105,7 +105,7 @@ export function LedgerTab({ company }: { company: Company }) {
                   <span style={{ flex: 1 }}>
                     {tagText(r.tag)} <span className="muted">· {r.note}</span>
                   </span>
-                  <Chip tone={r.reputation > 0 ? "good" : r.reputation < 0 ? "bad" : "muted"}>{signed(r.reputation)}</Chip>
+                  <Chip tone={r.reputation > 0 ? "good" : r.reputation < 0 ? "bad" : "muted"}>{r.test ? "TEST · 0" : signed(r.reputation)}</Chip>
                 </li>
               ))}
             </ul>

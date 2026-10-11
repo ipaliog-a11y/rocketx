@@ -4,6 +4,8 @@ import {
   accept,
   applyForLicence,
   build,
+  buildDays,
+  objectionTo,
   fire,
   fixAero,
   fixEngine,
@@ -17,7 +19,7 @@ import {
   type Company,
 } from "./sim/company.ts";
 import type { Contract } from "./sim/contracts.ts";
-import { COSTS, vehicleCost } from "./sim/cost.ts";
+import { COSTS } from "./sim/cost.ts";
 import { holds, nextLicence, ORBITAL_FLIGHTS_NEEDED, requiredLicence, safeSpaceFlights } from "./sim/licence.ts";
 import type { Engine } from "./sim/engine.ts";
 import { FIXES, believedHardware, type Facility } from "./sim/teststand.ts";
@@ -103,10 +105,10 @@ function forecastDelivers(company: Company, key: string, contract: Contract): bo
 }
 
 function canSign(company: Company, contract: Contract, key: string): boolean {
-  const { days } = vehicleCost(VEHICLES[key]!);
+  const days = buildDays(company, key);
   const open = !company.accepted.includes(contract.id) && !company.closed[contract.id];
   const onTime = company.day + days + COSTS.padDays <= contract.deadline;
-  const clean = !company.record.some((r) => contract.refuses.includes(r.tag));
+  const clean = !objectionTo(company, contract);
   const licensed = holds(company, requiredLicence(contract));
   return open && onTime && clean && licensed && reputation(company) >= contract.minReputation;
 }

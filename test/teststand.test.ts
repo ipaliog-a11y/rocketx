@@ -156,7 +156,7 @@ test("a known flaw short of the flight burn is called out as a certain failure",
   const campaign = newCampaign({ [HARRIER_SL.name]: healthy({ thermalLife: 100 }), [HARRIER_VAC.name]: healthy() });
   hotFire(campaign, HARRIER_SL, 140, "sea-level");
   const text = flightUnknowns(MERIDIAN, campaign).map((u) => u.text).join("\n");
-  assert.match(text, /Known burn-through at 100\.0 s .* it will fail in flight/);
+  assert.match(text, /Known burn-through at 100\.0 s, not fixed\..* it will fail in flight/);
 });
 
 test("a booster hard start loses the vehicle on the pad", () => {

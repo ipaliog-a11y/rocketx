@@ -1,4 +1,5 @@
-import { applyForLicence, build, buyLine, designVehicle, developEngine, LINE_COSTS, nextSlot, readyDay, refinePart, REFINE, retuneForMission, fire, fixAero, fixEngine, fly, retune, tunnel, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { designSpec, runTask, type TaskSpec } from "../sim/schedule.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { COSTS, vehicleCost } from "../sim/cost.ts";
 import { flowSeparates, type Engine } from "../sim/engine.ts";
@@ -35,7 +36,28 @@ export type Job<T extends ActionResult = ActionResult> = {
   forContract?: string;
   run: (company: Company) => T;
   onDone?: (result: T) => void;
+  /** Work on a track: it can go on the plan instead of running now. Making it may be slow (a re-tune works the trajectory out). */
+  task?: (company: Company) => TaskSpec;
+  /** A quick stand-in for `task` to quote from, when making the real one is slow. */
+  quote?: (company: Company) => TaskSpec;
 };
+
+/**
+ * A job on a track. Run now, it books the job and lets the calendar run to
+ * its end; planned, it is only booked. Its days and cost come from the
+ * quote when it is asked for.
+ */
+function trackJob(base: Omit<Job, "run" | "task">, task: (company: Company) => TaskSpec, quote?: (company: Company) => TaskSpec): Job<ActionResult & { key?: string }> {
+  return {
+    ...base,
+    task,
+    quote,
+    run: (c) => {
+      const r = runTask(c, task(c), false);
+      return { ...r, key: r.done.find((d) => d.key)?.key };
+    },
+  };
+}
 
 export type Risk = { contract: Contract; text: string };
 
@@ -66,8 +88,11 @@ const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Order a vehicle: paid now, built on a production line while the company keeps working. */
 export function buildJob(company: Company, key: string): Job {
   const v = company.designs[key]!;
-  const { cost, days } = vehicleCost(v);
+  const { cost } = vehicleCost(v);
   const slot = nextSlot(company, key);
+  const days = slot.readyDay - slot.startDay;
+  const built = company.built[key] ?? 0;
+  const learned = built > 0 ? ` The line has built ${built} before: ${Math.round((1 - days / vehicleCost(v).days) * 100)}% faster than the first.` : "";
   const queued = slot.startDay > company.day ? ` Line ${slot.line + 1} is busy until day ${slot.startDay}, so it starts then.` : "";
   return {
     title: `Order a ${v.name}?`,
@@ -76,7 +101,7 @@ export function buildJob(company: Company, key: string): Job {
     days: 0,
     cost,
     alwaysAsk: true,
-    caveat: `Built on line ${slot.line + 1} in ${days} days: ready on day ${slot.readyDay}.${queued} The company keeps working meanwhile.`,
+    caveat: `Built on line ${slot.line + 1} in ${days} days: ready on day ${slot.readyDay}.${queued}${learned} The company keeps working meanwhile.`,
     run: (c) => build(c, key),
   };
 }
@@ -97,7 +122,7 @@ export function lineJob(company: Company): Job | null {
 }
 
 export function designJob(spec: VehicleSpec, quote: DesignQuote, onDone?: (key: string) => void): Job {
-  return {
+  return trackJob({
     title: `Draw up the ${spec.name.trim()}?`,
     doing: `Drawing up the ${spec.name.trim()}`,
     verb: "Draw it up",
@@ -108,21 +133,19 @@ export function designJob(spec: VehicleSpec, quote: DesignQuote, onDone?: (key: 
       quote.newTanks.length > 0 || quote.newFairing
         ? `Includes tooling for ${[...quote.newTanks.map((d) => `${d} m tanks`), ...(quote.newFairing ? [`a ${spec.fairingDiameter} m fairing`] : [])].join(" and ")}.`
         : "The shop already has the tooling.",
-    run: (c) => designVehicle(c, spec),
-    onDone: onDone ? (r) => onDone((r as ActionResult & { key: string }).key) : undefined,
-  };
+    onDone: onDone ? (r) => (r as ActionResult & { key?: string }).key && onDone((r as ActionResult & { key: string }).key) : undefined,
+  }, (c) => designSpec(c, spec));
 }
 
 export function retuneTestJob(company: Company, key: string, mission: Mission): Job {
   const v = company.designs[key]!;
-  return {
+  return trackJob({
     title: `Re-tune the ${v.name} for a test flight to ${mission.name}?`,
     doing: `Re-tuning the ${v.name}'s pitch programme`,
     verb: "Re-tune",
     days: RETUNE_COST.days,
     cost: RETUNE_COST.cost,
-    run: (c) => retuneForMission(c, key, mission),
-  };
+  }, (c) => retuneSpec(c, key, { mission }), () => ({ kind: "retune", design: key, pitchProgram: v.pitchProgram, text: "" }));
 }
 
 /** Days until a design's next vehicle is on the pad: 0 if one is built. */
@@ -131,7 +154,7 @@ const waitForRollout = (company: Company, key: string) => Math.max(0, (readyDay(
 export function fireJob(engine: Engine, seconds: number, facility: Facility, expectedRun: number, restart = false): Job {
   const f = FACILITIES[facility];
   const startCheck = flowSeparates(engine, f.ambient);
-  return {
+  return trackJob({
     title: startCheck
       ? `Start-check the ${engine.name} on the ${f.name}?`
       : restart
@@ -141,57 +164,52 @@ export function fireJob(engine: Engine, seconds: number, facility: Facility, exp
     verb: "Fire",
     days: f.days + (restart ? RESTART_TEST.days : 0),
     cost: f.setup * (restart ? 2 : 1) + f.perSecond * expectedRun,
-    caveat: `If the engine fails, a new one costs ${money(HARDWARE_LOSS.cost)} and ${HARDWARE_LOSS.days} more days.`,
-    run: (c) => fire(c, engine, seconds, facility, restart),
-  };
+    caveat: `If the engine fails, a new one costs ${money(HARDWARE_LOSS.cost)} and ties up the ${f.name} ${HARDWARE_LOSS.days} more days while it is built. A firing cut short refunds the seconds it didn't run.`,
+  }, () => ({ kind: "fire", engine: engine.name, seconds, facility, restart }));
 }
 
 export function tunnelJob(key: string, shape: string, facility: AeroFacility): Job {
   const f = AERO_FACILITIES[facility];
-  return {
+  return trackJob({
     title: `Book the ${f.name} for the ${shape}?`,
     doing: `${capital(f.name)} · ${shape}`,
     verb: "Book",
     days: f.days,
     cost: f.cost,
-    run: (c) => tunnel(c, key, facility),
-  };
+  }, () => ({ kind: "tunnel", design: key, facility }));
 }
 
 export function fixEngineJob(engine: Engine, mode: FailureMode): Job {
   const fix = FIXES[mode]!;
-  return {
+  return trackJob({
     title: `Fix the ${engine.name}'s ${FAILURE_LABELS[mode]}?`,
     doing: `${capital(fix.name)} · ${engine.name}`,
     verb: "Apply fix",
     days: fix.days,
     cost: fix.cost,
-    run: (c) => fixEngine(c, engine, mode),
-  };
+  }, () => ({ kind: "fix-engine", engine: engine.name, mode }));
 }
 
 export function fixAeroJob(key: string, shape: string): Job {
-  return {
+  return trackJob({
     title: `Fit ${BUFFET_FIX.name} to the ${shape}?`,
     doing: `Fitting vortex generators · ${shape}`,
     verb: "Fit them",
     days: BUFFET_FIX.days,
     cost: BUFFET_FIX.cost,
-    run: (c) => fixAero(c, key, "transonic-buffet"),
-  };
+  }, () => ({ kind: "fix-aero", design: key, mode: "transonic-buffet" }));
 }
 
 export function retuneJob(company: Company, key: string, contract: Contract): Job {
   const v = company.designs[key]!;
-  return {
+  return trackJob({
     title: `Re-tune the ${v.name} for ${contract.payloadMass} kg?`,
     doing: `Re-tuning the ${v.name}'s pitch programme`,
     verb: "Re-tune",
     days: RETUNE_COST.days,
     cost: RETUNE_COST.cost,
     forContract: contract.id,
-    run: (c) => retune(c, key, contract.id),
-  };
+  }, (c) => retuneSpec(c, key, { contract: contract.id }), () => ({ kind: "retune", design: key, pitchProgram: v.pitchProgram, text: "" }));
 }
 
 export function launchJob(company: Company, key: string, contract: Contract, onDone: (r: FlightReport) => void): Job<FlightReport> {
@@ -227,19 +245,18 @@ export function waitJob(days: number, why: string, title = `Wait ${days} days?`,
 
 export function licenceJob(application: Application): Job {
   const name = LICENCE_LABELS[application.tier].toLowerCase();
-  return {
+  return trackJob({
     title: `Apply for the ${name} licence?`,
     doing: `The regulator reviews your ${name} application`,
     verb: "Apply",
     days: application.days,
     cost: application.fee,
     alwaysAsk: true,
-    run: (c) => applyForLicence(c),
-  };
+  }, (c) => licenceSpec(c));
 }
 
 export function developJob(parts: EngineParts, name: string, quote: { cost: number; days: number; newParts: string[] }): Job {
-  return {
+  return trackJob({
     title: `Develop the ${name}?`,
     doing: `Developing the ${name}${quote.newParts.length > 0 ? `: ${quote.newParts.length} new part${quote.newParts.length === 1 ? "" : "s"}` : ""}`,
     verb: "Develop",
@@ -250,18 +267,16 @@ export function developJob(parts: EngineParts, name: string, quote: { cost: numb
       quote.newParts.length > 0
         ? `New parts bring new unknowns: ${quote.newParts.map(partLabel).join(", ")}. Nothing about them is proven until they fire.`
         : "Every part is already in production, with what tests have learned about it.",
-    run: (c) => developEngine(c, parts, name),
-  };
+  }, () => ({ kind: "develop", name, parts }));
 }
 
 export function refineJob(key: string): Job {
-  return {
+  return trackJob({
     title: `Refine the ${partLabel(key)}?`,
     doing: `Refining the ${partLabel(key)}`,
     verb: "Refine",
     days: REFINE.days,
     cost: REFINE.cost,
     caveat: "The gain only shows once Isp is measured again: the next firing or flight.",
-    run: (c) => refinePart(c, key),
-  };
+  }, () => ({ kind: "refine", part: key }));
 }

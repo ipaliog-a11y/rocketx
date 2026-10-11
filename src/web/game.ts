@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { newCompany, rename, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import { forgetStandSeparation } from "../sim/teststand.ts";
+import { book, cancelTask, buyUnit, project, quoteTask, TRACKS, upgradeCompany, type Track } from "../sim/schedule.ts";
 import { generateBoard, startingCash } from "../contracts.ts";
 import { DESIGNS } from "./designs.ts";
 import { deadlineRisks, signedContracts, type Job } from "./jobs.ts";
@@ -59,6 +60,7 @@ function load(): Company | null {
     if (!raw) return null;
     const company = JSON.parse(raw) as Company;
     forgetStandSeparation(company.campaign);
+    upgradeCompany(company);
     return company;
   } catch {
     return null;
@@ -159,7 +161,8 @@ export const game = {
   schedule<T extends ActionResult>(job: Job<T>): void {
     const company = state.company;
     if (!company || state.progress) return;
-    if (job.alwaysAsk || deadlineRisks(company, job.days, job.forContract).length > 0) {
+    // Work on a track always asks: run it now, or put it on the plan.
+    if (job.task || job.alwaysAsk || deadlineRisks(company, job.days, job.forContract).length > 0) {
       state.pending = job;
       emit();
     } else game.proceed(job);
@@ -175,6 +178,53 @@ export const game = {
     state.pending = null;
     if (job) game.proceed(job);
     else emit();
+  },
+
+  /** Start a track job now: book it and let the calendar run to its end. */
+  startNow(): void {
+    const job = state.pending;
+    const company = state.company;
+    state.pending = null;
+    if (!job || !company) return emit();
+    try {
+      const q = quoteTask(company, (job.quote ?? job.task)!(company));
+      game.proceed({ ...job, days: q.end - company.day });
+    } catch (error) {
+      notify((error as Error).message, "bad");
+      emit();
+    }
+  },
+
+  /** Put a track job on the plan: booked and paid, started when its track is free. The calendar stays put. */
+  plan(): void {
+    const job = state.pending;
+    const company = state.company;
+    state.pending = null;
+    if (!job?.task || !company) return emit();
+    const make = job.task;
+    const run = () =>
+      game.act((c) => {
+        const { task, notices } = book(c, make(c));
+        const end = project(c).tasks.get(task.id)?.end;
+        return { text: "", notices: [`Planned · ${TRACKS[task.track].name}: ${task.title}${end !== undefined ? `, done on day ${end}` : ""}.`, ...notices] };
+      });
+    if (!job.quote) return void run();
+    // Working out a re-tune takes a moment: say so while it runs.
+    state.progress = { id: nextProgress++, doing: job.doing, fromDay: company.day, toDay: company.day, ms: 0, crunching: true };
+    emit();
+    setTimeout(() => {
+      run();
+      state.progress = null;
+      emit();
+    }, 40);
+  },
+
+  cancelTask(id: number): void {
+    game.act((c) => cancelTask(c, id));
+  },
+
+  buyUnit(track: Track): void {
+    game.act((c) => buyUnit(c, track));
   },
 
   proceed<T extends ActionResult>(job: Job<T>): void {

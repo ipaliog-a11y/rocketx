@@ -4,7 +4,7 @@ import { LICENCE_LABELS } from "../sim/licence.ts";
 import { JobConfirm, JobProgress } from "./components/JobDialogs.tsx";
 import { game, useGame } from "./game.ts";
 import { money, signed } from "./format.ts";
-import { Company } from "./screens/Company.tsx";
+import { Company, type CompanyTab } from "./screens/Company.tsx";
 import { Contracts } from "./screens/Contracts.tsx";
 import { Flight } from "./screens/Flight.tsx";
 import { Hangar } from "./screens/Hangar.tsx";
@@ -12,6 +12,7 @@ import { Launch } from "./screens/Launch.tsx";
 import { NewGame } from "./screens/NewGame.tsx";
 import { TestStand } from "./screens/TestStand.tsx";
 import { Tunnel } from "./screens/Tunnel.tsx";
+import { WorkStrip } from "./screens/Work.tsx";
 
 type Screen = "company" | "contracts" | "launch" | "hangar" | "stand" | "tunnel";
 
@@ -27,6 +28,7 @@ const SCREENS: Array<[Screen, string]> = [
 export function App() {
   const state = useGame();
   const [screen, setScreen] = useState<Screen>("company");
+  const [companyTab, setCompanyTab] = useState<CompanyTab>("overview");
   const company = state.company;
   if (!company) return <NewGame />;
 
@@ -63,12 +65,13 @@ export function App() {
           </div>
         </dl>
       </header>
+      <WorkStrip company={company} open={() => (game.closeFlight(), setCompanyTab("work"), setScreen("company"))} />
 
       {state.flight ? (
         <Flight key={state.flight.id} report={state.flight.report} design={state.flight.design} />
       ) : (
         <>
-          {screen === "company" && <Company company={company} />}
+          {screen === "company" && <Company company={company} tab={companyTab} setTab={setCompanyTab} />}
           {screen === "contracts" && <Contracts company={company} version={state.version} goTo={setScreen} />}
           {screen === "launch" && <Launch company={company} version={state.version} goTo={setScreen} />}
           {screen === "hangar" && <Hangar company={company} />}

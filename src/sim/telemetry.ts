@@ -1,7 +1,7 @@
 import type { FlightResult } from "./ascent.ts";
 import { aeroShape, BUFFET_BAND } from "./airframe.ts";
 import { knowledgeOf, learnParts, refreshFromParts, type Campaign, type TestReport } from "./teststand.ts";
-import type { Vehicle } from "./vehicle.ts";
+import { burnTime, type Vehicle } from "./vehicle.ts";
 
 /** Running needed before telemetry can pin down Isp, s. */
 const STEADY_STATE = 5;
@@ -31,6 +31,9 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
     }
     if (from !== null) burned += lastT - from;
     const failure = result.events.find((e) => e.stage === index && e.kind === "engine-failure");
+    // Burned to empty tanks: the whole burn is proven. The integrator's last
+    // step can stop a hair short of the burn time on paper.
+    if (!failure && result.events.some((e) => e.stage === index && e.kind === "meco")) burned = Math.max(burned, burnTime(stage));
     const truth = campaign.truth[stage.engine.name];
     if (!truth) return;
     const known = knowledgeOf(campaign, stage.engine);

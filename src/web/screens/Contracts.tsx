@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { accept, bid, reputation, type Company } from "../../sim/company.ts";
+import { accept, bid, commitSeries, reputation, seriesBonus, seriesBroken, uncommitted, type Company } from "../../sim/company.ts";
 import { KIND_LABELS, type Contract, type ContractKind } from "../../sim/contracts.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { holds, LICENCE_LABELS, requiredLicence, type Licence } from "../../sim/licence.ts";
@@ -7,6 +7,7 @@ import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidPar
 import { Chip, Facts, Tabs } from "../components/Bits.tsx";
 import { defaultDesign, game } from "../game.ts";
 import { deadlineRisks, waitJob } from "../jobs.ts";
+import { project } from "../../sim/schedule.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
 
 type Props = { company: Company; version: number; goTo: (screen: "launch") => void };
@@ -249,6 +250,12 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
   };
   const rollouts = new Map<number, string[]>();
   for (const o of company.orders) rollouts.set(o.readyDay, [...(rollouts.get(o.readyDay) ?? []), company.designs[o.design]?.name ?? o.design]);
+  // Booked work, on the day it is expected to finish.
+  const finishes = new Map<number, string[]>();
+  for (const [id, p] of project(company).tasks) {
+    const t = company.tasks.find((x) => x.id === id);
+    if (t) finishes.set(p.end, [...(finishes.get(p.end) ?? []), t.title]);
+  }
   const events: CalEvent[] = rows
     .filter((r) => r.status.key !== "closed")
     .flatMap(({ c }) => {
@@ -307,6 +314,9 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
         <span>
           <i className="ev rollout" /> rollout
         </span>
+        <span>
+          <i className="ev job" /> job done
+        </span>
         <span>↻ recurring</span>
       </div>
       <div className="month" role="grid" aria-label={monthName(cursor.year, cursor.month)}>
@@ -318,6 +328,7 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
         {cells.map((day) => {
           const evs = byDay.get(day) ?? [];
           const ready = rollouts.get(day) ?? [];
+          const jobs = finishes.get(day) ?? [];
           const future = day > company.day;
           const cls = ["cell", inMonth(day) ? "" : "outside", day === company.day ? "today" : "", day < company.day ? "past" : "", future ? "future" : "", day === pick ? "picked" : "", pick !== null && future && day < pick ? "span" : ""];
           return (
@@ -343,6 +354,11 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
               {ready.map((name, i) => (
                 <span key={`r${i}`} className="ev rollout" title={`${name} rolls out`}>
                   <span className="ev-text">🚀 {name}</span>
+                </span>
+              ))}
+              {jobs.map((title, i) => (
+                <span key={`j${i}`} className="ev job" title={`Done: ${title}`}>
+                  <span className="ev-text">⚙ {title}</span>
                 </span>
               ))}
               {evs.slice(0, 3).map((e) => (
@@ -394,6 +410,7 @@ function AdvanceBar({ company, day, clear }: { company: Company; day: number; cl
   const posting = company.board.filter((c) => c.postedDay > company.day && c.postedDay <= day).length;
   const risks = deadlineRisks(company, n);
   const ready = company.orders.filter((o) => o.readyDay <= day).map((o) => company.designs[o.design]?.name ?? o.design);
+  const work = [...project(company).tasks].filter(([, p]) => p.end <= day).map(([id]) => company.tasks.find((t) => t.id === id)?.title).filter(Boolean);
   const when = shortDate(day);
   return (
     <div className="advance" role="region" aria-label="Advance the calendar">
@@ -407,6 +424,7 @@ function AdvanceBar({ company, day, clear }: { company: Company; day: number; cl
           </span>
         )}
         {ready.length > 0 && <span className="good">Rolled out by then: {ready.join(", ")}.</span>}
+        {work.length > 0 && <span className="soft">Work done by then: {work.join(" · ")}.</span>}
         {risks.map((r) => (
           <span key={r.contract.id} className="bad">
             {r.text}
@@ -451,7 +469,14 @@ function BidPanel({ company, version, contract, design, setDesign, goTo }: { com
       {series.length > 0 && (
         <div className="stack" style={{ gap: 6 }}>
           <span className="soft">
-            Recurring: launch {contract.seriesIndex} of {series.length}. Deliver and the next pays 5% more; fail or miss one and the rest are withdrawn.
+            Recurring: launch {contract.seriesIndex} of {series.length}. Deliver and the next pays 5% more; fail or miss one and the rest are withdrawn.{" "}
+            {seriesBroken(company, contract.seriesId!) ? (
+              <span className="muted">The series bonus is gone: launch {seriesBroken(company, contract.seriesId!)!.seriesIndex} wasn't delivered.</span>
+            ) : (
+              <>
+                Deliver all {series.length} for a <strong className="good">{money(seriesBonus(company, contract.seriesId!))}</strong> bonus, however they were signed.
+              </>
+            )}
           </span>
           <div className="series" aria-label="Series progress">
             {series.map((c) => {
@@ -465,6 +490,7 @@ function BidPanel({ company, version, contract, design, setDesign, goTo }: { com
               );
             })}
           </div>
+          <SeriesCommit company={company} seriesId={contract.seriesId!} />
         </div>
       )}
       <Facts
@@ -508,5 +534,67 @@ function BidPanel({ company, version, contract, design, setDesign, goTo }: { com
         )
       )}
     </aside>
+  );
+}
+
+/**
+ * Sign every remaining launch of a series in one go. A big promise, so it
+ * asks first and lists every deadline it signs up to.
+ */
+function SeriesCommit({ company, seriesId }: { company: Company; seriesId: string }) {
+  const [asking, setAsking] = useState(false);
+  const left = uncommitted(company, seriesId);
+  if (left.length < 2) return null;
+  const penalties = left.reduce((sum, c) => sum + c.penalty, 0);
+  const pays = left.reduce((sum, c) => sum + c.payout, 0);
+  if (!asking) {
+    return (
+      <span className="actions">
+        <button type="button" className="btn" onClick={() => setAsking(true)}>
+          Commit to the series · sign {left.length} launches
+        </button>
+      </span>
+    );
+  }
+  return (
+    <div className="card" role="group" aria-label="Commit to the series" style={{ borderColor: "var(--amber)", gap: 8 }}>
+      <strong>
+        Sign all {left.length} remaining launches with {left[0]!.customer}?
+      </strong>
+      <span className="soft" style={{ fontSize: 14 }}>
+        Each becomes a signed contract on the calendar: {money(pays)} on delivery, {money(penalties)} in penalties if every one were missed.
+      </span>
+      <ul className="list" style={{ gap: 2, fontSize: 14 }}>
+        {left.map((c) => (
+          <li key={c.id}>
+            <span className="mono muted" style={{ flex: "0 0 86px" }}>
+              day {c.deadline}
+            </span>
+            <span>
+              Launch {c.seriesIndex} · {money(c.payout)}
+              {c.postedDay > company.day ? <span className="muted"> · posted day {c.postedDay}</span> : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <span className="actions">
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => {
+            game.act((c) => {
+              const r = commitSeries(c, seriesId);
+              return { ...r, notices: [r.text, ...r.notices] };
+            });
+            setAsking(false);
+          }}
+        >
+          Commit · {left.length} launches
+        </button>
+        <button type="button" className="btn" onClick={() => setAsking(false)}>
+          Cancel
+        </button>
+      </span>
+    </div>
   );
 }

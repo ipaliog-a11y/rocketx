@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { readyDay, reengine, type Company } from "../../sim/company.ts";
+import { buildDays, readyDay, reengine, type Company } from "../../sim/company.ts";
 import { holds, missionLicence } from "../../sim/licence.ts";
 import { vehicleCost } from "../../sim/cost.ts";
 import { burnTime, idealDeltaV, stackMass } from "../../sim/vehicle.ts";
@@ -88,7 +88,9 @@ const COLOURS = ["#e8ecef", "#5bb8e3", "#2e6e8e", "#f0a43a", "#8a5a1e"];
 
 function Design({ company, designKey }: { company: Company; designKey: string }) {
   const v = company.designs[designKey]!;
-  const { cost, days } = vehicleCost(v);
+  const { cost, days: firstDays } = vehicleCost(v);
+  const days = buildDays(company, designKey);
+  const built = company.built[designKey] ?? 0;
   const dv = idealDeltaV(v);
   const total = dv.reduce((a, b) => a + b, 0);
   const stock = company.inventory[designKey] ?? 0;
@@ -128,7 +130,7 @@ function Design({ company, designKey }: { company: Company; designKey: string })
             ["Burns", v.stages.map((s) => `${burnTime(s).toFixed(0)} s`).join(" + ")],
             ["Vacuum T/W", (pad / (liftoff * 9.80665)).toFixed(2)],
             ["Load budget", `${v.limits.maxDynamicPressure / 1000} kPa`],
-            ["Build", `${money(cost)} · ${days} d`],
+            ["Build", `${money(cost)} · ${days} d${days < firstDays ? ` (first took ${firstDays}: ${built} built)` : ""}`],
           ]}
         />
         <Engines company={company} designKey={designKey} />

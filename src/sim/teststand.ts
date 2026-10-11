@@ -589,8 +589,8 @@ export function flightUnknowns(vehicle: Vehicle, campaign: Campaign, mission?: M
         const margin = t / burn - 1;
         add(
           margin > 0
-            ? `Known ${FAILURE_LABELS[mode]} at ${t.toFixed(1)} s on the stand, not fixed. The flight burns it for ${burnText}, a ${Math.round(margin * 100)}% margin.`
-            : `Known ${FAILURE_LABELS[mode]} at ${t.toFixed(1)} s on the stand, not fixed. The flight burns it for ${burnText}: it will fail in flight.`,
+            ? `Known ${FAILURE_LABELS[mode]} at ${t.toFixed(1)} s, not fixed. The flight burns it for ${burnText}, a ${Math.round(margin * 100)}% margin.`
+            : `Known ${FAILURE_LABELS[mode]} at ${t.toFixed(1)} s, not fixed. The flight burns it for ${burnText}: it will fail in flight.`,
         );
       } else {
         add(`Known ${FAILURE_LABELS[mode]}, not fixed.`);

@@ -3,6 +3,7 @@ import type { Company } from "../../sim/company.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { game, type Progress } from "../game.ts";
 import { deadlineRisks, type Job } from "../jobs.ts";
+import { quoteTask, TRACKS } from "../../sim/schedule.ts";
 import { money } from "../format.ts";
 
 /**
@@ -15,6 +16,7 @@ export function JobConfirm({ company, job }: { company: Company; job: Job }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  if (job.task) return <TrackConfirm company={company} job={job} />;
 
   const payroll = job.days * COSTS.overheadPerDay;
   const total = job.cost + payroll;
@@ -100,6 +102,97 @@ export function JobProgress({ progress }: { progress: Progress }) {
           <span className="muted">day {fromDay}</span>
           <span style={{ fontWeight: 600 }}>day {day}</span>
           <span className="muted">day {toDay}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The go-ahead for work on a track: start it now and let the calendar run
+ * to its end, or put it on the plan and keep working while it waits its turn.
+ */
+function TrackConfirm({ company, job }: { company: Company; job: Job }) {
+  let q: ReturnType<typeof quoteTask>;
+  try {
+    q = quoteTask(company, (job.quote ?? job.task)!(company));
+  } catch (error) {
+    return (
+      <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="job-title" onClick={(e) => e.target === e.currentTarget && game.cancel()}>
+        <div className="card alert" style={{ maxWidth: 520 }}>
+          <h2 id="job-title">{job.title}</h2>
+          <span className="bad">{(error as Error).message}</span>
+          <div className="actions">
+            <button type="button" className="btn" autoFocus onClick={() => game.cancel()}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  const now = q.end - company.day;
+  const payroll = now * COSTS.overheadPerDay;
+  const risks = deadlineRisks(company, now, job.forContract);
+  const waits = q.start > company.day;
+
+  return (
+    <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="job-title" onClick={(e) => e.target === e.currentTarget && game.cancel()}>
+      <div className={`card ${risks.length > 0 ? "alert" : ""}`} style={{ maxWidth: 560 }}>
+        <p className="label">{TRACKS[q.track].name}</p>
+        <h2 id="job-title">{job.title}</h2>
+        <dl className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
+          <div>
+            <dt>Cost</dt>
+            <dd>{money(q.cost)}</dd>
+          </div>
+          <div>
+            <dt>Takes</dt>
+            <dd>
+              {q.days} day{q.days === 1 ? "" : "s"}
+            </dd>
+          </div>
+          <div>
+            <dt>Starts</dt>
+            <dd>{waits ? `day ${q.start}` : "today"}</dd>
+          </div>
+          <div>
+            <dt>Done on</dt>
+            <dd>day {q.end}</dd>
+          </div>
+        </dl>
+        {waits && q.after.length > 0 && <span className="soft">Waits for: {q.after.join(" · ")}.</span>}
+        {job.caveat && <span className="muted">{job.caveat}</span>}
+        <div className="choice">
+          <div className="stack" style={{ gap: 6 }}>
+            <strong>Start now</strong>
+            <span className="soft" style={{ fontSize: 14 }}>
+              The calendar runs {now} day{now === 1 ? "" : "s"} to day {q.end}, {money(payroll)} of payroll. Anything else on the plan that finishes by then finishes too.
+            </span>
+            {risks.map((r) => (
+              <span key={r.contract.id} className="bad" style={{ fontSize: 14 }}>
+                {r.text}
+              </span>
+            ))}
+          </div>
+          <div className="stack" style={{ gap: 6 }}>
+            <strong>Add to the plan</strong>
+            <span className="soft" style={{ fontSize: 14 }}>
+              Paid now and booked on the {TRACKS[q.track].name.toLowerCase()}; the calendar stays on day {company.day}. Book other work, then advance once and it all runs side by side.
+            </span>
+          </div>
+        </div>
+        {company.cash - q.cost < 0 && <span className="bad">That's more cash than the company has. Doing it ends the run.</span>}
+        <div className="actions">
+          <button type="button" className={`btn ${risks.length > 0 ? "" : "primary"}`} autoFocus={risks.length === 0} onClick={() => game.startNow()}>
+            {risks.length > 0 ? "Start now anyway" : "Start now"} · {now} d
+          </button>
+          <button type="button" className={`btn ${risks.length > 0 ? "primary" : ""}`} autoFocus={risks.length > 0} onClick={() => game.plan()}>
+            Add to plan · {money(q.cost)}
+          </button>
+          <button type="button" className="btn" onClick={() => game.cancel()}>
+            Cancel
+          </button>
         </div>
       </div>
     </div>
