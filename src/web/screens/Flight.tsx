@@ -53,14 +53,39 @@ function at(samples: Sample[], t: number): Sample {
 }
 
 export function Flight({ report, design }: { report: FlightReport; design: string }) {
-  const r = report.result;
+  const [showDebrief, setShowDebrief] = useState(report.result.samples.length <= 1);
+  const budget = game.snapshot().company?.designs[design]?.limits.maxDynamicPressure ?? 50_000;
+  return (
+    <div className="screen">
+      <Replay result={report.result} budget={budget} title={`${report.result.vehicle} · ${report.result.mission}`} skip="Skip to debrief" onEnd={() => setShowDebrief(true)} />
+      {showDebrief && <Debrief report={report} />}
+    </div>
+  );
+}
+
+/** A trace drawn faintly behind the flight: another case of the same flight. */
+export type Ghost = { result: FlightResult; color: string; label: string };
+
+/**
+ * The flight played back: altitude, orbit and dynamic pressure plots, the
+ * live figures and the event list. Ghosts are other cases of the same
+ * flight, drawn whole and faint behind it.
+ */
+export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], autoplay = true }: { result: FlightResult; budget: number; title: string; skip?: string; onEnd?: () => void; ghosts?: Ghost[]; autoplay?: boolean }) {
   const samples = r.samples;
   const end = samples[samples.length - 1]?.t ?? 0;
-  const [t, setT] = useState(0);
-  const [playing, setPlaying] = useState(samples.length > 1);
+  // Without autoplay the whole flight shows first, and Play runs it from the pad.
+  const [t, setT] = useState(autoplay ? 0 : end);
+  const [playing, setPlaying] = useState(autoplay && samples.length > 1);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(5);
-  const [showDebrief, setShowDebrief] = useState(samples.length <= 1);
   const last = useRef<number | null>(null);
+  const ended = useRef(onEnd);
+  ended.current = onEnd;
+  // A new flight starts from the pad.
+  useEffect(() => {
+    setT(autoplay ? 0 : end);
+    setPlaying(autoplay && samples.length > 1);
+  }, [r, autoplay, samples.length, end]);
 
   useEffect(() => {
     if (!playing) {
@@ -75,7 +100,7 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
         const next = Math.min(end, prev + dt * speed);
         if (next >= end) {
           setPlaying(false);
-          setShowDebrief(true);
+          ended.current?.();
         }
         return next;
       });
@@ -87,18 +112,17 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
 
   if (samples.length === 0) return null;
   const now = at(samples, t);
-  const vehicle = game.snapshot().company?.designs[design];
-  const budget = vehicle?.limits.maxDynamicPressure ?? 50_000;
   const target = r.summary.insertion?.target;
 
   // Ground track when the vehicle turns over; altitude against time when it goes straight up.
   const maxRange = Math.max(...samples.map((s) => s.downrange)) / 1000;
+  const ghostSamples = ghosts.flatMap((g) => g.result.samples);
   const turns = maxRange > 30;
   const xOf = (s: Sample) => (turns ? s.downrange / 1000 : s.t);
   // A transfer orbit's apogee would squash the climb flat: the orbit view shows those.
   const shownTarget = target && Number.isFinite(target.apoapsis) && target.apoapsis < 3_000_000 ? target : undefined;
-  const maxAlt = Math.max(...samples.map((s) => s.altitude), shownTarget?.apoapsis ?? 0) / 1000;
-  const xMax = niceMax(turns ? maxRange : end);
+  const maxAlt = Math.max(...samples.map((s) => s.altitude), ...ghostSamples.map((s) => Math.min(s.altitude, 3 * (shownTarget?.apoapsis ?? s.altitude))), shownTarget?.apoapsis ?? 0) / 1000;
+  const xMax = niceMax(turns ? Math.max(maxRange, ...ghostSamples.map((s) => Math.min(s.downrange / 1000, maxRange * 1.5))) : Math.max(end, ...ghosts.map((g) => g.result.samples.at(-1)?.t ?? 0)));
   const yMax = niceMax(maxAlt * 1.08);
   const flown = samples.filter((s) => s.t <= t).map((s): [number, number] => [xOf(s), s.altitude / 1000]);
   const whole = samples.map((s): [number, number] => [xOf(s), s.altitude / 1000]);
@@ -119,12 +143,10 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
   const qTop = niceMax(Math.max(budget, r.summary.maxQ.value) * 1.1 / 1000);
 
   return (
-    <div className="screen">
+    <>
       <div className="screen-head">
         <div className="stack" style={{ gap: 4 }}>
-          <p className="label">
-            {r.vehicle} · {r.mission}
-          </p>
+          <p className="label">{title}</p>
           <h1 className="mono">T+{t.toFixed(1)} s</h1>
         </div>
         <div className="actions">
@@ -138,9 +160,11 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
               </button>
             ))}
           </div>
-          <button type="button" className="btn" onClick={() => (setT(end), setPlaying(false), setShowDebrief(true))}>
-            Skip to debrief
-          </button>
+          {skip && (
+            <button type="button" className="btn" onClick={() => (setT(end), setPlaying(false), onEnd?.())}>
+              {skip}
+            </button>
+          )}
         </div>
       </div>
 
@@ -158,6 +182,7 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
               x={{ min: 0, max: xMax, ticks: ticks(xMax), title: turns ? "km downrange" : "seconds" }}
               y={{ min: 0, max: yMax, ticks: ticks(yMax, 4), title: "km" }}
               series={[
+                ...ghosts.map((g) => ({ points: g.result.samples.map((s): [number, number] => [xOf(s), s.altitude / 1000]).filter(([x, y]) => x <= xMax && y <= yMax), color: g.color, opacity: 0.55, dash: "3 4" })),
                 { points: whole, color: "#5bb8e3", opacity: 0.3, dash: "6 5" },
                 { points: flown, color: "#5bb8e3", width: 3 },
               ]}
@@ -221,13 +246,16 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
           </div>
         </aside>
       </div>
-
-      {showDebrief && <Debrief report={report} />}
-    </div>
+      {ghosts.length > 0 && (
+        <span className="muted" style={{ fontSize: 13 }}>
+          Solid blue: the flight as modelled. {ghosts.map((g) => g.label).join(". ")}.
+        </span>
+      )}
+    </>
   );
 }
 
-function headline(r: FlightResult): { text: string; tone: "good" | "warn" | "bad" } {
+export function headline(r: FlightResult): { text: string; tone: "good" | "warn" | "bad" } {
   const s = r.summary;
   const lost = r.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
   const abort = r.events.find((e) => e.kind === "abort");

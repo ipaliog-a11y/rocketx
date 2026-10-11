@@ -10,6 +10,7 @@ import { height, Rocket } from "../components/Rocket.tsx";
 import { game } from "../game.ts";
 import { designJob } from "../jobs.ts";
 import { money } from "../format.ts";
+import { useNarrow } from "../narrow.ts";
 
 /** Orbits the guide can size for without a contract. */
 const CUSTOM_ORBITS = [
@@ -41,6 +42,8 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
 
   const setStage = (i: number, change: Partial<VehicleSpec["stages"][number]>) =>
     setSpec({ ...spec, stages: spec.stages.map((s, j) => (j === i ? { ...s, ...change } : s)) });
+  // One stage open for editing at a time; the others show their summary.
+  const [openStage, setOpenStage] = useState<number | null>(0);
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -71,8 +74,22 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
             const role = stageRole(spec.stages.length, i);
             const label = role.charAt(0).toUpperCase() + role.slice(1);
             return (
-              <fieldset key={i} className="card stage-editor">
-                <legend className="label">{label}</legend>
+              <fieldset key={i} className={`slot-picker stage-editor ${openStage === i ? "open" : ""}`}>
+                <legend className="sr-only">{label}</legend>
+                <button type="button" className="slot-head" aria-expanded={openStage === i} onClick={() => setOpenStage(openStage === i ? null : i)}>
+                  <span className="stack" style={{ gap: 2, minWidth: 0 }}>
+                    <span className="label">{label}</span>
+                    <span className="mono" style={{ fontSize: 13 }}>
+                      {s.diameter} m · {s.engineCount} × {s.engine} · {s.tankLength.toFixed(1)} m tank
+                      {vehicle ? ` · ${burnTime(vehicle.stages[i]!).toFixed(0)} s` : ""}
+                    </span>
+                  </span>
+                  <span className="muted" aria-hidden="true">
+                    {openStage === i ? "▴" : "▾"}
+                  </span>
+                </button>
+                {openStage === i && (
+                <div className="stage-body">
                 <div className="editor-grid">
                   <label>
                     <span>Diameter</span>
@@ -119,6 +136,8 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
                   </span>
                   <input type="range" min={0.5} max={20} step={0.5} value={s.tankLength} onChange={(e) => setStage(i, { tankLength: Number(e.target.value) })} />
                 </label>
+                </div>
+                )}
               </fieldset>
             );
           })}
@@ -134,6 +153,7 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
                   const below = spec.stages.at(-1)!;
                   const added = spec.stages.length === 1 ? { diameter: below.diameter, tankLength: 2, engine: vac.name, engineCount: 1 } : { diameter: below.diameter, tankLength: 1, engine: kick.name, engineCount: 1 };
                   setSpec({ ...spec, stages: [...spec.stages, added] });
+                  setOpenStage(spec.stages.length);
                 }}
               >
                 {spec.stages.length === 1 ? "Add an upper stage" : "Add a kick stage"}
@@ -182,9 +202,7 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
               />
             )}
           </div>
-          <span className="muted" style={{ fontSize: 14 }}>
-            Orbit from Port Avery takes about 9.5 km/s at 300 km, geostationary transfer about 11.5, escape about 12.5; a sounding flight to 100 km about 2.2.
-          </span>
+          <span className="muted" style={{ fontSize: 13 }}>Δv needed: 100 km up ≈ 2.2 · LEO 300 ≈ 9.5 · GTO ≈ 11.5 · escape ≈ 12.5 km/s.</span>
           {check.problems.map((p) => (
             <span key={p} className="bad">
               {p}
@@ -226,6 +244,7 @@ function Guide({ company, use }: { company: Company; use: (s: Suggestion) => voi
   const [payload, setPayload] = useState(150);
   const [results, setResults] = useState<Suggestion[] | null>(null);
   const [thinking, setThinking] = useState(false);
+  const narrow = useNarrow();
 
   const goal = (): Goal => {
     const c = work.find((x) => x.id === source);
@@ -245,9 +264,9 @@ function Guide({ company, use }: { company: Company; use: (s: Suggestion) => voi
   };
 
   return (
-    <details className="card guide" open>
+    <details className="card guide" open={!narrow}>
       <summary style={{ cursor: "pointer" }}>
-        <span className="label">Guide</span> <span className="soft">What is it for? Get three designs sized from your engines.</span>
+        <span className="label">Guide</span> <span className="soft">Three designs sized for a job from your engines.</span>
       </summary>
       <div className="actions" style={{ alignItems: "flex-end" }}>
         <label className="stack" style={{ gap: 4, flex: "2 1 260px" }}>
@@ -304,7 +323,7 @@ function Guide({ company, use }: { company: Company; use: (s: Suggestion) => voi
               </div>
               <div style={{ display: "flex", gap: 14, alignItems: "flex-end" }}>
                 <div className="blueprint" style={{ borderRadius: 4, padding: "8px 10px 0", flex: "0 0 auto" }}>
-                  <Rocket vehicle={s.vehicle} scale={fit(s.vehicle, 150)} />
+                  <Rocket vehicle={s.vehicle} scale={fit(s.vehicle, narrow ? 110 : 150)} />
                 </div>
                 <ul className="list" style={{ fontSize: 14, gap: 4 }}>
                   {s.spec.stages.map((st, i) => (
@@ -326,9 +345,14 @@ function Guide({ company, use }: { company: Company; use: (s: Suggestion) => voi
                   </li>
                 </ul>
               </div>
-              <span className="soft" style={{ fontSize: 14 }}>
-                {s.note}
-              </span>
+              <details>
+                <summary className="muted" style={{ cursor: "pointer", fontSize: 13 }}>
+                  Why, and what to test
+                </summary>
+                <span className="soft" style={{ fontSize: 14 }}>
+                  {s.note}
+                </span>
+              </details>
               <button type="button" className="btn" onClick={() => use(s)}>
                 Use this
               </button>
@@ -337,7 +361,7 @@ function Guide({ company, use }: { company: Company; use: (s: Suggestion) => voi
         </div>
       )}
       <span className="muted" style={{ fontSize: 13 }}>
-        Sized with the rocket equation for typical engines and a sensible trajectory. A starting point: test, re-tune and read the forecast before you sign.
+        Sized for typical engines: a starting point. Test, re-tune and read the forecast before you sign.
       </span>
     </details>
   );

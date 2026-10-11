@@ -11,7 +11,9 @@ import {
   enginesUsing,
   FACILITIES,
   FIXES,
-  HARDWARE_LOSS,
+  hardwareLoss,
+  firingCost,
+  fixQuote,
   hotFire,
   partKnowledgeOf,
   refreshFromParts,
@@ -155,14 +157,14 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       return {
         track: spec.facility === "altitude" ? "cell" : "stand",
         title: `${spec.restart ? "Restart test" : flowSeparates(engine, f.ambient) ? "Start check" : `${seconds} s firing`} · ${engine.name}`,
-        cost: f.setup * (spec.restart ? 2 : 1) + f.perSecond * seconds,
+        cost: firingCost(engine, spec.facility, seconds, spec.restart),
         days: f.days + (spec.restart ? RESTART_TEST.days : 0),
         reads: partsOf(engine),
         writes: [`engine:${engine.name}`],
       };
     }
     case "replace":
-      return { track: "stand", title: `New test engine · ${spec.engine}`, cost: 0, days: HARDWARE_LOSS.days, reads: [], writes: [`engine:${spec.engine}`] };
+      return { track: "stand", title: `New test engine · ${spec.engine}`, cost: 0, days: hardwareLoss(engineOf(company, spec.engine)).days, reads: [], writes: [`engine:${spec.engine}`] };
     case "fix-engine": {
       const engine = engineOf(company, spec.engine);
       const fix = fixFor(spec.mode);
@@ -171,7 +173,7 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       const slot = OWNER[spec.mode];
       const key = engine.parts && slot ? partKeys(engine.parts)[slot] : `engine:${engine.name}`;
       if (pendingOf(company, "fix-engine").some((t) => t.writes.includes(key) && t.spec.mode === spec.mode)) throw new Error(`That fix is already booked.`);
-      return { track: "office", title: `Fix: ${fix.name} · ${engine.name}`, cost: fix.cost, days: fix.days, reads: [], writes: [key] };
+      return { track: "office", title: `Fix: ${fix.name} · ${engine.name}`, ...fixQuote(spec.mode, engine), reads: [], writes: [key] };
     }
     case "tunnel": {
       const vehicle = designOf(company, spec.design);
@@ -451,7 +453,7 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
       // Booked for the planned run; settle for what was fired, and for a lost engine.
       pay(company, "test", report.cost - task.cost, report.cost > task.cost ? `${engine.name}: test engine lost` : `${engine.name}: firing ended early`);
       if (report.hardwareLost) {
-        company.tasks.push({ id: company.nextTask++, spec: { kind: "replace", engine: engine.name }, bookedDay: company.day, parent: task.id, ...describeTask(company, { kind: "replace", engine: engine.name }), unit: task.unit, startDay: company.day, endDay: company.day + HARDWARE_LOSS.days, track: task.track });
+        company.tasks.push({ id: company.nextTask++, spec: { kind: "replace", engine: engine.name }, bookedDay: company.day, parent: task.id, ...describeTask(company, { kind: "replace", engine: engine.name }), unit: task.unit, startDay: company.day, endDay: company.day + hardwareLoss(engine).days, track: task.track });
       }
       const f = report.findings[0];
       const what = f ? `${FAILURE_LABELS[f.mode]} at ${f.t.toFixed(1)} s${report.hardwareLost ? ", test engine lost" : ""}` : report.isp ? `clean, Isp ${(report.isp.measured / report.isp.predicted - 1 >= 0 ? "+" : "")}${((report.isp.measured / report.isp.predicted - 1) * 100).toFixed(1)}% against the drawings` : "clean";

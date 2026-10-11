@@ -1,4 +1,5 @@
 import { engineUnitCost } from "./parts.ts";
+import type { Engine } from "./engine.ts";
 import type { Vehicle } from "./vehicle.ts";
 
 /**
@@ -23,13 +24,16 @@ export const COSTS = {
   overheadPerDay: 5,
 };
 
+/** What one engine costs to build, $k. */
+export function enginePrice(e: Engine): number {
+  return e.unitCost ?? (e.parts ? engineUnitCost(e.parts, e.thrustVac) : COSTS.engineBase + (COSTS.enginePerKilonewton * e.thrustVac) / 1000);
+}
+
 export function vehicleCost(vehicle: Vehicle): { cost: number; days: number } {
   let cost = 0;
   let engines = 0;
   for (const stage of vehicle.stages) {
-    const e = stage.engine;
-    const engine = e.unitCost ?? (e.parts ? engineUnitCost(e.parts, e.thrustVac) : COSTS.engineBase + (COSTS.enginePerKilonewton * e.thrustVac) / 1000);
-    cost += engine * stage.engineCount + COSTS.structurePerKilogram * stage.dryMass;
+    cost += enginePrice(stage.engine) * stage.engineCount + COSTS.structurePerKilogram * stage.dryMass;
     engines += stage.engineCount;
   }
   const days = COSTS.buildDays + COSTS.buildDaysPerStage * vehicle.stages.length + COSTS.buildDaysPerEngine * engines;

@@ -45,8 +45,8 @@ export function isHammerhead(vehicle: Vehicle): boolean {
   return vehicle.fairingDiameter > Math.max(...vehicle.stages.map((s) => s.diameter));
 }
 
-const DRAG_FACTOR: [number, number] = [0.95, 1.12];
-const TRANSONIC_RISE: [number, number] = [1.0, 1.5];
+export const DRAG_FACTOR: [number, number] = [0.95, 1.12];
+export const TRANSONIC_RISE: [number, number] = [1.0, 1.5];
 const BUFFET_SEVERITY: [number, number] = [1.6, 2.6];
 const BUFFET_CHANCE = 0.15;
 const HAMMERHEAD_BUFFET_CHANCE = 0.65;

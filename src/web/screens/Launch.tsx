@@ -10,8 +10,10 @@ import { height, Rocket } from "../components/Rocket.tsx";
 import { defaultDesign, game } from "../game.ts";
 import { buildJob, launchJob, retuneJob, signedContracts } from "../jobs.ts";
 import { km, money } from "../format.ts";
+import { Sheet } from "../components/Sheet.tsx";
+import type { SimFocus } from "./Simulator.tsx";
 
-type Props = { company: Company; version: number; goTo: (screen: "contracts" | "stand" | "tunnel") => void };
+type Props = { company: Company; version: number; goTo: (screen: "contracts" | "stand" | "tunnel") => void; simulate: (focus: SimFocus) => void };
 
 /** A design with a vehicle on the ground or on the line: what the player most likely means to fly. */
 function readyDesign(company: Company): string | undefined {
@@ -26,11 +28,13 @@ function countdown(company: Company, c: Contract): { text: string; tone: "good" 
   return { text: `${left} D LEFT`, tone: "good" };
 }
 
-export function Launch({ company, version, goTo }: Props) {
+export function Launch({ company, version, goTo, simulate }: Props) {
   const signed = signedContracts(company);
   const [selected, setSelected] = useState<string | undefined>(signed[0]?.id);
   const contract = signed.find((c) => c.id === selected) ?? signed[0];
   const [choice, setChoice] = useState<Record<string, string>>({});
+  // On a phone the launch preparation opens over the list once a contract is picked. With just one signed, it shows straight away.
+  const [sheet, setSheet] = useState(false);
 
   return (
     <div className="screen">
@@ -57,7 +61,10 @@ export function Launch({ company, version, goTo }: Props) {
                   key={c.id}
                   type="button"
                   aria-pressed={on}
-                  onClick={() => setSelected(c.id)}
+                  onClick={() => {
+                    setSelected(c.id);
+                    setSheet(true);
+                  }}
                   className="card"
                   style={{ textAlign: "left", cursor: "pointer", gap: 6, borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
                 >
@@ -75,22 +82,34 @@ export function Launch({ company, version, goTo }: Props) {
               );
             })}
           </section>
-          <Prep
-            key={contract.id}
-            company={company}
-            version={version}
-            contract={contract}
-            design={choice[contract.id] ?? readyDesign(company) ?? defaultDesign(contract)}
-            setDesign={(d) => setChoice({ ...choice, [contract.id]: d })}
-            goTo={goTo}
-          />
+          {(() => {
+            const prep = (
+              <Prep
+                key={contract.id}
+                company={company}
+                version={version}
+                contract={contract}
+                design={choice[contract.id] ?? readyDesign(company) ?? defaultDesign(contract)}
+                setDesign={(d) => setChoice({ ...choice, [contract.id]: d })}
+                goTo={goTo}
+                simulate={simulate}
+              />
+            );
+            return signed.length === 1 ? (
+              prep
+            ) : (
+              <Sheet open={sheet} onClose={() => setSheet(false)} title={contract.title}>
+                {prep}
+              </Sheet>
+            );
+          })()}
         </div>
       )}
     </div>
   );
 }
 
-function Prep({ company, version, contract, design, setDesign, goTo }: { company: Company; version: number; contract: Contract; design: string; setDesign: (d: string) => void; goTo: Props["goTo"] }) {
+function Prep({ company, version, contract, design, setDesign, goTo, simulate }: { company: Company; version: number; contract: Contract; design: string; setDesign: (d: string) => void; goTo: Props["goTo"]; simulate: Props["simulate"] }) {
   // Signing is behind us here: drop the blocker that says so.
   const b = useMemo(() => {
     const raw = bid(company, contract.id, design);
@@ -153,6 +172,9 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
               Re-tune for {contract.payloadMass} kg
             </button>
           )}
+          <button type="button" className="btn" onClick={() => simulate({ design, contract: contract.id })}>
+            Simulate
+          </button>
           <button type="button" className="btn" onClick={() => goTo("stand")}>
             Plan tests
           </button>

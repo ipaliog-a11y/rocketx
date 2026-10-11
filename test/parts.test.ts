@@ -5,7 +5,7 @@ import { build, developEngine, developedParts, fire, newCompany, refinePart, ree
 import { COSTS } from "../src/sim/cost.ts";
 import { combineTruth, IDEAL_TRUTH, rollPartTruth, rollPartTruths, rollTruths, type PartTruth } from "../src/sim/hardware.ts";
 import { assembleEngine, developmentCost, engineRanges, partKeys, partsProblems, type EngineParts } from "../src/sim/parts.ts";
-import { applyFix, hotFire, newCampaign, seenAt } from "../src/sim/teststand.ts";
+import { applyFix, firingCost, fixQuote, hardwareLoss, hotFire, newCampaign, seenAt } from "../src/sim/teststand.ts";
 import { generateBoard } from "../src/contracts.ts";
 import { ENGINES, HARRIER_SL, HARRIER_VAC, KESTREL_SL, VEHICLES } from "../src/vehicles.ts";
 
@@ -71,7 +71,7 @@ test("an instability found on one Harrier is open on both, and one fix covers bo
   // the cycle, which the fix doesn't touch.
   const spent = campaign.spent;
   const { text } = applyFix(campaign, HARRIER_SL, "combustion-instability");
-  assert.equal(campaign.spent - spent, 400);
+  assert.equal(Math.round(campaign.spent - spent), fixQuote("combustion-instability", HARRIER_SL).cost);
   assert.match(text, /Harrier-Vac shares the part and gets the fix too/);
   for (const e of [HARRIER_SL, HARRIER_VAC]) {
     assert.equal(campaign.truth[e.name]!.instabilityOnset, null);
@@ -150,4 +150,21 @@ test("re-engining a design is refused while any are built", () => {
   build(c, "two-stage");
   assert.throws(() => reengine(c, "two-stage", 1, "Kestrel-Vac Mini"), /already built/);
   assert.throws(() => reengine(c, "two-stage", 5, "Kestrel-Vac Mini"), /no stage 6/);
+});
+
+test("small engines are cheaper and quicker to develop, fix, fire and lose than big ones", () => {
+  const parts = (size: EngineParts["size"]): EngineParts => ({ size, cycle: "gas-generator", injector: "coaxial", cooling: "regenerative", nozzle: "sea-level" });
+  const small = developmentCost(parts(9), []);
+  const mid = developmentCost(parts(35), []);
+  const big = developmentCost(parts(250), []);
+  assert.ok(small.cost < mid.cost && mid.cost < big.cost);
+  assert.ok(small.days <= mid.days && mid.days < big.days);
+  const e9 = assembleEngine(parts(9), "Small");
+  const e250 = assembleEngine(parts(250), "Big");
+  assert.ok(fixQuote("combustion-instability", e9).cost < fixQuote("combustion-instability", e250).cost);
+  assert.ok(fixQuote("combustion-instability", e9).days < fixQuote("combustion-instability", e250).days);
+  assert.ok(hardwareLoss(e9).cost < hardwareLoss(e250).cost);
+  assert.ok(firingCost(e9, "sea-level", 100) < firingCost(e250, "sea-level", 100));
+  // Losing a test engine costs less than building a new one.
+  assert.ok(hardwareLoss(e250).cost < (e250.unitCost ?? Infinity));
 });

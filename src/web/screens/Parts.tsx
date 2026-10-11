@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { developedParts, REFINE, type Company } from "../../sim/company.ts";
 import { DEFAULT_RATED_LIFE } from "../../sim/engine.ts";
 import { FAILURE_LABELS } from "../../sim/hardware.ts";
@@ -7,7 +8,7 @@ import { Chip } from "../components/Bits.tsx";
 import { game } from "../game.ts";
 import { refineJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
-import { flownUpper, ispRange, partNeed, planPartTest, refineWorth } from "../partTest.ts";
+import { flownUpper, ispRange, partNeed, planPartTest, plannedBurn, refineWorth } from "../partTest.ts";
 import type { Focus } from "./TestStand.tsx";
 
 const SLOT_TITLES: Record<Slot, string> = {
@@ -87,62 +88,156 @@ function TestAction({ company, partKey, test }: { company: Company; partKey: str
   );
 }
 
+type Filter = "all" | "needs" | Slot;
+
+const FILTERS: Array<[Filter, string]> = [
+  ["all", "All"],
+  ["needs", "Needs work"],
+  ["cycle", "Cycles"],
+  ["injector", "Injectors"],
+  ["cooling", "Cooling"],
+  ["nozzle", "Nozzles"],
+];
+
 export function Parts({ company, test }: { company: Company; test: (focus: Focus) => void }) {
   const keys = developedParts(company);
+  const [filter, setFilter] = useState<Filter>("all");
+  const shown = keys.filter((k) => filter === "all" || (filter === "needs" ? partNeed(company, k) !== null : parsePartKey(k).slot === filter));
   return (
-    <div className="stack" style={{ gap: 24 }}>
-      <span className="muted">
-        Everything an engine is made of. What a firing or a flight learns lands on the parts, and every engine built with a part shares it. Fixes and refinements make a new
-        revision.
-      </span>
-      {SLOTS.map((slot) => (
-        <section key={slot} className="stack" aria-label={SLOT_TITLES[slot]}>
-          <p className="label">{SLOT_TITLES[slot]}</p>
-          <div className="achievements">
-            {keys
-              .filter((k) => parsePartKey(k).slot === slot)
-              .map((key) => {
-                const part = company.campaign.parts[key];
-                const m = maturity(company, key, part);
-                const users = enginesUsing(company.campaign, key);
-                const refinable = slot === "injector" || slot === "nozzle";
-                return (
-                  <div key={key} className="card" style={{ gap: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                      <strong>{partLabel(key)}</strong>
-                      <span className="mono muted" style={{ fontSize: 13 }}>
-                        {revisionLetter(part?.revision ?? 0)}
-                      </span>
-                    </div>
-                    <span>
-                      <Chip tone={m.tone}>{m.text}</Chip>
-                    </span>
-                    <span className="soft" style={{ fontSize: 14 }}>
-                      {evidence(company, key, part)}
-                    </span>
-                    <span className="muted" style={{ fontSize: 13 }}>
-                      {part ? `${part.firings} firing${part.firings === 1 ? "" : "s"}, ${part.flights} flight${part.flights === 1 ? "" : "s"}` : "Never run"} · used by {users.map((e) => e.name).join(", ")}
-                    </span>
-                    {part && part.notes.length > 0 && (
-                      <ul className="list" style={{ fontSize: 13, gap: 4 }}>
-                        {part.notes.map((n) => (
-                          <li key={n} className="muted">
-                            {n}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <TestAction company={company} partKey={key} test={test} />
-                    {refinable && <RefinePanel company={company} partKey={key} />}
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      {optionSpec(slot, parsePartKey(key).option).text}
-                    </span>
-                  </div>
-                );
-              })}
-          </div>
-        </section>
-      ))}
+    <div className="stack" style={{ gap: 16 }}>
+      <span className="muted">What tests learn lands on the parts, and every engine built with a part shares it. Tap a part for its record.</span>
+      <div className="filter-chips" role="group" aria-label="Show parts">
+        {FILTERS.map(([id, label]) => (
+          <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)}>
+            {label}
+            {id === "needs" ? ` · ${keys.filter((k) => partNeed(company, k) !== null).length}` : ""}
+          </button>
+        ))}
+      </div>
+      {SLOTS.map((slot) => {
+        const mine = shown.filter((k) => parsePartKey(k).slot === slot);
+        if (mine.length === 0) return null;
+        return (
+          <section key={slot} className="stack" style={{ gap: 8 }} aria-label={SLOT_TITLES[slot]}>
+            <p className="label">{SLOT_TITLES[slot]}</p>
+            <div className="part-grid">
+              {mine.map((key) => (
+                <PartCard key={key} company={company} partKey={key} test={test} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
+      {shown.length === 0 && <span className="muted">Nothing here needs work.</span>}
+    </div>
+  );
+}
+
+/** The one number that matters for a part, in its slot's terms, with how far along it is. */
+function keyFigure(company: Company, key: string, part: PartKnowledge | undefined): { text: string; progress?: number } {
+  const { slot, option } = parsePartKey(key);
+  const users = enginesUsing(company.campaign, key);
+  const isp = users.map((e) => company.campaign.knowledge[e.name]?.measuredIspFactor).find((f) => f != null);
+  const ispText = isp != null ? ` · Isp ${pct(isp - 1)}` : "";
+  switch (slot) {
+    case "cycle": {
+      const upper = users.some((e) => flownUpper(company, e.name));
+      return { text: `Start ${part?.startupProven ? "✓" : "✗"} · Relight ${part?.relightProven ? "✓" : upper ? "✗" : "—"}` };
+    }
+    case "injector": {
+      const needed = Math.max(...users.map((e) => plannedBurn(company, e)));
+      const stable = part?.stableSeconds ?? 0;
+      return { text: `Stable ${stable.toFixed(0)} / ${needed.toFixed(0)} s${ispText}`, progress: stable / needed };
+    }
+    case "cooling": {
+      const needed = Math.max(...users.map((e) => plannedBurn(company, e) / (e.ratedLife ?? DEFAULT_RATED_LIFE)));
+      const share = part?.lifeShare ?? 0;
+      return { text: `Life ${Math.round(share * 100)}% / ${Math.round(needed * 100)}% of rated`, progress: share / needed };
+    }
+    case "nozzle":
+      return { text: `${option === "sea-level" ? "Sea-level bell" : part?.altitudeTested ? "Measured in vacuum" : "Vacuum unmeasured"}${ispText}` };
+  }
+}
+
+/** What a part still needs, in a few words. */
+function nextStep(company: Company, key: string): string | null {
+  const need = partNeed(company, key);
+  if (!need) return null;
+  switch (need.kind) {
+    case "fix":
+      return `needs a fix: ${FAILURE_LABELS[need.mode]}`;
+    case "start":
+      return "needs a clean start";
+    case "relight":
+      return "needs a relight";
+    case "stable":
+      return `needs ${need.seconds.toFixed(0)} s stable`;
+    case "life":
+      return `needs ${Math.round(need.share * 100)}% of rated life`;
+    case "vacuum":
+      return "needs the altitude cell";
+    case "isp":
+      return "Isp not measured";
+  }
+}
+
+/** A part in two lines; tap it for the record, the test plan and refining. */
+function PartCard({ company, partKey, test }: { company: Company; partKey: string; test: (focus: Focus) => void }) {
+  const [open, setOpen] = useState(false);
+  const { slot, option } = parsePartKey(partKey);
+  const part = company.campaign.parts[partKey];
+  const m = maturity(company, partKey, part);
+  const users = enginesUsing(company.campaign, partKey);
+  const figure = keyFigure(company, partKey, part);
+  const next = nextStep(company, partKey);
+  const refinable = slot === "injector" || slot === "nozzle";
+  return (
+    <div className={`card part-card ${open ? "open" : ""}`}>
+      <button type="button" className="part-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <span className="part-title">
+          <strong>{partLabel(partKey)}</strong>
+          <span className="mono muted" style={{ fontSize: 12 }}>
+            {revisionLetter(part?.revision ?? 0).replace("Rev ", "")}
+          </span>
+          <Chip tone={m.tone}>{m.text}</Chip>
+        </span>
+        <span className="part-figure mono">{figure.text}</span>
+        {figure.progress !== undefined && (
+          <span className="mini-bar" aria-hidden="true">
+            <span style={{ width: `${Math.min(100, Math.round(figure.progress * 100))}%` }} className={figure.progress >= 1 ? "full" : ""} />
+          </span>
+        )}
+        <span className="part-next">
+          <span className={next?.startsWith("needs a fix") ? "bad" : next ? "warn" : "good"}>{next ?? "nothing left to prove"}</span>
+          <span className="muted" aria-hidden="true">
+            {open ? "▴" : "▾"}
+          </span>
+        </span>
+      </button>
+      {open && (
+        <div className="stack" style={{ gap: 10 }}>
+          <span className="soft" style={{ fontSize: 14 }}>
+            {evidence(company, partKey, part)}
+          </span>
+          <span className="muted" style={{ fontSize: 13 }}>
+            {part ? `${part.firings} firing${part.firings === 1 ? "" : "s"}, ${part.flights} flight${part.flights === 1 ? "" : "s"}` : "Never run"} · on {users.map((e) => e.name).join(", ")}
+          </span>
+          {part && part.notes.length > 0 && (
+            <ul className="list" style={{ fontSize: 13, gap: 4 }}>
+              {part.notes.map((n) => (
+                <li key={n} className="muted">
+                  {n}
+                </li>
+              ))}
+            </ul>
+          )}
+          <TestAction company={company} partKey={partKey} test={test} />
+          {refinable && <RefinePanel company={company} partKey={partKey} />}
+          <span className="muted" style={{ fontSize: 12 }}>
+            {optionSpec(slot, option).text}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

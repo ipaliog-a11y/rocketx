@@ -4,7 +4,7 @@ import { build, buildDays, fire, LEARNING, learningFactor, newCompany, nextSlot,
 import { COSTS, vehicleCost } from "../src/sim/cost.ts";
 import { IDEAL_TRUTH, type EngineTruth } from "../src/sim/hardware.ts";
 import { book, buyUnit, cancelTask, quoteTask, TRACKS } from "../src/sim/schedule.ts";
-import { FACILITIES, FIXES, HARDWARE_LOSS } from "../src/sim/teststand.ts";
+import { FACILITIES, fixQuote, hardwareLoss } from "../src/sim/teststand.ts";
 import { generateBoard } from "../src/contracts.ts";
 import { ENGINES, HARRIER_SL, HARRIER_VAC, KESTREL_SL, VEHICLES } from "../src/vehicles.ts";
 
@@ -56,12 +56,11 @@ test("a firing waits for a fix to its parts booked before it, even with the stan
   const open = c.campaign.knowledge[HARRIER_SL.name]!.open;
   assert.deepEqual(open, ["combustion-instability"]);
   // The stand is busy building a new test engine; let it finish.
-  wait(c, HARDWARE_LOSS.days);
+  wait(c, hardwareLoss(HARRIER_SL).days);
   const today = c.day;
   book(c, { kind: "fix-engine", engine: HARRIER_SL.name, mode: "combustion-instability" });
   const q = quoteTask(c, fireSpec(HARRIER_VAC.name, 30, "altitude"));
-  const fix = FIXES["combustion-instability"]!;
-  assert.equal(q.start, today + fix.days, "the Vac shares the injector, so it fires on the fixed one");
+  assert.equal(q.start, today + fixQuote("combustion-instability", HARRIER_SL).days, "the Vac shares the injector, so it fires on the fixed one");
   const { task } = book(c, fireSpec(HARRIER_VAC.name, 30, "altitude"));
   wait(c, q.end - c.day);
   assert.equal(c.done.find((d) => d.title === task.title)!.day, q.end);
@@ -73,7 +72,7 @@ test("a destroyed test engine keeps its stand busy while a new one is built", ()
   book(c, fireSpec(KESTREL_SL.name, 30));
   const next = book(c, fireSpec(HARRIER_SL.name, 30)).task;
   wait(c, 60);
-  const start = FACILITIES["sea-level"].days + HARDWARE_LOSS.days;
+  const start = FACILITIES["sea-level"].days + hardwareLoss(KESTREL_SL).days;
   assert.equal(c.done.find((d) => d.title === next.title)!.day, start + FACILITIES["sea-level"].days);
 });
 

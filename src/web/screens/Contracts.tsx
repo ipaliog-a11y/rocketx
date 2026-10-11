@@ -8,6 +8,8 @@ import { Chip, Facts, Tabs } from "../components/Bits.tsx";
 import { defaultDesign, game } from "../game.ts";
 import { deadlineRisks, waitJob } from "../jobs.ts";
 import { project } from "../../sim/schedule.ts";
+import { Sheet } from "../components/Sheet.tsx";
+import { useNarrow } from "../narrow.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
 
 type Props = { company: Company; version: number; goTo: (screen: "launch") => void };
@@ -50,6 +52,13 @@ export function Contracts({ company, version, goTo }: Props) {
   const [selected, setSelected] = useState<string | undefined>(() => rows.find((r) => r.status.key === "open")?.c.id);
   const contract = rows.find((r) => r.c.id === selected)?.c;
   const [designChoice, setDesign] = useState<Record<string, string>>({});
+  // On a phone the bid opens over the list once a contract is picked.
+  const narrow = useNarrow();
+  const [sheet, setSheet] = useState(false);
+  const pick = (id: string) => {
+    setSelected(id);
+    setSheet(true);
+  };
   const upcoming = company.board.filter((c) => c.postedDay > company.day).map((c) => c.postedDay);
   const nextPosting = upcoming.length > 0 ? Math.min(...upcoming) : null;
   const nextRollout = company.orders.length > 0 ? Math.min(...company.orders.map((o) => o.readyDay)) : null;
@@ -84,7 +93,7 @@ export function Contracts({ company, version, goTo }: Props) {
               </span>
             </div>
           )}
-          {view === "table" ? <Table rows={rows} selected={contract?.id} select={setSelected} /> : <Calendar company={company} rows={rows} selected={contract?.id} select={setSelected} />}
+          {view === "table" ? <Table rows={rows} selected={contract?.id} select={pick} /> : <Calendar company={company} rows={rows} selected={contract?.id} select={pick} />}
           <div className="actions">
             {nextPosting !== null && <span className="muted">Next new posting around day {nextPosting}.</span>}
             <button type="button" className="btn" onClick={() => game.schedule(waitJob(30, "Waiting for new work"))}>
@@ -103,19 +112,23 @@ export function Contracts({ company, version, goTo }: Props) {
           </div>
         </section>
         {contract ? (
-          <BidPanel
-            key={contract.id}
-            company={company}
-            version={version}
-            contract={contract}
-            design={designChoice[contract.id] ?? defaultDesign(contract)}
-            setDesign={(d) => setDesign({ ...designChoice, [contract.id]: d })}
-            goTo={goTo}
-          />
+          <Sheet open={sheet} onClose={() => setSheet(false)} title={contract.title}>
+            <BidPanel
+              key={contract.id}
+              company={company}
+              version={version}
+              contract={contract}
+              design={designChoice[contract.id] ?? defaultDesign(contract)}
+              setDesign={(d) => setDesign({ ...designChoice, [contract.id]: d })}
+              goTo={goTo}
+            />
+          </Sheet>
         ) : (
-          <aside className="side card">
-            <span className="muted">Choose a contract to see the bid.</span>
-          </aside>
+          !narrow && (
+            <aside className="side card">
+              <span className="muted">Choose a contract to see the bid.</span>
+            </aside>
+          )
         )}
       </div>
     </div>
@@ -129,6 +142,8 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
   const [seriesOnly, setSeriesOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<"deadline" | "payout" | "posted">("deadline");
+  const narrow = useNarrow();
+  const [more, setMore] = useState(false);
 
   const shown = rows
     .filter((r) => status === "all" || (status === "active" ? r.status.key !== "closed" : r.status.key === status))
@@ -153,6 +168,13 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
             <option value="all">All</option>
           </select>
         </label>
+        {narrow && (
+          <button type="button" className="btn" aria-expanded={more} onClick={() => setMore(!more)}>
+            {more ? "Fewer filters" : "More filters"}
+          </button>
+        )}
+        {(!narrow || more) && (
+        <>
         <label>
           <span>Kind</span>
           <select value={kind} onChange={(e) => setKind(e.target.value as ContractKind | "all")}>
@@ -181,15 +203,41 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
             <option value="posted">Posting day</option>
           </select>
         </label>
-        <label className="grow-field">
-          <span>Search</span>
-          <input type="search" value={search} placeholder="Customer or payload" onChange={(e) => setSearch(e.target.value)} />
-        </label>
         <label className="check">
           <input type="checkbox" checked={seriesOnly} onChange={(e) => setSeriesOnly(e.target.checked)} />
           <span>Recurring only</span>
         </label>
+        </>
+        )}
+        <label className="grow-field">
+          <span>Search</span>
+          <input type="search" value={search} placeholder="Customer or payload" onChange={(e) => setSearch(e.target.value)} />
+        </label>
       </div>
+      {narrow ? (
+        <ul className="contract-cards" aria-label="Contracts">
+          {shown.map(({ c, status: st }) => (
+            <li key={c.id}>
+              <button type="button" className={`card ${c.id === selected ? "selected" : ""}`} onClick={() => select(c.id)}>
+                <span className="cc-top">
+                  <strong>{c.title}</strong>
+                  <Chip tone={st.tone}>{st.text}</Chip>
+                </span>
+                <span className="muted" style={{ fontSize: 14 }}>
+                  {c.customer} · {KIND_LABELS[c.kind]}
+                  {c.seriesId && <span className="series-tag"> ↻</span>}
+                </span>
+                <span className="cc-figures mono">
+                  <span className="good">{money(c.payout)}</span>
+                  <span className="soft">{regimeOf(c)}</span>
+                  <span className="muted">by day {c.deadline}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+          {shown.length === 0 && <li className="muted">Nothing matches these filters.</li>}
+        </ul>
+      ) : (
       <div className="table-wrap">
         <table>
           <thead>
@@ -233,6 +281,7 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
           </tbody>
         </table>
       </div>
+      )}
     </>
   );
 }
