@@ -12,6 +12,7 @@ import {
   INJECTORS,
   NOZZLES,
   partKey,
+  partDevelopCost,
   partLabel,
   partsProblems,
   SIZES,
@@ -172,7 +173,7 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
                 facts={`Isp ~${o.isp} s base · hard-start risk ${pct(o.hardStart)} · cost ×${o.cost}`}
                 partKeyFor={keyFor("cycle", id)}
                 developed={developed}
-                develop={o.develop}
+                develop={partDevelopCost("cycle", id, parts.size)}
                 onPick={() => set({ cycle: id as EngineParts["cycle"] })}
               />
             ))}
@@ -189,7 +190,7 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
                 facts={`delivers ${pct(o.isp[0])}–${pct(o.isp[1])} of design Isp · instability risk ${pct(o.instability)}`}
                 partKeyFor={keyFor("injector", id)}
                 developed={developed}
-                develop={o.develop}
+                develop={partDevelopCost("injector", id, parts.size)}
                 onPick={() => set({ injector: id as EngineParts["injector"] })}
               />
             ))}
@@ -206,7 +207,7 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
                 facts={`rated ${o.life} s · real life ${pct(o.lifeRange[0])}–${pct(o.lifeRange[1])} of rated · Isp ×${o.isp}`}
                 partKeyFor={keyFor("cooling", id)}
                 developed={developed}
-                develop={o.develop}
+                develop={partDevelopCost("cooling", id, parts.size)}
                 onPick={() => set({ cooling: id as EngineParts["cooling"] })}
               />
             ))}
@@ -223,7 +224,7 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
                 facts={`exit ${o.exitPressure / 1000} kPa · Isp ×${o.isp} · thrust ×${o.thrust}`}
                 partKeyFor={keyFor("nozzle", id)}
                 developed={developed}
-                develop={o.develop}
+                develop={partDevelopCost("nozzle", id, parts.size)}
                 onPick={() => set({ nozzle: id as EngineParts["nozzle"] })}
               />
             ))}

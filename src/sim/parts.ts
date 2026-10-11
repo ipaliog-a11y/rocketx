@@ -41,7 +41,7 @@ type Common = {
   text: string;
   /** Multiplier on the engine's unit cost. */
   cost: number;
-  /** One-off cost to develop this part at a chamber size, $k. */
+  /** One-off cost to develop this part at a 35 kN chamber, $k; smaller chambers cost less, bigger ones more (sizeScale). */
   develop: number;
 };
 
@@ -53,7 +53,7 @@ export const CYCLES: Record<CycleOption, Common & { isp: number; hardStart: numb
     hardStart: 0.15,
     relightFails: 0.08,
     cost: 0.85,
-    develop: 300,
+    develop: 150,
     sizes: [9, 25, 35, 50],
   },
   "electric-pump": {
@@ -63,7 +63,7 @@ export const CYCLES: Record<CycleOption, Common & { isp: number; hardStart: numb
     hardStart: 0.2,
     relightFails: 0.1,
     cost: 1,
-    develop: 350,
+    develop: 175,
     sizes: [9, 25, 35, 100],
   },
   "gas-generator": {
@@ -73,7 +73,7 @@ export const CYCLES: Record<CycleOption, Common & { isp: number; hardStart: numb
     hardStart: 0.3,
     relightFails: 0.3,
     cost: 1.25,
-    develop: 450,
+    develop: 225,
     sizes: [25, 35, 50, 100, 250, 600],
   },
   storable: {
@@ -83,7 +83,7 @@ export const CYCLES: Record<CycleOption, Common & { isp: number; hardStart: numb
     hardStart: 0.03,
     relightFails: 0.02,
     cost: 1.1,
-    develop: 300,
+    develop: 150,
     sizes: [3, 9],
   },
 };
@@ -95,7 +95,7 @@ export const INJECTORS: Record<InjectorOption, Common & { isp: [number, number];
     isp: [0.95, 1],
     instability: 0.25,
     cost: 0.9,
-    develop: 120,
+    develop: 60,
   },
   pintle: {
     label: "Pintle",
@@ -103,7 +103,7 @@ export const INJECTORS: Record<InjectorOption, Common & { isp: [number, number];
     isp: [0.95, 0.99],
     instability: 0.08,
     cost: 1,
-    develop: 150,
+    develop: 75,
   },
   coaxial: {
     label: "Coaxial swirl",
@@ -111,7 +111,7 @@ export const INJECTORS: Record<InjectorOption, Common & { isp: [number, number];
     isp: [0.955, 1],
     instability: 0.22,
     cost: 1.15,
-    develop: 200,
+    develop: 100,
   },
 };
 
@@ -123,7 +123,7 @@ export const COOLINGS: Record<CoolingOption, Common & { life: number; lifeRange:
     lifeRange: [0.6, 1.4],
     isp: 1,
     cost: 0.9,
-    develop: 100,
+    develop: 50,
   },
   film: {
     label: "Film cooling",
@@ -132,7 +132,7 @@ export const COOLINGS: Record<CoolingOption, Common & { life: number; lifeRange:
     lifeRange: [0.7, 1.4],
     isp: 0.99,
     cost: 1,
-    develop: 150,
+    develop: 75,
   },
   regenerative: {
     label: "Regenerative cooling",
@@ -141,7 +141,7 @@ export const COOLINGS: Record<CoolingOption, Common & { life: number; lifeRange:
     lifeRange: [0.8, 1.3],
     isp: 1.01,
     cost: 1.3,
-    develop: 250,
+    develop: 125,
   },
 };
 
@@ -155,7 +155,7 @@ export const NOZZLES: Record<NozzleOption, Common & { exitPressure: number; isp:
     life: 1,
     ispRange: [0.995, 1],
     cost: 1,
-    develop: 80,
+    develop: 40,
   },
   altitude: {
     label: "Altitude bell",
@@ -166,7 +166,7 @@ export const NOZZLES: Record<NozzleOption, Common & { exitPressure: number; isp:
     life: 1.1,
     ispRange: [0.995, 1],
     cost: 1.05,
-    develop: 100,
+    develop: 50,
   },
   vacuum: {
     label: "Vacuum bell",
@@ -177,7 +177,7 @@ export const NOZZLES: Record<NozzleOption, Common & { exitPressure: number; isp:
     life: 1.4,
     ispRange: [0.995, 1],
     cost: 1.1,
-    develop: 120,
+    develop: 60,
   },
   "large-vacuum": {
     label: "Large vacuum bell",
@@ -188,7 +188,7 @@ export const NOZZLES: Record<NozzleOption, Common & { exitPressure: number; isp:
     life: 1.6,
     ispRange: [0.995, 1],
     cost: 1.25,
-    develop: 160,
+    develop: 80,
   },
 };
 
@@ -300,13 +300,25 @@ export function engineRanges(engine: Engine): EngineRanges | null {
   };
 }
 
+/**
+ * How an engine programme's money and time grow with the chamber: a 35 kN
+ * chamber is 1, a 9 kN one about 0.6, a 600 kN one 3. Small hardware is
+ * cheaper to draw, to fix and to lose on the stand.
+ */
+export function sizeScale(kN: number): number {
+  return Math.min(3, Math.max(0.5, (kN / 35) ** 0.4));
+}
+
+/** What developing one part costs at a chamber size, $k. */
+export function partDevelopCost(slot: Slot, option: string, size: number): number {
+  return Math.round((optionSpec(slot, option).develop * sizeScale(size)) / 5) * 5;
+}
+
 /** Development cost of the parts this combination needs that the company has never built, $k and days. */
 export function developmentCost(parts: EngineParts, developed: Iterable<string>): { cost: number; days: number; newParts: string[] } {
   const have = new Set(developed);
   const keys = partKeys(parts);
   const newParts = SLOTS.map((s) => keys[s]).filter((k) => !have.has(k));
-  // A heavy-lift chamber is a bigger programme: twice the money, and longer.
-  const heavy = parts.size >= 600;
-  const cost = 80 + newParts.reduce((sum, k) => sum + optionSpec(parsePartKey(k).slot, parsePartKey(k).option).develop, 0) * (heavy ? 2 : 1);
-  return { cost, days: 15 + (heavy ? 18 : 10) * newParts.length, newParts };
+  const cost = 50 + newParts.reduce((sum, k) => sum + partDevelopCost(parsePartKey(k).slot, parsePartKey(k).option, parts.size), 0);
+  return { cost, days: 10 + Math.round(6 * Math.sqrt(sizeScale(parts.size))) * newParts.length, newParts };
 }

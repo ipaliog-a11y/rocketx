@@ -11,7 +11,8 @@ import {
   type PartTruth,
   type PartTruthTable,
 } from "./hardware.ts";
-import { OWNER, partKeys, partLabel, type Slot } from "./parts.ts";
+import { OWNER, partKeys, partLabel, sizeScale, type Slot } from "./parts.ts";
+import { enginePrice } from "./cost.ts";
 import { aeroShape, type AeroTruthTable } from "./airframe.ts";
 import { aeroUnknowns, type AeroKnowledge } from "./tunnel.ts";
 import { missionPlan, type Mission } from "./mission.ts";
@@ -32,7 +33,7 @@ type FacilitySpec = {
   ambient: number;
   /** Setup cost per firing, $k. */
   setup: number;
-  /** Running cost per second of firing, $k. */
+  /** Running cost per second of firing a 35 kN engine, $k: propellant scales with the engine (sizeScale). */
   perSecond: number;
   /** Calendar days per firing. */
   days: number;
@@ -40,11 +41,33 @@ type FacilitySpec = {
 
 export const FACILITIES: Record<Facility, FacilitySpec> = {
   "sea-level": { name: "sea-level stand", ambient: P_SEA_LEVEL, setup: 25, perSecond: 1.5, days: 4 },
-  altitude: { name: "altitude cell", ambient: 3_000, setup: 200, perSecond: 1.5, days: 10 },
+  altitude: { name: "altitude cell", ambient: 3_000, setup: 120, perSecond: 1.5, days: 10 },
 };
 
-/** Cost and delay of building a replacement engine after a test destroys one. */
-export const HARDWARE_LOSS = { cost: 350, days: 25 };
+/** What a firing of this engine costs to run, $k per second: a small engine burns less propellant, and a big stand runs leaner per kN. */
+export function runRate(engine: Engine, facility: Facility): number {
+  const scale = sizeScale(engineSize(engine));
+  return Math.round(FACILITIES[facility].perSecond * (scale <= 1 ? scale : Math.sqrt(scale)) * 100) / 100;
+}
+
+/** What a firing costs, $k: setup (twice over for a restart test) plus the seconds it runs. */
+export function firingCost(engine: Engine, facility: Facility, seconds: number, restart = false): number {
+  return FACILITIES[facility].setup * (restart ? 2 : 1) + runRate(engine, facility) * seconds;
+}
+
+/** A replacement test engine: the share of its build price that is lost (pumps and valves are salvaged) plus a fixed $k, and days that grow with its size. */
+export const HARDWARE_LOSS = { share: 0.6, cost: 20, days: 8, daysPerScale: 6 };
+
+/** The engine's chamber size, kN: what its programme's costs scale with. */
+export function engineSize(engine: Engine): number {
+  return engine.parts?.size ?? engine.thrustVac / 1000;
+}
+
+/** Cost and delay of a replacement after a test destroys the engine: one more of it from the shop. */
+export function hardwareLoss(engine: Engine): { cost: number; days: number } {
+  const scale = sizeScale(engineSize(engine));
+  return { cost: Math.round(HARDWARE_LOSS.share * enginePrice(engine) + HARDWARE_LOSS.cost), days: HARDWARE_LOSS.days + Math.round(HARDWARE_LOSS.daysPerScale * Math.sqrt(scale)) };
+}
 
 /** Ignition transient: a hard start shows up this far into the firing, s. */
 const HARD_START_AT = 0.3;
@@ -379,8 +402,9 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
   if (relit) known.relightProven = true;
   learnParts(campaign, engine, fired, findings, facility, steady, relit);
 
-  const cost = stand.setup * (restarting ? 2 : 1) + stand.perSecond * fired + (hardwareLost ? HARDWARE_LOSS.cost : 0);
-  const days = stand.days + (restarting ? RESTART_TEST.days : 0) + (hardwareLost ? HARDWARE_LOSS.days : 0);
+  const loss = hardwareLoss(engine);
+  const cost = firingCost(engine, facility, fired, restarting) + (hardwareLost ? loss.cost : 0);
+  const days = stand.days + (restarting ? RESTART_TEST.days : 0) + (hardwareLost ? loss.days : 0);
   campaign.spent += cost;
   campaign.days += days;
 
@@ -397,7 +421,7 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
       `  Isp ${isp.measured.toFixed(1)} s at ${kPa(isp.ambient)} against ${isp.predicted.toFixed(1)} s predicted (${delta >= 0 ? "+" : ""}${(delta * 100).toFixed(1)}%).`,
     );
   }
-  if (hardwareLost) lines.push(`  Test engine destroyed. A replacement costs $${HARDWARE_LOSS.cost}k and ${HARDWARE_LOSS.days} days.`);
+  if (hardwareLost) lines.push(`  Test engine destroyed. A replacement costs $${loss.cost}k and ${loss.days} days.`);
   lines.push(`  $${Math.round(cost)}k, ${days} days.`);
 
   const report: TestReport = { engine: engine.name, facility, planned, fired, findings, isp, hardwareLost, cost, days, text: lines.join("\n") };
@@ -408,6 +432,7 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
 
 type Fix = {
   name: string;
+  /** At a 35 kN chamber, $k and days; fixQuote scales them to the engine. */
   cost: number;
   days: number;
   /** What the fix does to the real hardware, including what it costs in performance. */
@@ -427,8 +452,8 @@ type Fix = {
 export const FIXES: Partial<Record<FailureMode, Fix>> = {
   "hard-start": {
     name: "rework the start sequence",
-    cost: 150,
-    days: 20,
+    cost: 90,
+    days: 12,
     apply: (t) => ({ ...t, hardStart: false }),
     applyPart: (t) => ({ ...t, hardStart: false }),
     costsIsp: false,
@@ -436,8 +461,8 @@ export const FIXES: Partial<Record<FailureMode, Fix>> = {
   },
   "combustion-instability": {
     name: "injector baffles",
-    cost: 400,
-    days: 45,
+    cost: 220,
+    days: 25,
     apply: (t) => ({ ...t, instabilityOnset: null, ispFactor: t.ispFactor * 0.995 }),
     applyPart: (t) => ({ ...t, instabilityOnset: null, ispFactor: t.ispFactor * 0.995 }),
     costsIsp: true,
@@ -445,8 +470,8 @@ export const FIXES: Partial<Record<FailureMode, Fix>> = {
   },
   "relight-failure": {
     name: "restart kit",
-    cost: 200,
-    days: 25,
+    cost: 120,
+    days: 15,
     apply: (t) => ({ ...t, relightFails: false }),
     applyPart: (t) => ({ ...t, relightFails: false }),
     costsIsp: false,
@@ -454,14 +479,22 @@ export const FIXES: Partial<Record<FailureMode, Fix>> = {
   },
   "burn-through": {
     name: "film cooling",
-    cost: 250,
-    days: 30,
+    cost: 140,
+    days: 18,
     apply: (t) => ({ ...t, thermalLife: t.thermalLife * 1.6, ispFactor: t.ispFactor * 0.99 }),
     applyPart: (t) => ({ ...t, lifeFactor: t.lifeFactor * 1.6, ispFactor: t.ispFactor * 0.99 }),
     costsIsp: true,
     text: "A ring of fuel injected along the wall shields the liner. That fuel barely burns, so it costs about 1% Isp.",
   },
 };
+
+/** What a fix costs on this engine: small chambers are quicker and cheaper to rework, big ones slower. */
+export function fixQuote(mode: FailureMode, engine: Engine): { cost: number; days: number } {
+  const fix = FIXES[mode];
+  if (!fix) throw new Error(`${mode} has no fix on the stand.`);
+  const scale = sizeScale(engineSize(engine));
+  return { cost: Math.round((fix.cost * scale) / 5) * 5, days: Math.max(5, Math.round(fix.days * Math.sqrt(scale))) };
+}
 
 export type FixReport = { engine: string; mode: FailureMode; cost: number; days: number; text: string };
 
@@ -490,14 +523,15 @@ export function applyFix(campaign: Campaign, engine: Engine, mode: FailureMode):
   known.measuredIspFactor = null;
   known.altitudeTested = false;
 
-  campaign.spent += fix.cost;
-  campaign.days += fix.days;
+  const quote = fixQuote(mode, engine);
+  campaign.spent += quote.cost;
+  campaign.days += quote.days;
   return {
     engine: engine.name,
     mode,
-    cost: fix.cost,
-    days: fix.days,
-    text: `${engine.name}: ${fix.name}. ${fix.text} $${fix.cost}k, ${fix.days} days. Earlier firings no longer count for this hardware.`,
+    cost: quote.cost,
+    days: quote.days,
+    text: `${engine.name}: ${fix.name}. ${fix.text} $${quote.cost}k, ${quote.days} days. Earlier firings no longer count for this hardware.`,
   };
 }
 
@@ -542,15 +576,16 @@ function applyPartFix(campaign: Campaign, engine: Engine, mode: FailureMode, slo
   if (slot === "cooling") part.lifeShare = 0;
   refreshFromParts(campaign);
 
-  campaign.spent += fix.cost;
-  campaign.days += fix.days;
+  const quote = fixQuote(mode, engine);
+  campaign.spent += quote.cost;
+  campaign.days += quote.days;
   const others = covered.filter((e) => e.name !== engine.name).map((e) => e.name);
   return {
     engine: engine.name,
     mode,
-    cost: fix.cost,
-    days: fix.days,
-    text: `${partLabel(key)} goes to ${revisionLetter(part.revision)}: ${fix.name}. ${fix.text} $${fix.cost}k, ${fix.days} days.${others.length > 0 ? ` ${others.join(" and ")} share${others.length === 1 ? "s" : ""} the part and ${others.length === 1 ? "gets" : "get"} the fix too.` : ""} What was proven about this part has to be proven again.`,
+    cost: quote.cost,
+    days: quote.days,
+    text: `${partLabel(key)} goes to ${revisionLetter(part.revision)}: ${fix.name}. ${fix.text} $${quote.cost}k, ${quote.days} days.${others.length > 0 ? ` ${others.join(" and ")} share${others.length === 1 ? "s" : ""} the part and ${others.length === 1 ? "gets" : "get"} the fix too.` : ""} What was proven about this part has to be proven again.`,
   };
 }
 

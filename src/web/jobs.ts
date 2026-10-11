@@ -9,7 +9,7 @@ import { LICENCE_LABELS, type Application } from "../sim/licence.ts";
 import { partLabel, type EngineParts } from "../sim/parts.ts";
 import type { DesignQuote, VehicleSpec } from "../sim/builder.ts";
 import type { Mission } from "../sim/mission.ts";
-import { FACILITIES, FIXES, HARDWARE_LOSS, RESTART_TEST, type Facility } from "../sim/teststand.ts";
+import { FACILITIES, FIXES, firingCost, fixQuote, hardwareLoss, RESTART_TEST, type Facility } from "../sim/teststand.ts";
 import { AERO_FACILITIES, BUFFET_FIX, type AeroFacility } from "../sim/tunnel.ts";
 import { RETUNE_COST } from "../sim/tuning.ts";
 import { money } from "./format.ts";
@@ -164,8 +164,8 @@ export function fireJob(engine: Engine, seconds: number, facility: Facility, exp
     doing: `${startCheck ? "Start check" : restart ? "Restart test" : "Hot-firing"} the ${engine.name} · ${f.name}`,
     verb: "Fire",
     days: f.days + (restart ? RESTART_TEST.days : 0),
-    cost: f.setup * (restart ? 2 : 1) + f.perSecond * expectedRun,
-    caveat: `If the engine fails, a new one costs ${money(HARDWARE_LOSS.cost)} and ties up the ${f.name} ${HARDWARE_LOSS.days} more days while it is built. A firing cut short refunds the seconds it didn't run.`,
+    cost: firingCost(engine, facility, expectedRun, restart),
+    caveat: `If the engine fails, a new one costs ${money(hardwareLoss(engine).cost)} and ties up the ${f.name} ${hardwareLoss(engine).days} more days while it is built. A firing cut short refunds the seconds it didn't run.`,
   }, () => ({ kind: "fire", engine: engine.name, seconds, facility, restart }));
 }
 
@@ -182,12 +182,13 @@ export function tunnelJob(key: string, shape: string, facility: AeroFacility): J
 
 export function fixEngineJob(engine: Engine, mode: FailureMode): Job {
   const fix = FIXES[mode]!;
+  const quote = fixQuote(mode, engine);
   return trackJob({
     title: `Fix the ${engine.name}'s ${FAILURE_LABELS[mode]}?`,
     doing: `${capital(fix.name)} · ${engine.name}`,
     verb: "Apply fix",
-    days: fix.days,
-    cost: fix.cost,
+    days: quote.days,
+    cost: quote.cost,
   }, () => ({ kind: "fix-engine", engine: engine.name, mode }));
 }
 

@@ -2,7 +2,7 @@ import { REFINE, type Company } from "../sim/company.ts";
 import { DEFAULT_RATED_LIFE, flowSeparates, type Engine } from "../sim/engine.ts";
 import type { FailureMode } from "../sim/hardware.ts";
 import { INJECTORS, NOZZLES, parsePartKey, partLabel, type InjectorOption, type NozzleOption } from "../sim/parts.ts";
-import { enginesUsing, FACILITIES, START_CHECK, type Facility } from "../sim/teststand.ts";
+import { enginesUsing, FACILITIES, firingCost, START_CHECK, type Facility } from "../sim/teststand.ts";
 import { burnTime, idealDeltaV, type Vehicle } from "../sim/vehicle.ts";
 
 /**
@@ -144,8 +144,7 @@ export function planPartTest(company: Company, key: string): PartTestPlan | null
         why = `Measure Isp, so the ${name} can be refined.`;
         break;
     }
-    const f = FACILITIES[facility];
-    return { engine: e.name, facility, seconds, restart, why, cost: f.setup * (restart ? 2 : 1) + f.perSecond * seconds };
+    return { engine: e.name, facility, seconds, restart, why, cost: firingCost(e, facility, seconds, restart) };
   });
   options.sort((a, b) => a.cost - b.cost);
   return options[0] ?? null;

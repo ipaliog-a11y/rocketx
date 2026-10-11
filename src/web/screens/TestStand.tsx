@@ -4,7 +4,7 @@ import { COSTS } from "../../sim/cost.ts";
 import { flowSeparates, type Engine } from "../../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../../sim/hardware.ts";
 import { partKeys, partLabel } from "../../sim/parts.ts";
-import { FACILITIES, FIXES, HARDWARE_LOSS, RESTART_TEST, revisionLetter, START_CHECK, seenAt as seenAtKnown, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
+import { FACILITIES, FIXES, firingCost, fixQuote, hardwareLoss, runRate, RESTART_TEST, revisionLetter, START_CHECK, seenAt as seenAtKnown, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
 import { burnTime } from "../../sim/vehicle.ts";
 import { Chip, Facts, ProofBar, Tabs } from "../components/Bits.tsx";
 import { isVacuumBell, Nozzle } from "../components/Rocket.tsx";
@@ -200,7 +200,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
   stops.sort((a, b) => a[0] - b[0]);
   const stop = stops[0];
   const runs = stop ? Math.min(stop[0], planned) : planned;
-  const cost = spec.setup * (restart ? 2 : 1) + spec.perSecond * runs;
+  const cost = firingCost(engine, facility, runs, restart);
   const days = spec.days + (restart ? RESTART_TEST.days : 0);
   const last = known?.history.at(-1);
   const measured = known?.measuredIspFactor ?? null;
@@ -252,7 +252,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
                   <span className="muted">{engine.parts ? "Fixes every engine with the part; its proof starts over." : "Earlier firings stop counting."}</span>
                 </span>
                 <span className="mono soft">
-                  {money(fix.cost)} · {fix.days} days
+                  {money(fixQuote(mode, engine).cost)} · {fixQuote(mode, engine).days} days
                 </span>
                 <button type="button" className="btn primary" onClick={() => game.schedule(fixEngineJob(engine, mode))}>
                   Apply fix
@@ -285,7 +285,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
                 </span>
                 <span className="mono soft" style={{ fontSize: 12 }}>
                   {f.days} days
-                  <br />${f.setup}k + ${f.perSecond}k/s
+                  <br />${f.setup}k + ${runRate(engine, id)}k/s
                 </span>
                 {flowSeparates(engine, f.ambient) && (
                   <span className="warn" style={{ fontSize: 13 }}>
@@ -338,7 +338,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
             {startCheck ? "Start check" : restart ? "Fire and restart" : "Fire"} · {money(cost)} · {days} days
           </button>
           <span className="muted" style={{ fontSize: 13 }}>
-            +{money(days * COSTS.overheadPerDay)} payroll · a lost engine costs {money(HARDWARE_LOSS.cost)} and {HARDWARE_LOSS.days} d
+            +{money(days * COSTS.overheadPerDay)} payroll · a lost engine costs {money(hardwareLoss(engine).cost)} and {hardwareLoss(engine).days} d
           </span>
         </div>
       </form>

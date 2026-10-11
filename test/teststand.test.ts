@@ -9,7 +9,7 @@ import {
   forgetStandSeparation,
   flightUnknowns,
   hotFire,
-  HARDWARE_LOSS,
+  hardwareLoss,
   newCampaign,
   START_CHECK,
 } from "../src/sim/teststand.ts";
@@ -96,7 +96,7 @@ test("a hard start destroys the test engine and costs a rebuild", () => {
   const report = hotFire(campaign, KESTREL_SL, 30, "sea-level");
   assert.equal(report.findings[0]?.mode, "hard-start");
   assert.equal(report.hardwareLost, true);
-  assert.ok(report.cost > HARDWARE_LOSS.cost);
+  assert.ok(report.cost > hardwareLoss(KESTREL_SL).cost);
   assert.equal(campaign.knowledge[KESTREL_SL.name]!.startupProven, false);
 });
 
