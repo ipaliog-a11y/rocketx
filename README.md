@@ -131,7 +131,7 @@ A React + Vite front end (`src/web/`) on the same sim code the tests and the com
 - **Contracts:** a filterable table and a month calendar of postings, deadlines and rollouts, with a bid panel that only signs. Click any future day in the calendar to see what happens by then (postings, rollouts, deadlines at risk) and advance the company to it.
 - **Launch:** build, re-tune and fly signed contracts.
 - **Hangar:** design drawings with an engine picker per stage; a Drawing board with the sizing guide; a Factory with the production lines; and the flight record.
-- **Test stand:** firings, an Engine shop to develop engines from parts, and a Parts tab with each part's revision, record and maturity (prototype, fired, qualified, flight-proven).
+- **Test stand:** firings, an Engine shop to develop engines from parts, and a Parts tab with each part's revision, record, relight status and maturity (prototype, fired, qualified, flight-proven). Each part card names what it still has to prove, and "Test it" opens the Firing tab on the cheapest engine built with it, with that firing set up.
 - **Tunnel:** wind-tunnel and CFD runs.
 
 Anything that uses up days asks first when it would cost a signed contract its deadline, then plays a short progress bar while the days pass. Launches replay the flight the sim just flew, then show the debrief. The run saves to the browser's local storage. `npm run build` writes a static site to `dist/`.

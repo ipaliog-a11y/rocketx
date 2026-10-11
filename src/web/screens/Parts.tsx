@@ -3,11 +3,12 @@ import { DEFAULT_RATED_LIFE } from "../../sim/engine.ts";
 import { FAILURE_LABELS } from "../../sim/hardware.ts";
 import { optionSpec, parsePartKey, partLabel, SLOTS, type Slot } from "../../sim/parts.ts";
 import { enginesUsing, revisionLetter, type PartKnowledge } from "../../sim/teststand.ts";
-import { burnTime } from "../../sim/vehicle.ts";
 import { Chip } from "../components/Bits.tsx";
 import { game } from "../game.ts";
 import { refineJob } from "../jobs.ts";
 import { money } from "../format.ts";
+import { flownUpper, partNeed, planPartTest } from "../partTest.ts";
+import type { Focus } from "./TestStand.tsx";
 
 const SLOT_TITLES: Record<Slot, string> = {
   cycle: "Feed cycles · start sequence",
@@ -18,13 +19,6 @@ const SLOT_TITLES: Record<Slot, string> = {
 
 type Maturity = { text: string; tone: "good" | "warn" | "bad" | "muted" };
 
-/** The longest burn any design asks of an engine, s. */
-function longestBurn(company: Company, engineName: string): number {
-  let burn = 0;
-  for (const d of Object.values(company.designs)) for (const s of d.stages) if (s.engine.name === engineName) burn = Math.max(burn, burnTime(s));
-  return burn;
-}
-
 /**
  * Where a part stands, from its record alone: never fired, fired, proven
  * past every burn the designs ask of it, or flown.
@@ -33,20 +27,9 @@ function maturity(company: Company, key: string, part: PartKnowledge | undefined
   if (part && part.open.length > 0) return { text: `OPEN · ${part.open.map((m) => FAILURE_LABELS[m].toUpperCase()).join(", ")}`, tone: "bad" };
   if (!part || part.firings + part.flights === 0) return { text: "PROTOTYPE", tone: "muted" };
   if (part.flights > 0) return { text: "FLIGHT-PROVEN", tone: "good" };
-  // Qualified: proven for everything the designs ask of it, in the terms its slot owns.
-  const { slot, option } = parsePartKey(key);
-  const flown = enginesUsing(company.campaign, key).filter((e) => longestBurn(company, e.name) > 0);
-  const qualified =
-    slot === "cycle"
-      ? part.startupProven
-      : slot === "nozzle"
-        ? option === "sea-level" || part.altitudeTested
-        : flown.length > 0 &&
-          flown.every((e) =>
-            slot === "injector"
-              ? part.stableSeconds >= longestBurn(company, e.name)
-              : part.lifeShare * (e.ratedLife ?? DEFAULT_RATED_LIFE) >= longestBurn(company, e.name),
-          );
+  // Qualified: proven for every burn asked of it, in the terms its slot owns. A relight or an Isp reading is extra.
+  const need = partNeed(company, key);
+  const qualified = need === null || need.kind === "relight" || need.kind === "isp";
   return qualified ? { text: "QUALIFIED", tone: "good" } : { text: "FIRED", tone: "warn" };
 }
 
@@ -56,8 +39,11 @@ function evidence(company: Company, key: string, part: PartKnowledge | undefined
   if (!part) return "Nothing fired yet.";
   const users = enginesUsing(company.campaign, key);
   switch (slot) {
-    case "cycle":
-      return part.startupProven ? "Startup proven on the current revision." : "No clean start on the current revision.";
+    case "cycle": {
+      const start = part.startupProven ? "Startup proven on the current revision." : "No clean start on the current revision.";
+      if (part.relightProven) return `${start} Relit in vacuum.`;
+      return `${start} Never restarted in vacuum.${users.some((e) => flownUpper(company, e.name)) ? "" : " No design flies it on an upper stage."}`;
+    }
     case "injector":
       return `Stable for ${part.stableSeconds.toFixed(1)} s on the current revision.`;
     case "cooling":
@@ -67,7 +53,41 @@ function evidence(company: Company, key: string, part: PartKnowledge | undefined
   }
 }
 
-export function Parts({ company }: { company: Company }) {
+/** What the part still lacks, and a way to the stand to prove it. */
+function TestAction({ company, partKey, test }: { company: Company; partKey: string; test: (focus: Focus) => void }) {
+  const need = partNeed(company, partKey);
+  const users = enginesUsing(company.campaign, partKey);
+  if (need?.kind === "fix") {
+    return (
+      <div className="stack" style={{ gap: 4 }}>
+        <span className="actions">
+          <button type="button" className="btn" onClick={() => test({ engine: users[0]!.name })}>
+            Fix it on the stand
+          </button>
+        </span>
+        <span className="muted" style={{ fontSize: 13 }}>
+          The fix is on the {users[0]!.name}'s page, and covers every engine with this part.
+        </span>
+      </div>
+    );
+  }
+  const plan = planPartTest(company, partKey);
+  if (!plan) return <span className="muted" style={{ fontSize: 13 }}>Nothing left to prove.</span>;
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <span className="actions">
+        <button type="button" className="btn primary" onClick={() => test({ engine: plan.engine, facility: plan.facility, seconds: plan.seconds, restart: plan.restart, why: plan.why })}>
+          Test it · {plan.engine} · {money(plan.cost)}
+        </button>
+      </span>
+      <span className="muted" style={{ fontSize: 13 }}>
+        {plan.why}
+      </span>
+    </div>
+  );
+}
+
+export function Parts({ company, test }: { company: Company; test: (focus: Focus) => void }) {
   const keys = developedParts(company);
   return (
     <div className="stack" style={{ gap: 24 }}>
@@ -114,6 +134,7 @@ export function Parts({ company }: { company: Company }) {
                         ))}
                       </ul>
                     )}
+                    <TestAction company={company} partKey={key} test={test} />
                     {refinable && (
                       <div className="actions">
                         <button

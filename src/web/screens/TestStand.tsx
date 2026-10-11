@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Company } from "../../sim/company.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { flowSeparates, type Engine } from "../../sim/engine.ts";
@@ -50,8 +50,12 @@ function statusOf(known: EngineKnowledge | undefined, burn: number): { text: str
 
 type Tab = "firing" | "shop" | "parts";
 
+/** An engine to open on the Firing tab, with a firing already planned: from the Parts page. */
+export type Focus = { engine: string; facility?: Facility; seconds?: number; restart?: boolean; why?: string };
+
 export function TestStand({ company }: { company: Company }) {
   const [tab, setTab] = useState<Tab>("firing");
+  const [focus, setFocus] = useState<Focus | null>(null);
   return (
     <div className="screen">
       <div className="screen-head">
@@ -59,7 +63,10 @@ export function TestStand({ company }: { company: Company }) {
         <Tabs<Tab>
           label="Test stand views"
           value={tab}
-          onChange={setTab}
+          onChange={(t) => {
+            setTab(t);
+            setFocus(null);
+          }}
           tabs={[
             ["firing", "Firing"],
             ["shop", "Engine shop"],
@@ -67,16 +74,24 @@ export function TestStand({ company }: { company: Company }) {
           ]}
         />
       </div>
-      {tab === "firing" && <Firing company={company} />}
+      {tab === "firing" && <Firing company={company} focus={focus} />}
       {tab === "shop" && <EngineShop company={company} done={() => setTab("firing")} />}
-      {tab === "parts" && <Parts company={company} />}
+      {tab === "parts" && (
+        <Parts
+          company={company}
+          test={(f) => {
+            setFocus(f);
+            setTab("firing");
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function Firing({ company }: { company: Company }) {
+function Firing({ company, focus }: { company: Company; focus: Focus | null }) {
   const uses = engineUses(company);
-  const [selected, setSelected] = useState(uses[0]!.engine.name);
+  const [selected, setSelected] = useState(focus?.engine ?? uses[0]!.engine.name);
   const use = uses.find((u) => u.engine.name === selected) ?? uses[0]!;
 
   return (
@@ -119,7 +134,7 @@ function Firing({ company }: { company: Company }) {
             );
           })}
         </section>
-        <EngineDetail key={use.engine.name} company={company} use={use} />
+        <EngineDetail key={use.engine.name} company={company} use={use} plan={focus?.engine === use.engine.name ? focus : undefined} />
       </div>
     </>
   );
@@ -140,12 +155,19 @@ function PartLine({ company, engine }: { company: Company; engine: Engine }) {
   );
 }
 
-function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
+function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse; plan?: Focus }) {
   const { engine, burn } = use;
   const known = company.campaign.knowledge[engine.name];
-  const [facility, setFacility] = useState<Facility>(use.upper || isVacuumBell(engine) ? "altitude" : "sea-level");
-  const [duration, setDuration] = useState(Math.ceil((burn * 1.1) / 5) * 5);
-  const [restartWanted, setRestart] = useState(false);
+  const [facility, setFacility] = useState<Facility>(plan?.facility ?? (use.upper || isVacuumBell(engine) ? "altitude" : "sea-level"));
+  const [duration, setDuration] = useState(plan?.seconds ?? Math.ceil((burn * 1.1) / 5) * 5);
+  const [restartWanted, setRestart] = useState(plan?.restart ?? false);
+  const longest = Math.max(Math.ceil((burn * 1.6) / 5) * 5, plan?.seconds ?? 0);
+  // Arriving from the Parts page: bring the planned firing on screen.
+  const top = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const at = top.current?.getBoundingClientRect().top;
+    if (plan && at !== undefined && (at < 0 || at > window.innerHeight * 0.6)) top.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [plan]);
   const spec = FACILITIES[facility];
   const restart = restartWanted && facility === "altitude";
 
@@ -168,13 +190,20 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
   const measured = known?.measuredIspFactor ?? null;
 
   return (
-    <section className="grow stack" aria-label={`${engine.name} campaign`} style={{ gap: 18 }}>
+    <section ref={top} className="grow stack" aria-label={`${engine.name} campaign`} style={{ gap: 18, scrollMarginTop: 12 }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "6px 16px" }}>
         <h2 style={{ fontSize: 26 }}>{engine.name}</h2>
         <span className="muted">
           {(engine.thrustVac / 1000).toFixed(1)} kN vacuum · Isp {engine.ispVac} s on paper · rated {engine.ratedLife ?? 300} s · exit {(engine.exitPressure / 1000).toFixed(0)} kPa
         </span>
       </div>
+      {plan?.why && (
+        <div className="card" role="note" style={{ borderColor: "var(--cyan)" }}>
+          <span>
+            <span className="label">From the Parts page</span> {plan.why} The firing below is set up for it.
+          </span>
+        </div>
+      )}
 
       <div className="row" style={{ gap: 16 }}>
         <div className="card" style={{ flex: "1 1 200px" }}>
@@ -278,7 +307,7 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
           <label className="stack" style={{ gap: 8 }}>
             <span className="soft">Duration</span>
             <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <input type="range" min={5} max={Math.ceil((burn * 1.6) / 5) * 5} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} style={{ flex: 1 }} />
+              <input type="range" min={5} max={longest} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} style={{ flex: 1 }} />
               <output className="mono" style={{ minWidth: 64, textAlign: "right", fontWeight: 600 }}>
                 {duration} s
               </output>
