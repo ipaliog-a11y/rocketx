@@ -1,5 +1,6 @@
 import type { FlightResult } from "./ascent.ts";
 import type { FailureMode } from "./hardware.ts";
+import type { Licence } from "./licence.ts";
 import type { Mission } from "./mission.ts";
 
 /**
@@ -9,11 +10,58 @@ import type { Mission } from "./mission.ts";
  */
 export type Tag = FailureMode | "no-orbit" | "short" | "insertion-miss" | "late" | "delivered" | "demonstrated";
 
+/** What sort of work a contract is, for the board's filters. */
+export type ContractKind =
+  | "sounding"
+  | "microgravity"
+  | "tech-demo"
+  | "rideshare"
+  | "smallsat"
+  | "constellation"
+  | "weather"
+  | "agency"
+  | "geo"
+  | "navigation"
+  | "lunar"
+  | "deep-space"
+  | "megaconstellation"
+  | "crew";
+
+export const KIND_LABELS: Record<ContractKind, string> = {
+  sounding: "Sounding science",
+  microgravity: "Microgravity",
+  "tech-demo": "Technology demo",
+  rideshare: "Rideshare",
+  smallsat: "Smallsat",
+  constellation: "Constellation",
+  weather: "Weather",
+  agency: "Space agency",
+  geo: "Geostationary",
+  navigation: "Navigation",
+  lunar: "Lunar",
+  "deep-space": "Deep space",
+  megaconstellation: "Mega-constellation",
+  crew: "Crew",
+};
+
 /** A problem statement with money attached. */
 export type Contract = {
   id: string;
+  kind: ContractKind;
   customer: string;
   title: string;
+  /**
+   * Recurring work: every instance of a customer's series shares this id.
+   * Deliver and the next one pays a little more; fail or miss one and the
+   * customer withdraws the rest.
+   */
+  seriesId?: string;
+  /** Which instance of the series this is, from 1. */
+  seriesIndex?: number;
+  /** The licence the flight needs. Left out: orbit needs orbital, anything else suborbital. */
+  licence?: Licence;
+  /** A line of back story. Empty for now; stories come later. */
+  story?: string;
   mission: Mission;
   payloadMass: number;
   /** For suborbital work: the apogee the experiment needs, m. */
@@ -77,7 +125,10 @@ export function settle(contract: Contract, result: FlightResult): Settlement {
   }
 
   const insertion = result.summary.insertion;
-  if (result.outcome !== "orbit" || !insertion) return lost("no-orbit", "the payload never reached orbit.");
+  if ((result.outcome !== "orbit" && result.outcome !== "escape") || !insertion) {
+    const stranded = result.events.some((e) => e.kind === "coast");
+    return lost("no-orbit", stranded ? "the payload never left its parking orbit." : "the payload never reached orbit.");
+  }
   if (insertion.inSpec) {
     return {
       status: "delivered",

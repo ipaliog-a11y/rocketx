@@ -4,8 +4,13 @@ import { simulateAscent } from "../src/sim/ascent.ts";
 import { aeroShape, IDEAL_AERO } from "../src/sim/airframe.ts";
 import {
   accept,
+  bid,
   brief,
   build,
+  buyLine,
+  LEARNING,
+  LINE_COSTS,
+  readyDay,
   fire,
   fly,
   newCompany,
@@ -27,6 +32,7 @@ const near = (actual: number, expected: number, tolerance: number) =>
 
 const sounding: Contract = {
   id: "sounding",
+  kind: "sounding",
   customer: "Test U",
   title: "Probe",
   mission: SUBORBITAL_TEST,
@@ -42,6 +48,7 @@ const sounding: Contract = {
 };
 const leo: Contract = {
   id: "leo",
+  kind: "smallsat",
   customer: "Test Sat",
   title: "LEO",
   mission: LEO_300,
@@ -55,9 +62,14 @@ const leo: Contract = {
   postedDay: 0,
 };
 
-/** A company whose hidden hardware is perfect unless a test says otherwise. */
+/**
+ * A company whose hidden hardware is perfect unless a test says otherwise.
+ * It already holds the orbital licence: these tests are about engineering
+ * and money, not the regulator (test/licence.test.ts covers that).
+ */
 function company(cash = 12_000, engines: Partial<Record<string, EngineTruth>> = {}): Company {
   const c = newCompany(1, cash, VEHICLES, Object.values(ENGINES), [sounding, leo]);
+  c.licence = "orbital";
   for (const name of Object.keys(c.campaign.truth)) c.campaign.truth[name] = engines[name] ?? IDEAL_TRUTH;
   for (const key of Object.keys(c.campaign.aeroTruth)) c.campaign.aeroTruth[key] = IDEAL_AERO;
   return c;
@@ -112,14 +124,16 @@ test("signing needs the reputation and a record the customer accepts", () => {
   assert.throws(() => accept(c, "sounding"), /no longer open/);
 });
 
-test("a contract flown on time pays, and builds and launches cost cash and days", () => {
+test("a contract flown on time pays; a build costs cash up front and the launch waits for rollout", () => {
   const c = company();
   accept(c, "sounding");
   build(c, "pathfinder");
   const built = vehicleCost(PATHFINDER);
-  assert.equal(c.day, built.days);
-  assert.equal(c.cash, 12_000 - built.cost - built.days * COSTS.overheadPerDay);
-  assert.equal(c.inventory.pathfinder, 1);
+  assert.equal(c.day, 0, "the company keeps working while the line builds");
+  assert.equal(c.cash, 12_000 - built.cost);
+  assert.equal(c.inventory.pathfinder ?? 0, 0);
+  assert.deepEqual(c.orders, [{ design: "pathfinder", line: 0, startDay: 0, readyDay: built.days }]);
+  assert.equal(readyDay(c, "pathfinder"), built.days);
 
   const report = fly(c, "pathfinder", { contract: "sounding" });
   assert.equal(report.result.outcome, "apogee");
@@ -129,6 +143,30 @@ test("a contract flown on time pays, and builds and launches cost cash and days"
   assert.equal(c.cash, 12_000 - built.cost - COSTS.launchFee - days * COSTS.overheadPerDay + 1_500);
   assert.equal(c.closed.sounding, "delivered");
   assert.equal(reputation(c), 1);
+});
+
+test("orders queue on a busy line, and another line builds in parallel", () => {
+  const c = company(20_000);
+  const days = vehicleCost(PATHFINDER).days;
+  build(c, "pathfinder");
+  build(c, "pathfinder");
+  // The second takes less time: the line learned on the first.
+  assert.deepEqual(c.orders.map((o) => o.readyDay), [days, days + Math.round(days * LEARNING.rate)]);
+  const { notices } = wait(c, days);
+  assert.equal(c.inventory.pathfinder, 1);
+  assert.ok(notices.some((n) => /rolled out of line 1/.test(n)));
+
+  const cash = c.cash;
+  buyLine(c);
+  assert.equal(c.cash, cash - LINE_COSTS[0]!.cost);
+  assert.equal(c.lines.length, 2);
+  wait(c, LINE_COSTS[0]!.days);
+  build(c, "pathfinder");
+  build(c, "pathfinder");
+  const lines = c.orders.slice(-2).map((o) => o.line).sort();
+  assert.deepEqual(lines, [0, 1], "two lines take the two new orders");
+  buyLine(c);
+  assert.throws(() => buyLine(c), /as many as the site holds/);
 });
 
 test("flying needs a built vehicle and a signed contract", () => {
@@ -141,7 +179,8 @@ test("flying needs a built vehicle and a signed contract", () => {
 test("a missed deadline costs the penalty and a late mark", () => {
   const c = company();
   accept(c, "sounding");
-  for (let i = 0; i < 6; i++) build(c, "pathfinder");
+  build(c, "pathfinder");
+  wait(c, sounding.deadline + 1);
   assert.ok(c.day > sounding.deadline);
   assert.equal(c.closed.sounding, "late");
   assert.ok(c.ledger.some((e) => e.category === "penalty" && e.amount === -300));
@@ -230,4 +269,39 @@ test("time costs payroll, and later contracts appear on the board over time", ()
   wait(c, 300);
   assert.equal(c.cash, 12_000 - 300 * COSTS.overheadPerDay);
   assert.ok(posted(c).some((x) => x.id === "rideshare-1"));
+});
+
+test("the bid is structured data the UI can lay out", () => {
+  const c = company();
+  const b = bid(c, "leo", "meridian");
+  assert.equal(b.designName, "Meridian");
+  assert.deepEqual(b.build, vehicleCost(MERIDIAN));
+  assert.ok(b.blockers.some((x) => /reputation of 1/.test(x)));
+  assert.ok(b.regimes.includes("The Meridian has never flown."));
+  assert.equal(b.forecast.delivers, true);
+  assert.equal(b.fitsSchedule, true);
+  assert.match(brief(c, "leo", "meridian"), /Forecast from what's known: .* in spec/);
+});
+
+test("every launch lands in the flight log", () => {
+  const c = company();
+  accept(c, "sounding");
+  build(c, "pathfinder");
+  build(c, "pathfinder");
+  const report = fly(c, "pathfinder", { contract: "sounding" });
+  fly(c, "pathfinder", { mission: SUBORBITAL_TEST });
+  assert.equal(c.flights.length, 2);
+  assert.deepEqual(c.flights[0], {
+    day: c.flights[0]!.day,
+    design: "Pathfinder",
+    mission: SUBORBITAL_TEST.name,
+    contract: sounding.title,
+    outcome: "apogee",
+    apogee: c.flights[0]!.apogee,
+    settlement: "delivered",
+  });
+  assert.ok(c.flights[0]!.apogee > 100_000);
+  assert.equal(c.flights[1]!.contract, null);
+  assert.equal(report.settlement?.status, "delivered");
+  assert.match(report.debrief, /^DEBRIEF: Pathfinder/);
 });

@@ -3,6 +3,13 @@ import type { Engine } from "./sim/engine.ts";
 import type { PitchProgram } from "./sim/guidance.ts";
 import type { Vehicle } from "./sim/vehicle.ts";
 
+/*
+ * The preset engines keep their hand-drawn numbers, so the presets fly as
+ * they always have. Their parts say where their quirks come from, and which
+ * engines share them: the two Harriers share cycle, injector and cooling,
+ * as do the two 35 kN Kestrels.
+ */
+
 /** Pressure-fed kerosene engine with a short sea-level bell. */
 export const KESTREL_SL: Engine = {
   name: "Kestrel-SL",
@@ -11,6 +18,7 @@ export const KESTREL_SL: Engine = {
   exitArea: 0.07,
   exitPressure: 70_000,
   ratedLife: 100,
+  parts: { size: 35, cycle: "pressure-fed", injector: "showerhead", cooling: "ablative", nozzle: "sea-level" },
 };
 
 /** Same chamber with a long bell expanded for near-vacuum. Better Isp, worse on the pad. */
@@ -21,6 +29,7 @@ export const KESTREL_VAC: Engine = {
   exitArea: 0.15,
   exitPressure: 6_000,
   ratedLife: 120,
+  parts: { size: 35, cycle: "pressure-fed", injector: "showerhead", cooling: "ablative", nozzle: "vacuum" },
 };
 
 /** Baseline suborbital sounding rocket: one stage, slim, sea-level engine. */
@@ -73,7 +82,7 @@ export const PATHFINDER_TWO_STAGE: Vehicle = {
       name: "Booster",
       dryMass: 700,
       propellantMass: 1_500,
-      engine: { ...KESTREL_SL, name: "Kestrel-SL Block 2", thrustVac: 50_000, exitArea: 0.09 },
+      engine: { ...KESTREL_SL, name: "Kestrel-SL Block 2", thrustVac: 50_000, exitArea: 0.09, parts: { ...KESTREL_SL.parts!, size: 50 } },
       engineCount: 1,
       diameter: 0.8,
     },
@@ -81,7 +90,7 @@ export const PATHFINDER_TWO_STAGE: Vehicle = {
       name: "Upper",
       dryMass: 170,
       propellantMass: 400,
-      engine: { ...KESTREL_VAC, name: "Kestrel-Vac Mini", thrustVac: 9_000, exitArea: 0.04, ratedLife: 160 },
+      engine: { ...KESTREL_VAC, name: "Kestrel-Vac Mini", thrustVac: 9_000, exitArea: 0.04, ratedLife: 160, parts: { ...KESTREL_VAC.parts!, size: 9 } },
       engineCount: 1,
       diameter: 0.6,
     },
@@ -97,6 +106,7 @@ export const HARRIER_SL: Engine = {
   exitArea: 0.055,
   exitPressure: 60_000,
   ratedLife: 150,
+  parts: { size: 25, cycle: "gas-generator", injector: "coaxial", cooling: "film", nozzle: "sea-level" },
 };
 
 /** Vacuum Harrier for the upper stage. */
@@ -107,6 +117,7 @@ export const HARRIER_VAC: Engine = {
   exitArea: 0.35,
   exitPressure: 2_000,
   ratedLife: 300,
+  parts: { size: 25, cycle: "gas-generator", injector: "coaxial", cooling: "film", nozzle: "large-vacuum" },
 };
 
 const MERIDIAN_TURN = {

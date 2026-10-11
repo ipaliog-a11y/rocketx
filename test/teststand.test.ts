@@ -6,10 +6,12 @@ import { firstFailure, IDEAL_TRUTH, rollEngineTruth, rollTruths, type EngineTrut
 import {
   applyFix,
   believedHardware,
+  forgetStandSeparation,
   flightUnknowns,
   hotFire,
   HARDWARE_LOSS,
   newCampaign,
+  START_CHECK,
 } from "../src/sim/teststand.ts";
 import { LEO_300, SUBORBITAL_TEST } from "../src/missions.ts";
 import { ENGINES, HARRIER_SL, HARRIER_VAC, KESTREL_SL, KESTREL_VAC, MERIDIAN, PATHFINDER } from "../src/vehicles.ts";
@@ -63,12 +65,17 @@ test("a short firing says nothing about a chamber that fails later", () => {
   near(long.fired, 120, 1e-9);
 });
 
-test("a vacuum bell separates on the sea-level stand and needs the altitude cell", () => {
+test("a vacuum bell only gets a start check on the sea-level stand", () => {
   const campaign = newCampaign({ [KESTREL_VAC.name]: healthy() });
   const sea = hotFire(campaign, KESTREL_VAC, 60, "sea-level");
-  assert.equal(sea.findings[0]?.mode, "flow-separation");
+  assert.deepEqual(sea.findings, []);
+  assert.equal(sea.fired, START_CHECK);
   assert.equal(sea.isp, null);
   assert.equal(sea.hardwareLost, false);
+  const known = campaign.knowledge[KESTREL_VAC.name]!;
+  assert.equal(known.startupProven, true);
+  assert.deepEqual(known.open, [], "separation is not a fault: the engine never runs at sea level");
+  assert.equal(known.altitudeTested, false);
 
   const alt = hotFire(campaign, KESTREL_VAC, 60, "altitude");
   assert.equal(alt.findings.length, 0);
@@ -113,10 +120,22 @@ test("a fix needs an observed problem, and resets what was proven", () => {
   assert.deepEqual(known.fixed, ["combustion-instability"]);
 });
 
-test("flow separation can't be fixed on the stand", () => {
+test("a start check still finds a hard start", () => {
+  const campaign = newCampaign({ [KESTREL_VAC.name]: healthy({ hardStart: true }) });
+  const sea = hotFire(campaign, KESTREL_VAC, 60, "sea-level");
+  assert.equal(sea.findings[0]?.mode, "hard-start");
+  assert.equal(sea.hardwareLost, true);
+});
+
+test("old saves lose the flow separation a sea-level firing used to leave open", () => {
   const campaign = newCampaign({ [KESTREL_VAC.name]: healthy() });
   hotFire(campaign, KESTREL_VAC, 10, "sea-level");
-  assert.throws(() => applyFix(campaign, KESTREL_VAC, "flow-separation"), /change the bell/);
+  const known = campaign.knowledge[KESTREL_VAC.name]!;
+  known.open.push("flow-separation");
+  known.seen["flow-separation"] = 2;
+  forgetStandSeparation(campaign);
+  assert.deepEqual(known.open, []);
+  assert.equal(known.seen["flow-separation"], undefined);
 });
 
 test("an untested vehicle flies everything on trust", () => {
@@ -137,7 +156,7 @@ test("a known flaw short of the flight burn is called out as a certain failure",
   const campaign = newCampaign({ [HARRIER_SL.name]: healthy({ thermalLife: 100 }), [HARRIER_VAC.name]: healthy() });
   hotFire(campaign, HARRIER_SL, 140, "sea-level");
   const text = flightUnknowns(MERIDIAN, campaign).map((u) => u.text).join("\n");
-  assert.match(text, /Known burn-through at 100\.0 s .* it will fail in flight/);
+  assert.match(text, /Known burn-through at 100\.0 s, not fixed\..* it will fail in flight/);
 });
 
 test("a booster hard start loses the vehicle on the pad", () => {

@@ -1,7 +1,7 @@
 import { simulateAscent } from "./sim/ascent.ts";
 import { debrief } from "./sim/debrief.ts";
 import { aeroShape, rollAeroTruths } from "./sim/airframe.ts";
-import { FAILURE_LABELS, rollTruths, type FailureMode } from "./sim/hardware.ts";
+import { FAILURE_LABELS, rollPartTruths, rollTruths, type FailureMode } from "./sim/hardware.ts";
 import { AERO_FACILITIES, applyAeroFix, believedAero, tunnelRun, type AeroFacility } from "./sim/tunnel.ts";
 import {
   applyFix,
@@ -51,7 +51,11 @@ const steered = vehicle.pitchProgram && vehicle.pitchProgram.kind !== "vertical"
 const missionName = words[0] && MISSIONS[words[0]] ? words.shift()! : steered ? "leo-300" : "suborbital";
 const mission = MISSIONS[missionName]!;
 
-const campaign = newCampaign(rollTruths(Object.values(ENGINES), seed), rollAeroTruths(Object.values(VEHICLES), seed));
+const engines = Object.values(ENGINES);
+const campaign = newCampaign(rollTruths(engines, seed), rollAeroTruths(Object.values(VEHICLES), seed), {
+  engines,
+  partTruth: rollPartTruths(engines, seed),
+});
 console.log(`TEST CAMPAIGN: ${vehicle.name}, seed ${seed}`);
 console.log("");
 

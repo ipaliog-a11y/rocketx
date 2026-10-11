@@ -1,6 +1,8 @@
 import {
   accept,
+  applyForLicence,
   brief,
+  buyLine,
   build,
   fire,
   fixAero,
@@ -38,6 +40,8 @@ import { ENGINES, VEHICLES } from "./vehicles.ts";
  *   fly:meridian:leo-150          fly a built vehicle for a signed contract
  *   fly:pathfinder                fly a test flight (fly:meridian@leo-300 picks the mission)
  *   wait:60                       let 60 days pass (the payroll still runs)
+ *   licence                       apply for the next launch licence (orbit needs two flights above 100 km)
+ *   line                          buy another production line (builds are orders that run in the background)
  *   status                        cash, calendar and what's signed
  *
  * npm run company -- --seed 3 board accept:sounding build:pathfinder fly:pathfinder:sounding
@@ -88,6 +92,8 @@ function run(step: string): ActionResult | null {
     console.log(status(company));
     return null;
   }
+  if (step === "licence") return applyForLicence(company);
+  if (step === "line") return buyLine(company);
   switch (verb) {
     case "brief":
       console.log(brief(company, rest[0] ?? "", vehicleKey(rest[1])));

@@ -33,7 +33,7 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     liftoff: `Liftoff, T/W ${e.value?.toFixed(2)}`,
     "no-liftoff": `Held on the pad, T/W ${e.value?.toFixed(2)}`,
     "flow-separation": `Nozzle flow separating at ${kPa(e.value ?? 0)} ambient`,
-    "pitch-kick": `Pitch kick, ${e.value ?? 0}°`,
+    "pitch-kick": `Pitch kick, ${Number((e.value ?? 0).toFixed(1))}°`,
     "mach-1": "Mach 1",
     "max-q": `Max-q ${kPa(e.value ?? 0)}`,
     "q-limit-exceeded": `Load budget exceeded, q ${kPa(e.value ?? 0)}`,
@@ -45,6 +45,11 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     cutoff: `Guidance cutoff on target energy, ${Math.round(e.value ?? 0)} kg propellant left`,
     staging: `Stage separation, ${stage} ignites`,
     orbit: "Orbit insertion",
+    coast: "Engine off: coasting",
+    relight: `Relight, ${stage}`,
+    transfer: `Transfer burn complete, ${Math.round(e.value ?? 0)} kg propellant left`,
+    circularize: `Circularisation burn complete, ${Math.round(e.value ?? 0)} kg propellant left`,
+    escape: `Escape burn complete: on the way out, ${Math.round(e.value ?? 0)} kg propellant left`,
     apogee: "Apogee",
     impact: "Ground impact",
     timeout: "Simulation time limit",
@@ -96,6 +101,10 @@ export function debrief(result: FlightResult, vehicle: Vehicle, mission: Mission
     if (orbit.periapsis < SHORT_LIVED_PERIAPSIS) {
       lines.push("  Periapsis is low enough that air drag will bring the payload down within days.");
     }
+  } else if (result.outcome === "escape" && orbit) {
+    lines.push(
+      `Escaping Earth with C3 ${((2 * orbit.energy) / 1e6).toFixed(1)} km²/s²: ${ms(Math.sqrt(Math.max(0, 2 * orbit.energy)))} left over once Earth's pull is spent. Final burn ended at ${tPlus(summary.burnoutTime)}.`,
+    );
   } else if (result.outcome === "apogee" || result.outcome === "impact") {
     lines.push(
       result.outcome === "apogee"
@@ -207,9 +216,17 @@ function insertionLines(result: FlightResult, vehicle: Vehicle, mission: Mission
   const target = ins.target;
   const tol = target.tolerance;
   lines.push("");
+  if (target.c3 !== undefined) {
+    lines.push(`Target escape with C3 ${target.c3} km²/s² (±${tol.c3 ?? 1}): ${ins.inSpec ? "IN SPEC" : "OUT OF SPEC"}.`);
+    if (ins.c3Error !== undefined && result.outcome === "escape") lines.push(`  C3 ${sign(ins.c3Error)}${Math.abs(ins.c3Error).toFixed(1)} km²/s² against the target.`);
+    else lines.push("  The vehicle never reached escape energy.");
+    return;
+  }
   lines.push(
-    `Target ${km(target.periapsis)} × ${km(target.apoapsis)} at ${target.inclination.toFixed(1)}° (±${km(tol.altitude)}, ±${tol.inclination}°): ${ins.inSpec ? "IN SPEC" : "OUT OF SPEC"}.`,
+    `Target ${km(target.periapsis)} × ${km(target.apoapsis)} at ${target.inclination.toFixed(1)}° (±${km(tol.altitude)}${tol.apoapsis ? ` perigee, ±${km(tol.apoapsis)} apogee` : ""}, ±${tol.inclination}°): ${ins.inSpec ? "IN SPEC" : "OUT OF SPEC"}.`,
   );
+  const relights = events.filter((e) => e.kind === "relight").length;
+  if (relights > 0) lines.push(`  Parking orbit, then ${relights} relight${relights === 1 ? "" : "s"} after coasting.`);
   if (ins.reachedOrbit) {
     lines.push(
       `  Periapsis ${signedKm(ins.periapsisError)}, apoapsis ${signedKm(ins.apoapsisError)}, inclination ${signedDeg(ins.inclinationError)}.`,
@@ -265,6 +282,8 @@ const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buff
     `combustion instability ${after} into the ${engine} burn. The pressure oscillation shook the stage apart.`,
   "burn-through": (engine, after) =>
     `chamber burn-through ${after} into the ${engine} burn. The jet through the liner cut into the stage.`,
+  "relight-failure": (engine) =>
+    `the ${engine} wouldn't relight after the coast. The stage and its payload are stranded in the parking orbit.`,
 };
 
 function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
@@ -284,14 +303,19 @@ function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign
 
   if (!campaign) return;
   const known = campaign.knowledge[engine];
-  if (!known || known.firings === 0) {
+  const inherited = known !== undefined && (known.startupProven || known.provenDuration > 0 || known.open.length > 0);
+  if (!known || (known.firings === 0 && !inherited)) {
     lines.push(
       e.mode === "hard-start"
         ? `  ${engine} was never fired on the stand. Any firing would have shown the hard start.`
         : `  ${engine} was never fired on the stand. A ${Math.ceil(into)} s firing would have found this.`,
     );
   } else if (known.open.includes(e.mode)) {
-    lines.push(`  The stand had already seen this on ${engine}. It flew unfixed.`);
+    lines.push(
+      known.firings === 0
+        ? `  The stand had already seen this on an engine that shares ${engine}'s parts. It flew unfixed.`
+        : `  The stand had already seen this on ${engine}. It flew unfixed.`,
+    );
   } else if (e.mode === "hard-start") {
     lines.push(`  No firing of the current ${engine} hardware got past ignition.`);
   } else {

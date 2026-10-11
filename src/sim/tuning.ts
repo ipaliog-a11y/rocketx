@@ -2,7 +2,7 @@ import { simulateAscent, type FlightResult } from "./ascent.ts";
 import type { AeroTruthTable } from "./airframe.ts";
 import type { PitchProgram } from "./guidance.ts";
 import { FAILURE_LABELS, type HardwareTruth } from "./hardware.ts";
-import type { Mission } from "./mission.ts";
+import { missionPlan, type Mission } from "./mission.ts";
 import { believedHardware, type Campaign } from "./teststand.ts";
 import { believedAero } from "./tunnel.ts";
 import type { Vehicle } from "./vehicle.ts";
@@ -108,6 +108,10 @@ export function retunePitch(vehicle: Vehicle, mission: Mission, model: FlightMod
       )
     : undefined;
   const flightModel: FlightModel = { hardware, aero: model.aero };
+  // A high-energy mission's pitch programme only flies the ascent to the
+  // parking orbit; the burns after it steer themselves. Tune for that orbit.
+  const plan = missionPlan(mission);
+  const tuneFor: Mission = plan.burns.length > 0 ? { ...mission, name: `${mission.name} parking orbit`, target: plan.ascent } : mission;
 
   let runs = 0;
   const cache = new Map<string, number>();
@@ -116,13 +120,13 @@ export function retunePitch(vehicle: Vehicle, mission: Mission, model: FlightMod
     const cached = cache.get(key);
     if (cached !== undefined) return cached;
     runs += 1;
-    const flown = simulateAscent({ ...vehicle, pitchProgram: programFrom(base, p) }, mission, {
+    const flown = simulateAscent({ ...vehicle, pitchProgram: programFrom(base, p) }, tuneFor, {
       ...flightModel,
       dt: SEARCH_DT,
       sampleInterval: Infinity,
       structuralFailures: false,
     });
-    const s = score(flown, vehicle, mission);
+    const s = score(flown, vehicle, tuneFor);
     cache.set(key, s);
     return s;
   };
