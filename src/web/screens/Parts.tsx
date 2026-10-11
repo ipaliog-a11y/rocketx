@@ -6,8 +6,8 @@ import { enginesUsing, revisionLetter, type PartKnowledge } from "../../sim/test
 import { Chip } from "../components/Bits.tsx";
 import { game } from "../game.ts";
 import { refineJob } from "../jobs.ts";
-import { money } from "../format.ts";
-import { flownUpper, partNeed, planPartTest } from "../partTest.ts";
+import { money, pct } from "../format.ts";
+import { flownUpper, ispRange, partNeed, planPartTest, refineWorth } from "../partTest.ts";
 import type { Focus } from "./TestStand.tsx";
 
 const SLOT_TITLES: Record<Slot, string> = {
@@ -106,8 +106,6 @@ export function Parts({ company, test }: { company: Company; test: (focus: Focus
                 const m = maturity(company, key, part);
                 const users = enginesUsing(company.campaign, key);
                 const refinable = slot === "injector" || slot === "nozzle";
-                const measured = users.some((e) => company.campaign.knowledge[e.name]?.measuredIspFactor != null);
-                const refinements = part?.refinements ?? 0;
                 return (
                   <div key={key} className="card" style={{ gap: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
@@ -135,22 +133,7 @@ export function Parts({ company, test }: { company: Company; test: (focus: Focus
                       </ul>
                     )}
                     <TestAction company={company} partKey={key} test={test} />
-                    {refinable && (
-                      <div className="actions">
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={!measured || refinements >= REFINE.max}
-                          title={!measured ? "Measure Isp on an engine with this part first" : undefined}
-                          onClick={() => game.schedule(refineJob(key))}
-                        >
-                          Refine · {money(REFINE.cost)} · {REFINE.days} d
-                        </button>
-                        <span className="muted" style={{ fontSize: 13 }}>
-                          {refinements >= REFINE.max ? "Refined as far as it goes." : !measured ? "Needs measured Isp." : `${REFINE.max - refinements} of ${REFINE.max} left`}
-                        </span>
-                      </div>
-                    )}
+                    {refinable && <RefinePanel company={company} partKey={key} />}
                     <span className="muted" style={{ fontSize: 12 }}>
                       {optionSpec(slot, parsePartKey(key).option).text}
                     </span>
@@ -160,6 +143,82 @@ export function Parts({ company, test }: { company: Company; test: (focus: Focus
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Refining, made visible: the Isp the part's engines deliver now, how much
+ * room its type leaves, what the last refinement bought once re-measured,
+ * and what another one is worth on each design.
+ */
+function RefinePanel({ company, partKey }: { company: Company; partKey: string }) {
+  const part = company.campaign.parts[partKey];
+  const users = enginesUsing(company.campaign, partKey);
+  const measuredOf = (name: string) => company.campaign.knowledge[name]?.measuredIspFactor ?? null;
+  const measured = users.filter((e) => measuredOf(e.name) !== null);
+  const refinements = part?.refinements ?? 0;
+  const range = ispRange(partKey)!;
+  const last = part?.refined?.at(-1);
+  const worth = refineWorth(company, partKey);
+  const room = (range[1] - range[0]) * 100;
+  // A narrow type can't give a whole step: say what it can.
+  const step = Math.min(REFINE.step * 100, room);
+
+  return (
+    <div className="stack refine" style={{ gap: 6 }}>
+      <span style={{ fontSize: 14 }}>
+        <span className="muted">Delivered Isp:</span>{" "}
+        {measured.length > 0 ? (
+          <>
+            {measured.map((e) => `${e.name} ${pct(measuredOf(e.name)! - 1)}`).join(" · ")}
+            <span className="muted"> against the drawings</span>
+          </>
+        ) : (
+          <span className="muted">not measured on the current revision.</span>
+        )}
+      </span>
+      <span className="muted" style={{ fontSize: 13 }}>
+        This type delivers {(range[0] * 100).toFixed(1)}–{(range[1] * 100).toFixed(1)}% of its drawn Isp.{" "}
+        {room < 1 ? "There is almost nothing to win back by refining it." : `Each refinement wins back about ${(REFINE.step * 100).toFixed(1)}%, less near the top.`}
+      </span>
+      {last && (
+        <span style={{ fontSize: 13 }}>
+          <span className="muted">Last refinement ({revisionLetter(last.revision)}):</span>{" "}
+          {Object.entries(last.before)
+            .filter(([name, before]) => before !== null || measuredOf(name) !== null)
+            .map(([name, before]) => {
+              const now = measuredOf(name);
+              const was = before === null ? "unmeasured" : pct(before - 1);
+              return now === null ? `${name} ${was} → not measured since: fire it again` : `${name} ${was} → ${pct(now - 1)}`;
+            })
+            .join(" · ")}
+        </span>
+      )}
+      {worth.length > 0 && refinements < REFINE.max && room >= 1 && (
+        <span className="muted" style={{ fontSize: 13 }}>
+          Another refinement is worth about{" "}
+          {worth
+            .slice(0, 3)
+            .map((w) => `${w.design} +${Math.round(w.deltaV)} m/s${w.payload >= 1 ? ` (≈ +${Math.round(w.payload)} kg payload)` : ""}`)
+            .join(" · ")}
+          .
+        </span>
+      )}
+      <div className="actions">
+        <button
+          type="button"
+          className="btn"
+          disabled={measured.length === 0 || refinements >= REFINE.max}
+          title={measured.length === 0 ? "Measure Isp on an engine with this part first" : undefined}
+          onClick={() => game.schedule(refineJob(partKey))}
+        >
+          Refine · {step < REFINE.step * 100 ? "≤" : "≈"} +{step.toFixed(1)}% Isp · {money(REFINE.cost)} · {REFINE.days} d
+        </button>
+        <span className="muted" style={{ fontSize: 13 }}>
+          {refinements >= REFINE.max ? "Refined as far as it goes." : measured.length === 0 ? "Needs measured Isp: fire an engine with it for 5 s or more." : `${REFINE.max - refinements} of ${REFINE.max} left`}
+        </span>
+      </div>
     </div>
   );
 }

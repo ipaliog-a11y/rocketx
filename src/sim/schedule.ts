@@ -500,12 +500,15 @@ function refine(company: Company, key: string): string {
       if (t) t.ispFactor *= after / before;
     }
   }
+  // Remember where each engine stood, so the next measurement shows what the refinement bought.
+  const before = Object.fromEntries(users.map((e) => [e.name, company.campaign.knowledge[e.name]?.measuredIspFactor ?? null]));
   for (const e of users) {
     const k = company.campaign.knowledge[e.name];
     if (k) k.measuredIspFactor = null;
   }
   part.refinements += 1;
   part.revision += 1;
+  (part.refined ??= []).push({ revision: part.revision, day: company.day, before });
   part.notes.push(`${revisionLetter(part.revision)}: refined against measured Isp.`);
   return `${partLabel(key)} goes to ${revisionLetter(part.revision)}: elements and contour tuned against the measured Isp. Fire it again to see what it gained.`;
 }

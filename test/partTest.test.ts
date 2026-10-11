@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fire, newCompany, type Company } from "../src/sim/company.ts";
+import { fire, newCompany, refinePart, type Company } from "../src/sim/company.ts";
 import { combineTruth } from "../src/sim/hardware.ts";
 import { partKeys } from "../src/sim/parts.ts";
 import { partKnowledgeOf } from "../src/sim/teststand.ts";
 import { generateBoard } from "../src/contracts.ts";
-import { ENGINES, HARRIER_SL, HARRIER_VAC, VEHICLES } from "../src/vehicles.ts";
-import { partNeed, planPartTest } from "../src/web/partTest.ts";
+import { ENGINES, HARRIER_SL, HARRIER_VAC, MERIDIAN, PATHFINDER, VEHICLES } from "../src/vehicles.ts";
+import { ispRange, partNeed, planPartTest, refineWorth } from "../src/web/partTest.ts";
 
 /** A company whose hardware has no hidden faults, so planned firings come out clean. */
 function clean(): Company {
@@ -68,4 +68,31 @@ test("an open fault asks for the fix, not another firing", () => {
   partKnowledgeOf(c.campaign, keys.injector).open.push("combustion-instability");
   assert.deepEqual(partNeed(c, keys.injector), { kind: "fix", mode: "combustion-instability" });
   assert.equal(planPartTest(c, keys.injector), null);
+});
+
+test("a refinement remembers the Isp it started from, and the next firing shows the gain", () => {
+  const c = clean();
+  c.campaign.partTruth[keys.injector] = { ...c.campaign.partTruth[keys.injector]!, ispFactor: 0.96 };
+  for (const e of Object.values(c.campaign.engines)) c.campaign.truth[e.name] = combineTruth(e, c.campaign.partTruth);
+  const sl = c.campaign.engines[HARRIER_SL.name]!;
+  fire(c, sl, 10, "sea-level");
+  const before = c.campaign.knowledge[sl.name]!.measuredIspFactor!;
+  refinePart(c, keys.injector);
+  const log = c.campaign.parts[keys.injector]!.refined!;
+  assert.equal(log.length, 1);
+  assert.equal(log[0]!.before[sl.name], before);
+  assert.equal(c.campaign.knowledge[sl.name]!.measuredIspFactor, null, "the gain is unknown until measured again");
+  fire(c, sl, 10, "sea-level");
+  const after = c.campaign.knowledge[sl.name]!.measuredIspFactor!;
+  assert.ok(Math.abs(after / before - (0.966 / 0.96)) < 1e-9, `${before} → ${after}`);
+});
+
+test("a refinement is worth Δv and payload on every design flying the part", () => {
+  const c = clean();
+  const worth = refineWorth(c, keys.injector);
+  const meridian = worth.find((w) => w.design === MERIDIAN.name)!;
+  assert.ok(meridian.deltaV > 30 && meridian.deltaV < 80, `${meridian.deltaV} m/s`);
+  assert.ok(meridian.payload > 0);
+  assert.ok(!worth.some((w) => w.design === PATHFINDER.name), "the Pathfinder flies Kestrels");
+  assert.deepEqual(ispRange(keys.cycle), null);
 });

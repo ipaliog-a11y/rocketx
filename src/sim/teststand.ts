@@ -129,6 +129,8 @@ export type PartKnowledge = {
   refinements: number;
   /** What changed at each revision. */
   notes: string[];
+  /** Each refinement, with the Isp measured on every engine using the part just before it (share of the drawings; null if never measured). */
+  refined?: Array<{ revision: number; day: number; before: Record<string, number | null> }>;
 };
 
 export type Campaign = {

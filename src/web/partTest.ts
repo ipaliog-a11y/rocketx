@@ -1,9 +1,9 @@
-import type { Company } from "../sim/company.ts";
+import { REFINE, type Company } from "../sim/company.ts";
 import { DEFAULT_RATED_LIFE, flowSeparates, type Engine } from "../sim/engine.ts";
 import type { FailureMode } from "../sim/hardware.ts";
-import { parsePartKey, partLabel } from "../sim/parts.ts";
+import { INJECTORS, NOZZLES, parsePartKey, partLabel, type InjectorOption, type NozzleOption } from "../sim/parts.ts";
 import { enginesUsing, FACILITIES, START_CHECK, type Facility } from "../sim/teststand.ts";
-import { burnTime } from "../sim/vehicle.ts";
+import { burnTime, idealDeltaV, type Vehicle } from "../sim/vehicle.ts";
 
 /**
  * What a part still has to prove, and the cheapest firing that proves it:
@@ -149,4 +149,34 @@ export function planPartTest(company: Company, key: string): PartTestPlan | null
   });
   options.sort((a, b) => a.cost - b.cost);
   return options[0] ?? null;
+}
+
+/** The share of its drawn Isp a part type can deliver at best and worst: public, from the catalogue. */
+export function ispRange(key: string): [number, number] | null {
+  const { slot, option } = parsePartKey(key);
+  if (slot === "injector") return INJECTORS[option as InjectorOption].isp;
+  if (slot === "nozzle") return NOZZLES[option as NozzleOption].ispRange;
+  return null;
+}
+
+export type RefineWorth = { design: string; deltaV: number; payload: number };
+
+/**
+ * What one more refinement is roughly worth on each design flying an engine
+ * with the part: the extra Δv from REFINE.step more Isp on those stages, and
+ * the payload that Δv would carry, from the rocket equation.
+ */
+export function refineWorth(company: Company, key: string): RefineWorth[] {
+  const users = new Set(enginesUsing(company.campaign, key).map((e) => e.name));
+  const total = (v: Vehicle) => idealDeltaV(v).reduce((a, b) => a + b, 0);
+  const out: RefineWorth[] = [];
+  for (const v of Object.values(company.designs)) {
+    const dv = idealDeltaV(v);
+    const gain = v.stages.reduce((sum, s, i) => sum + (users.has(s.engine.name) ? dv[i]! * REFINE.step : 0), 0);
+    if (gain === 0) continue;
+    // Δv lost per extra kg of payload, near the design's own payload.
+    const perKg = (total(v) - total({ ...v, payloadMass: v.payloadMass + 10 })) / 10;
+    out.push({ design: v.name, deltaV: gain, payload: perKg > 0 ? gain / perKg : 0 });
+  }
+  return out.sort((a, b) => b.deltaV - a.deltaV);
 }
