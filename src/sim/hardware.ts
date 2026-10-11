@@ -44,7 +44,7 @@ export const FAILURE_LABELS: Record<FailureMode, string> = {
 const HARD_START_CHANCE = 0.25;
 const INSTABILITY_CHANCE = 0.2;
 const INSTABILITY_ONSET: [number, number] = [4, 60];
-const ISP_FACTOR: [number, number] = [0.95, 1.0];
+export const ISP_FACTOR: [number, number] = [0.95, 1.0];
 const LIFE_FACTOR: [number, number] = [0.6, 1.4];
 
 /**

@@ -8,6 +8,7 @@ import { Company, type CompanyTab } from "./screens/Company.tsx";
 import { Contracts } from "./screens/Contracts.tsx";
 import { Flight } from "./screens/Flight.tsx";
 import { Hangar } from "./screens/Hangar.tsx";
+import type { SimFocus } from "./screens/Simulator.tsx";
 import { Launch } from "./screens/Launch.tsx";
 import { NewGame } from "./screens/NewGame.tsx";
 import { TestStand } from "./screens/TestStand.tsx";
@@ -30,6 +31,8 @@ export function App() {
   const state = useGame();
   const [screen, setScreen] = useState<Screen>("company");
   const [companyTab, setCompanyTab] = useState<CompanyTab>("overview");
+  const [simFocus, setSimFocus] = useState<SimFocus | undefined>();
+  const simulate = (focus: SimFocus) => (setSimFocus({ ...focus }), setScreen("hangar"), window.scrollTo(0, 0));
   const company = state.company;
   if (!company) return <NewGame />;
 
@@ -42,7 +45,7 @@ export function App() {
         </button>
         <nav className="nav" aria-label="Sections">
           {SCREENS.map(([id, label, short, icon]) => (
-            <button key={id} type="button" aria-label={label} aria-current={!state.flight && screen === id ? "page" : undefined} onClick={() => (game.closeFlight(), setScreen(id), window.scrollTo(0, 0))}>
+            <button key={id} type="button" aria-label={label} aria-current={!state.flight && screen === id ? "page" : undefined} onClick={() => (game.closeFlight(), setSimFocus(undefined), setScreen(id), window.scrollTo(0, 0))}>
               <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d={icon} />
               </svg>
@@ -83,8 +86,8 @@ export function App() {
         <>
           {screen === "company" && <Company company={company} tab={companyTab} setTab={setCompanyTab} />}
           {screen === "contracts" && <Contracts company={company} version={state.version} goTo={setScreen} />}
-          {screen === "launch" && <Launch company={company} version={state.version} goTo={setScreen} />}
-          {screen === "hangar" && <Hangar company={company} />}
+          {screen === "launch" && <Launch company={company} version={state.version} goTo={setScreen} simulate={simulate} />}
+          {screen === "hangar" && <Hangar key={JSON.stringify(simFocus ?? {})} company={company} focus={simFocus} />}
           {screen === "stand" && <TestStand company={company} />}
           {screen === "tunnel" && <Tunnel company={company} />}
         </>

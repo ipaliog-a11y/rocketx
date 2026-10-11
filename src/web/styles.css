@@ -320,3 +320,14 @@ svg text { font-family: var(--mono); }
 .guide summary { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
 .guide summary::-webkit-details-marker { display: none; }
 .suggestions { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+
+/* Launch simulator */
+.sim-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 20px; align-items: end; }
+.sim-cases li { display: grid; grid-template-columns: 130px 1fr auto; gap: 4px 12px; align-items: baseline; }
+.sim-case-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.swatch { display: inline-block; width: 12px; height: 4px; border-radius: 2px; }
+.filter-chips button:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 700px) {
+  .sim-cases li { grid-template-columns: 1fr auto; }
+  .sim-cases li > :nth-child(2) { grid-column: 1 / -1; order: 3; }
+}

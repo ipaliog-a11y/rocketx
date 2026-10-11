@@ -11,16 +11,18 @@ import { buildJob, retuneTestJob, testFlightJob } from "../jobs.ts";
 import { DrawingBoard } from "./DrawingBoard.tsx";
 import { Factory } from "./Factory.tsx";
 import { Crew } from "./Crew.tsx";
+import { Simulator, type SimFocus } from "./Simulator.tsx";
 import { km, money } from "../format.ts";
 
-type Tab = "lineup" | "design" | "board" | "factory" | "crew" | "record";
+type Tab = "lineup" | "design" | "sim" | "board" | "factory" | "crew" | "record";
 
 /** Ideal Δv a 300 km orbit from Port Avery takes in this sim, losses included, m/s. */
 const LEO_NEEDS = 9_400;
 
-export function Hangar({ company }: { company: Company }) {
-  const [tab, setTab] = useState<Tab>("lineup");
+export function Hangar({ company, focus }: { company: Company; focus?: SimFocus }) {
+  const [tab, setTab] = useState<Tab>(focus ? "sim" : "lineup");
   const [key, setKey] = useState("meridian");
+  const [simFocus, setSimFocus] = useState<SimFocus | undefined>(focus);
 
   return (
     <div className="screen">
@@ -33,6 +35,7 @@ export function Hangar({ company }: { company: Company }) {
           tabs={[
             ["lineup", "Line-up"],
             ["design", "Design"],
+            ["sim", "Simulator"],
             ["board", "Drawing board"],
             ["factory", "Factory"],
             ["crew", "Crew"],
@@ -41,7 +44,8 @@ export function Hangar({ company }: { company: Company }) {
         />
       </div>
       {tab === "lineup" && <LineUp company={company} open={(k) => (setKey(k), setTab("design"))} />}
-      {tab === "design" && <Design company={company} designKey={company.designs[key] ? key : "meridian"} />}
+      {tab === "design" && <Design company={company} designKey={company.designs[key] ? key : "meridian"} simulate={(k) => (setSimFocus({ design: k }), setTab("sim"))} />}
+      {tab === "sim" && <Simulator key={JSON.stringify(simFocus ?? {})} company={company} focus={simFocus} />}
       {tab === "board" && <DrawingBoard company={company} drawn={(k) => (setKey(k), setTab("design"))} />}
       {tab === "factory" && <Factory company={company} />}
       {tab === "crew" && <Crew company={company} />}
@@ -89,7 +93,7 @@ function LineUp({ company, open }: { company: Company; open: (key: string) => vo
 
 const COLOURS = ["#e8ecef", "#5bb8e3", "#2e6e8e", "#f0a43a", "#8a5a1e"];
 
-function Design({ company, designKey }: { company: Company; designKey: string }) {
+function Design({ company, designKey, simulate }: { company: Company; designKey: string; simulate: (key: string) => void }) {
   const v = company.designs[designKey]!;
   const { cost, days: firstDays } = vehicleCost(v);
   const days = buildDays(company, designKey);
@@ -171,6 +175,9 @@ function Design({ company, designKey }: { company: Company; designKey: string })
           >
             Test flight · {mission.target ? `LEO ${km(mission.target.apoapsis, 0)}` : "straight up"}
             {ready !== null && ready > company.day ? ` on rollout, day ${ready}` : ""}
+          </button>
+          <button type="button" className="btn" onClick={() => simulate(designKey)}>
+            Simulate
           </button>
           {turns && (
             <button type="button" className="btn" onClick={() => game.schedule(retuneTestJob(company, designKey, mission))}>
