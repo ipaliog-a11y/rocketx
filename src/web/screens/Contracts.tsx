@@ -6,7 +6,7 @@ import { holds, LICENCE_LABELS, requiredLicence, type Licence } from "../../sim/
 import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
 import { Chip, Facts, Tabs } from "../components/Bits.tsx";
 import { defaultDesign, game } from "../game.ts";
-import { waitJob } from "../jobs.ts";
+import { deadlineRisks, waitJob } from "../jobs.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
 
 type Props = { company: Company; version: number; goTo: (screen: "launch") => void };
@@ -51,6 +51,7 @@ export function Contracts({ company, version, goTo }: Props) {
   const [designChoice, setDesign] = useState<Record<string, string>>({});
   const upcoming = company.board.filter((c) => c.postedDay > company.day).map((c) => c.postedDay);
   const nextPosting = upcoming.length > 0 ? Math.min(...upcoming) : null;
+  const nextRollout = company.orders.length > 0 ? Math.min(...company.orders.map((o) => o.readyDay)) : null;
 
   return (
     <div className="screen">
@@ -91,6 +92,11 @@ export function Contracts({ company, version, goTo }: Props) {
             {nextPosting !== null && (
               <button type="button" className="btn" onClick={() => game.schedule(waitJob(nextPosting - company.day, "Waiting for the next posting"))}>
                 Wait for the next posting
+              </button>
+            )}
+            {nextRollout !== null && nextRollout > company.day && (
+              <button type="button" className="btn" onClick={() => game.schedule(waitJob(nextRollout - company.day, "Waiting for the next rollout", `Advance ${nextRollout - company.day} days to the next rollout?`, "Advance"))}>
+                Advance to the next rollout · day {nextRollout}
               </button>
             )}
           </div>
@@ -235,6 +241,14 @@ type CalEvent = { day: number; c: Contract; type: "posted" | "due"; signed: bool
 function Calendar({ company, rows, selected, select }: { company: Company; rows: Row[]; selected?: string; select: (id: string) => void }) {
   const today = dateOf(company.day);
   const [cursor, setCursor] = useState({ year: today.getUTCFullYear(), month: today.getUTCMonth() });
+  // A future day chosen to advance the calendar to; one that has since passed no longer counts.
+  const [picked, setPick] = useState<number | null>(null);
+  const pick = picked !== null && picked > company.day ? picked : null;
+  const choose = (day: number) => {
+    if (day > company.day) setPick(day === pick ? null : day);
+  };
+  const rollouts = new Map<number, string[]>();
+  for (const o of company.orders) rollouts.set(o.readyDay, [...(rollouts.get(o.readyDay) ?? []), company.designs[o.design]?.name ?? o.design]);
   const events: CalEvent[] = rows
     .filter((r) => r.status.key !== "closed")
     .flatMap(({ c }) => {
@@ -265,7 +279,14 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
           <button type="button" className="btn" aria-label="Previous month" onClick={() => shift(-1)}>
             ←
           </button>
-          <button type="button" className="btn" onClick={() => setCursor({ year: today.getUTCFullYear(), month: today.getUTCMonth() })}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setCursor({ year: today.getUTCFullYear(), month: today.getUTCMonth() });
+              setPick(null);
+            }}
+          >
             Today
           </button>
           <button type="button" className="btn" aria-label="Next month" onClick={() => shift(1)}>
@@ -283,6 +304,9 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
         <span>
           <i className="ev due signed" /> signed, fly by
         </span>
+        <span>
+          <i className="ev rollout" /> rollout
+        </span>
         <span>↻ recurring</span>
       </div>
       <div className="month" role="grid" aria-label={monthName(cursor.year, cursor.month)}>
@@ -293,19 +317,44 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
         ))}
         {cells.map((day) => {
           const evs = byDay.get(day) ?? [];
+          const ready = rollouts.get(day) ?? [];
+          const future = day > company.day;
+          const cls = ["cell", inMonth(day) ? "" : "outside", day === company.day ? "today" : "", day < company.day ? "past" : "", future ? "future" : "", day === pick ? "picked" : "", pick !== null && future && day < pick ? "span" : ""];
           return (
-            <div key={day} role="gridcell" className={`cell ${inMonth(day) ? "" : "outside"} ${day === company.day ? "today" : ""} ${day < company.day ? "past" : ""}`}>
+            <div
+              key={day}
+              role="gridcell"
+              aria-selected={future ? day === pick : undefined}
+              aria-label={future ? `${shortDate(day)}, day ${day}, in ${day - company.day} days` : undefined}
+              tabIndex={future ? 0 : undefined}
+              className={cls.filter(Boolean).join(" ")}
+              onClick={() => choose(day)}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  choose(day);
+                }
+              }}
+            >
               <span className="date">
                 {dateOf(day).getUTCDate()}
                 {day === company.day && <span className="sr-only"> (today)</span>}
               </span>
+              {ready.map((name, i) => (
+                <span key={`r${i}`} className="ev rollout" title={`${name} rolls out`}>
+                  <span className="ev-text">🚀 {name}</span>
+                </span>
+              ))}
               {evs.slice(0, 3).map((e) => (
                 <button
                   key={e.type + e.c.id}
                   type="button"
                   className={`ev ${e.type} ${e.signed ? "signed" : ""} ${e.c.id === selected ? "on" : ""}`}
                   title={`${e.type === "posted" ? "Posted" : "Fly by"}: ${e.c.title}`}
-                  onClick={() => select(e.c.id)}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    select(e.c.id);
+                  }}
                 >
                   <span className="ev-text">
                     {e.c.seriesId ? "↻ " : ""}
@@ -318,6 +367,7 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
           );
         })}
       </div>
+      {pick !== null ? <AdvanceBar company={company} day={pick} clear={() => setPick(null)} /> : <span className="muted">Click a future day to advance the calendar to it.</span>}
       <div className="stack" style={{ gap: 6 }}>
         <p className="label">This month</p>
         {agenda.length === 0 && <span className="muted">Nothing posted or due this month.</span>}
@@ -333,6 +383,50 @@ function Calendar({ company, rows, selected, select }: { company: Company; rows:
             </li>
           ))}
         </ul>
+      </div>
+    </div>
+  );
+}
+
+/** What passes between today and the chosen day, and the button that gets there. */
+function AdvanceBar({ company, day, clear }: { company: Company; day: number; clear: () => void }) {
+  const n = day - company.day;
+  const posting = company.board.filter((c) => c.postedDay > company.day && c.postedDay <= day).length;
+  const risks = deadlineRisks(company, n);
+  const ready = company.orders.filter((o) => o.readyDay <= day).map((o) => company.designs[o.design]?.name ?? o.design);
+  const when = shortDate(day);
+  return (
+    <div className="advance" role="region" aria-label="Advance the calendar">
+      <div className="stack" style={{ gap: 4 }}>
+        <span>
+          <strong>{when}</strong> · day {day} · in {n} day{n === 1 ? "" : "s"} · <span className="mono">{money(n * COSTS.overheadPerDay)}</span> payroll
+        </span>
+        {posting > 0 && (
+          <span className="soft">
+            {posting} new posting{posting === 1 ? "" : "s"} by then.
+          </span>
+        )}
+        {ready.length > 0 && <span className="good">Rolled out by then: {ready.join(", ")}.</span>}
+        {risks.map((r) => (
+          <span key={r.contract.id} className="bad">
+            {r.text}
+          </span>
+        ))}
+      </div>
+      <div className="actions">
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => {
+            game.schedule(waitJob(n, `Advancing to ${when}`, `Advance ${n} day${n === 1 ? "" : "s"} to ${when}?`, "Advance"));
+            clear();
+          }}
+        >
+          Advance to {when}
+        </button>
+        <button type="button" className="btn" onClick={clear}>
+          Clear
+        </button>
       </div>
     </div>
   );

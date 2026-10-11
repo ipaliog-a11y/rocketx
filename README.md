@@ -128,7 +128,7 @@ npm run dev          # http://localhost:5173
 A React + Vite front end (`src/web/`) on the same sim code the tests and the command line use.
 
 - **Company:** the company's name (editable), its numbers, the licence ladder with an Apply button, where the money went, the fleet, achievements and the ledger.
-- **Contracts:** a filterable table and a month calendar of postings and deadlines, with a bid panel that only signs.
+- **Contracts:** a filterable table and a month calendar of postings, deadlines and rollouts, with a bid panel that only signs. Click any future day in the calendar to see what happens by then (postings, rollouts, deadlines at risk) and advance the company to it.
 - **Launch:** build, re-tune and fly signed contracts.
 - **Hangar:** design drawings with an engine picker per stage; a Drawing board with the sizing guide; a Factory with the production lines; and the flight record.
 - **Test stand:** firings, an Engine shop to develop engines from parts, and a Parts tab with each part's revision, record and maturity (prototype, fired, qualified, flight-proven).

@@ -198,6 +198,13 @@ svg text { font-family: var(--mono); }
 .ev.due.signed { background: var(--amber); color: var(--ground); }
 .ev.on { outline: 2px solid var(--text); outline-offset: 1px; }
 .ev-text { display: block; overflow: hidden; text-overflow: ellipsis; }
+.ev.rollout { background: var(--green); cursor: default; }
+.month .cell.future { cursor: pointer; }
+.month .cell.future:hover { background: #18212a; }
+.month .cell.future:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.month .cell.span { background: #15232d; }
+.month .cell.picked { background: #1b3140; box-shadow: inset 0 0 0 2px var(--cyan); }
+.advance { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--cyan); border-radius: 6px; background: #13202a; }
 
 @media (max-width: 700px) {
   .ladder { grid-template-columns: 1fr; }

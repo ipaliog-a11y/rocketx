@@ -216,8 +216,8 @@ export function testFlightJob(company: Company, key: string, mission: Mission, o
   };
 }
 
-export function waitJob(days: number, why: string): Job {
-  return { title: `Wait ${days} days?`, doing: why, verb: "Wait", days, cost: 0, run: (c) => wait(c, days) };
+export function waitJob(days: number, why: string, title = `Wait ${days} days?`, verb = "Wait"): Job {
+  return { title, doing: why, verb, days, cost: 0, run: (c) => wait(c, days) };
 }
 
 export function licenceJob(application: Application): Job {
