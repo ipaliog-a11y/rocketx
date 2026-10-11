@@ -10,6 +10,7 @@ import { height, Rocket } from "../components/Rocket.tsx";
 import { defaultDesign, game } from "../game.ts";
 import { buildJob, launchJob, retuneJob, signedContracts } from "../jobs.ts";
 import { km, money } from "../format.ts";
+import { Sheet } from "../components/Sheet.tsx";
 
 type Props = { company: Company; version: number; goTo: (screen: "contracts" | "stand" | "tunnel") => void };
 
@@ -31,6 +32,8 @@ export function Launch({ company, version, goTo }: Props) {
   const [selected, setSelected] = useState<string | undefined>(signed[0]?.id);
   const contract = signed.find((c) => c.id === selected) ?? signed[0];
   const [choice, setChoice] = useState<Record<string, string>>({});
+  // On a phone the launch preparation opens over the list once a contract is picked. With just one signed, it shows straight away.
+  const [sheet, setSheet] = useState(false);
 
   return (
     <div className="screen">
@@ -57,7 +60,10 @@ export function Launch({ company, version, goTo }: Props) {
                   key={c.id}
                   type="button"
                   aria-pressed={on}
-                  onClick={() => setSelected(c.id)}
+                  onClick={() => {
+                    setSelected(c.id);
+                    setSheet(true);
+                  }}
                   className="card"
                   style={{ textAlign: "left", cursor: "pointer", gap: 6, borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
                 >
@@ -75,15 +81,26 @@ export function Launch({ company, version, goTo }: Props) {
               );
             })}
           </section>
-          <Prep
-            key={contract.id}
-            company={company}
-            version={version}
-            contract={contract}
-            design={choice[contract.id] ?? readyDesign(company) ?? defaultDesign(contract)}
-            setDesign={(d) => setChoice({ ...choice, [contract.id]: d })}
-            goTo={goTo}
-          />
+          {(() => {
+            const prep = (
+              <Prep
+                key={contract.id}
+                company={company}
+                version={version}
+                contract={contract}
+                design={choice[contract.id] ?? readyDesign(company) ?? defaultDesign(contract)}
+                setDesign={(d) => setChoice({ ...choice, [contract.id]: d })}
+                goTo={goTo}
+              />
+            );
+            return signed.length === 1 ? (
+              prep
+            ) : (
+              <Sheet open={sheet} onClose={() => setSheet(false)} title={contract.title}>
+                {prep}
+              </Sheet>
+            );
+          })()}
         </div>
       )}
     </div>

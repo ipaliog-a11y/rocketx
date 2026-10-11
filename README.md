@@ -120,7 +120,7 @@ Not modelled yet: loans or investors, and the rest of DESIGN.md's later domains 
 3. ~~Vehicle builder, sizing guide, production lines~~ (done)
 4. ~~New regimes, part a: coast and relight, transfer orbits, deep-space engines, mega-constellations~~ (done)
 5. ~~New regimes, part b: crew~~ (done)
-6. Mobile-first UI overhaul. On a phone the game is unplayable today: the top nav wraps, two-column screens squeeze, the calendar's cells are slivers and dialogs overflow. The overhaul: a bottom tab bar; one column per screen with detail panels as full-screen sheets; touch-sized controls; the calendar as an agenda list on narrow screens; dialogs as bottom sheets; the plan strip folded into one "Plan · N" chip; checked at 360–430 px
+6. ~~Mobile-first UI overhaul~~ (done)
 7. After that: reusable boosters (land and refurbish), the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
 
 ## Playing in the browser
@@ -132,6 +132,7 @@ npm run dev          # http://localhost:5173
 
 A React + Vite front end (`src/web/`) on the same sim code the tests and the command line use.
 
+- **On a phone** (700 px wide or less) the sections move to a tab bar at the bottom and the top bar shrinks to one line: name, day, cash and reputation. Picking a contract, a signed launch or an engine opens it full-screen with a Back button, and the phone's back gesture closes it. Contracts are cards, with the less-used filters behind "More filters". Dialogs rise from the bottom with their buttons in reach, tabs scroll sideways, and the plan strip folds into a "Plan · N" chip. Checked at 360, 390 and 430 px.
 - **Company:** the company's name (editable), its numbers, the licence ladder with an Apply button, where the money went, the fleet, achievements and the ledger.
 - **Contracts:** a filterable table and a month calendar of postings, deadlines and rollouts, with a bid panel that only signs, or commits to every remaining launch of a series at once. Click any future day in the calendar to see what happens by then (postings, rollouts, deadlines at risk) and advance the company to it.
 - **Launch:** build, re-tune and fly signed contracts.

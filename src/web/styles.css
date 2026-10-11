@@ -140,9 +140,55 @@ input[type="number"], select { min-height: 40px; padding: 0 10px; border: 1px so
 
 svg text { font-family: var(--mono); }
 
+.nav-icon, .nav-short { display: none; }
+
+/* Phones: a bottom tab bar, a one-line top bar, details as full-screen
+   sheets, dialogs as bottom sheets, and tabs that scroll sideways. */
 @media (max-width: 700px) {
+  :root { --tabbar: 62px; }
   .topbar, .screen, .workstrip { padding-left: 16px; padding-right: 16px; }
-  .stats { margin-left: 0; }
+  .app { padding-bottom: calc(var(--tabbar) + env(safe-area-inset-bottom)); }
+  .topbar { position: sticky; top: 0; z-index: 15; flex-wrap: nowrap; gap: 10px; padding-top: 10px; padding-bottom: 10px; }
+  .brand { font-size: 15px; letter-spacing: 0.08em; flex: 1 1 auto; min-width: 0; max-width: none; }
+  .stats { margin-left: auto; flex-wrap: nowrap; gap: 10px; font-size: 13px; }
+  .stats div { gap: 4px; }
+  .stat-licence { display: none !important; }
+
+  .nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; flex-wrap: nowrap; gap: 0;
+    height: calc(var(--tabbar) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+    background: var(--panel); border-top: 1px solid var(--line-strong);
+  }
+  .nav button { flex: 1 1 0; min-width: 0; padding: 6px 2px 4px; border-radius: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; letter-spacing: 0.02em; }
+  .nav button[aria-current="page"] { background: transparent; color: var(--amber); box-shadow: inset 0 2px 0 var(--amber); }
+  .nav-icon { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .nav-long { display: none; }
+  .nav-short { display: block; }
+
+  .screen { padding-top: 16px; gap: 16px; }
+  h1 { font-size: 24px; }
+  .screen-head { align-items: stretch; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; width: calc(100% + 32px); }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: 0 0 auto; white-space: nowrap; }
+  .card { padding: 14px 14px; }
+  .facts { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .actions .btn { flex: 1 1 auto; justify-content: center; }
+
+  .notices { left: 12px; right: 12px; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 10px); max-width: none; z-index: 27; }
+
+  /* A detail opens over everything, with its own Back button. */
+  .sheet { position: fixed; inset: 0; z-index: 26; background: var(--ground); display: flex; flex-direction: column; }
+  .sheet-head { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .sheet-head .btn { flex: 0 0 auto; }
+  .sheet-title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sheet-body { display: flex; flex-direction: column; gap: 16px; flex: 1; overflow-y: auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
+  .sheet-body > .side, .sheet-body > .grow { flex: none; }
+
+  /* Dialogs rise from the bottom, with their buttons always in reach. */
+  .overlay { align-items: flex-end; padding: 0; }
+  .overlay .card { max-width: none; border-radius: 14px 14px 0 0; max-height: 90vh; padding-bottom: 0; border-bottom: 0; }
+  .overlay .card > .actions:last-child { position: sticky; bottom: 0; margin: 0 -14px; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); background: var(--panel); border-top: 1px solid var(--line); }
 }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
@@ -208,9 +254,18 @@ svg text { font-family: var(--mono); }
 .workstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 28px; border-bottom: 1px solid var(--line); background: #13202a; font-size: 14px; }
 .work-items { display: flex; flex-wrap: wrap; gap: 4px 18px; flex: 1 1 320px; min-width: 0; }
 .work-item { min-width: 0; overflow-wrap: anywhere; }
+.chip-button { min-height: 36px; padding: 0 12px; border: 1px solid #24506a; border-radius: 18px; background: #132430; color: var(--text); font-weight: 700; cursor: pointer; }
+.workstrip.folded { flex-wrap: nowrap; justify-content: space-between; padding-top: 6px; padding-bottom: 6px; }
+.workstrip.folded .actions { flex-wrap: nowrap; }
+.workstrip.folded .btn { min-height: 36px; padding: 0 12px; }
 .tracks { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 .task-bar { height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; }
 .task-bar > div { height: 100%; background: var(--cyan); }
+.contract-cards { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.contract-cards .card { width: 100%; text-align: left; cursor: pointer; gap: 6px; color: var(--text); font: inherit; }
+.contract-cards .card.selected { border-color: var(--amber); background: var(--selected); }
+.cc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.cc-figures { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
 .choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .choice > div { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; }
 .advance { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--cyan); border-radius: 6px; background: #13202a; }

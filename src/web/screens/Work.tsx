@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { Company } from "../../sim/company.ts";
+import { useNarrow } from "../narrow.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { project, TRACK_ORDER, TRACKS, type Task } from "../../sim/schedule.ts";
 import { game } from "../game.ts";
@@ -18,14 +20,24 @@ const advanceTo = (company: Company, day: number, why: string) => {
 
 /** The plan at a glance, under the top bar on every screen: what each track is doing, and a way to let it run. */
 export function WorkStrip({ company, open }: { company: Company; open: () => void }) {
+  const narrow = useNarrow();
+  const [expanded, setExpanded] = useState(false);
   if (company.tasks.length === 0) return null;
   const rows = timeline(company);
   const ends = rows.map((r) => r.end).filter((d): d is number => d !== undefined);
   const next = Math.min(...ends);
   const last = Math.max(...ends);
+  const folded = narrow && !expanded;
   return (
-    <section className="workstrip" aria-label="The plan">
-      <span className="label">Plan</span>
+    <section className={`workstrip ${folded ? "folded" : ""}`} aria-label="The plan">
+      {narrow ? (
+        <button type="button" className="chip-button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+          Plan · {company.tasks.length} {expanded ? "▴" : "▾"}
+        </button>
+      ) : (
+        <span className="label">Plan</span>
+      )}
+      {!folded && (
       <span className="work-items">
         {TRACK_ORDER.map((track) => {
           const mine = rows.filter((r) => r.task.track === track);
@@ -40,20 +52,23 @@ export function WorkStrip({ company, open }: { company: Company; open: () => voi
           );
         })}
       </span>
+      )}
       <span className="actions" style={{ gap: 8 }}>
         {Number.isFinite(next) && (
           <button type="button" className="btn primary" onClick={() => advanceTo(company, next, "Working to the next finish")}>
             Advance to day {next}
           </button>
         )}
-        {Number.isFinite(last) && last > next && (
+        {!folded && Number.isFinite(last) && last > next && (
           <button type="button" className="btn" onClick={() => advanceTo(company, last, "Working through the plan")}>
             All done · day {last}
           </button>
         )}
-        <button type="button" className="btn" onClick={open}>
-          Schedule
-        </button>
+        {!folded && (
+          <button type="button" className="btn" onClick={open}>
+            Schedule
+          </button>
+        )}
       </span>
     </section>
   );

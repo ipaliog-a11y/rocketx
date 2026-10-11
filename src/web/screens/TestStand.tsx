@@ -13,6 +13,7 @@ import { fireJob, fixEngineJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
 import { EngineShop } from "./EngineShop.tsx";
 import { Parts } from "./Parts.tsx";
+import { Sheet } from "../components/Sheet.tsx";
 
 type EngineUse = { engine: Engine; burn: number; upper: boolean; usedBy: string[] };
 
@@ -101,6 +102,8 @@ export function TestStand({ company }: { company: Company }) {
 function Firing({ company, focus }: { company: Company; focus: Focus | null }) {
   const uses = engineUses(company);
   const [selected, setSelected] = useState(focus?.engine ?? uses[0]!.engine.name);
+  // On a phone the engine's page opens over the list: when one is tapped, or when the Parts page sent us to one.
+  const [sheet, setSheet] = useState(focus !== null);
   const use = uses.find((u) => u.engine.name === selected) ?? uses[0]!;
 
   return (
@@ -117,7 +120,10 @@ function Firing({ company, focus }: { company: Company; focus: Focus | null }) {
               <button
                 key={u.engine.name}
                 type="button"
-                onClick={() => setSelected(u.engine.name)}
+                onClick={() => {
+                  setSelected(u.engine.name);
+                  setSheet(true);
+                }}
                 aria-pressed={on}
                 className="card"
                 style={{ textAlign: "left", cursor: "pointer", flexDirection: "row", alignItems: "center", gap: 16, borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
@@ -143,7 +149,9 @@ function Firing({ company, focus }: { company: Company; focus: Focus | null }) {
             );
           })}
         </section>
-        <EngineDetail key={use.engine.name} company={company} use={use} plan={focus?.engine === use.engine.name ? focus : undefined} />
+        <Sheet open={sheet} onClose={() => setSheet(false)} title={use.engine.name}>
+          <EngineDetail key={use.engine.name} company={company} use={use} plan={focus?.engine === use.engine.name ? focus : undefined} />
+        </Sheet>
       </div>
     </>
   );
