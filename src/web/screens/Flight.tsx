@@ -7,6 +7,7 @@ import { OrbitPlot } from "../components/OrbitPlot.tsx";
 import { niceMax, Plot, ticks, type Marker } from "../components/Plot.tsx";
 import { game } from "../game.ts";
 import { km, kPa, money } from "../format.ts";
+import { COLORS } from "../palette.ts";
 
 /** The watched launch: a replay of the flight the sim just flew, then the debrief. */
 
@@ -134,9 +135,9 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
     .map((e) => {
       const s = at(samples, e.t);
       const lost = e.kind === "engine-failure" || e.kind === "structural-failure";
-      return { x: xOf(s), y: s.altitude / 1000, color: lost ? "#ef6a5e" : "#e8ecef", hollow: !lost, label: eventLabel(e) };
+      return { x: xOf(s), y: s.altitude / 1000, color: lost ? COLORS.bad : COLORS.text, hollow: !lost, label: eventLabel(e) };
     });
-  markers.push({ x: xOf(now), y: now.altitude / 1000, color: "#f0a43a" });
+  markers.push({ x: xOf(now), y: now.altitude / 1000, color: COLORS.action });
 
   const qMaxT = Math.min(end, Math.max(150, r.summary.maxQ.t * 2.5));
   const qSamples = samples.filter((s) => s.t <= qMaxT);
@@ -155,7 +156,7 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
           </button>
           <div role="group" aria-label="Replay speed" className="actions" style={{ gap: 4 }}>
             {SPEEDS.map((s) => (
-              <button key={s} type="button" className="btn" aria-pressed={speed === s} style={{ borderColor: speed === s ? "var(--amber)" : undefined }} onClick={() => setSpeed(s)}>
+              <button key={s} type="button" className="btn" aria-pressed={speed === s} onClick={() => setSpeed(s)}>
                 ×{s}
               </button>
             ))}
@@ -183,10 +184,10 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
               y={{ min: 0, max: yMax, ticks: ticks(yMax, 4), title: "km" }}
               series={[
                 ...ghosts.map((g) => ({ points: g.result.samples.map((s): [number, number] => [xOf(s), s.altitude / 1000]).filter(([x, y]) => x <= xMax && y <= yMax), color: g.color, opacity: 0.55, dash: "3 4" })),
-                { points: whole, color: "#5bb8e3", opacity: 0.3, dash: "6 5" },
-                { points: flown, color: "#5bb8e3", width: 3 },
+                { points: whole, color: COLORS.data, opacity: 0.3, dash: "6 5" },
+                { points: flown, color: COLORS.data, width: 3 },
               ]}
-              rules={shownTarget ? [{ at: shownTarget.apoapsis / 1000, color: "#f0a43a", label: `target ${km(shownTarget.apoapsis, 0)}`, labelAt: "start" }] : []}
+              rules={shownTarget ? [{ at: shownTarget.apoapsis / 1000, color: COLORS.action, label: `target ${km(shownTarget.apoapsis, 0)}`, labelAt: "start" }] : []}
               markers={markers}
             />
           </figure>
@@ -207,11 +208,11 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
               x={{ min: 0, max: qMaxT, ticks: ticks(qMaxT), title: "seconds" }}
               y={{ min: 0, max: qTop, ticks: ticks(qTop, 4), title: "kPa" }}
               series={[
-                { points: qSamples.map((s): [number, number] => [s.t, s.dynamicPressure / 1000]), color: "#5bb8e3", opacity: 0.3 },
-                { points: qSamples.filter((s) => s.t <= t).map((s): [number, number] => [s.t, s.dynamicPressure / 1000]), color: "#5bb8e3", width: 2.5 },
+                { points: qSamples.map((s): [number, number] => [s.t, s.dynamicPressure / 1000]), color: COLORS.data, opacity: 0.3 },
+                { points: qSamples.filter((s) => s.t <= t).map((s): [number, number] => [s.t, s.dynamicPressure / 1000]), color: COLORS.data, width: 2.5 },
               ]}
-              rules={[{ at: budget / 1000, color: "#ef6a5e", label: `budget ${kPa(budget)}` }]}
-              cursor={t <= qMaxT ? { at: t, color: "#f0a43a" } : undefined}
+              rules={[{ at: budget / 1000, color: COLORS.bad, label: `budget ${kPa(budget)}` }]}
+              cursor={t <= qMaxT ? { at: t, color: COLORS.action } : undefined}
             />
           </figure>
         </div>
@@ -277,10 +278,10 @@ function Debrief({ report }: { report: FlightReport }) {
   const ideal = s.idealDeltaV;
   const losses = (
     [
-      ["Gravity", s.losses.gravity, "#2e6e8e"],
-      ["Drag", s.losses.drag, "#5bb8e3"],
+      ["Gravity", s.losses.gravity, COLORS.dataDeep],
+      ["Drag", s.losses.drag, COLORS.data],
       ["Back-pressure", s.losses.backPressure, "#8a5a1e"],
-      ["Steering", s.losses.steering, "#f0a43a"],
+      ["Steering", s.losses.steering, COLORS.action],
     ] as Array<[string, number, string]>
   ).filter(([, v]) => v >= 0.5);
   const settlement = report.settlement;
@@ -299,14 +300,14 @@ function Debrief({ report }: { report: FlightReport }) {
             <div className="card">
               <p className="label">Where the engines' Δv went</p>
               <div style={{ display: "flex", height: 22, borderRadius: 3, overflow: "hidden" }} role="img" aria-label="Δv budget">
-                <div style={{ flex: `${s.burnoutGroundSpeed} 1 0`, background: "#e8ecef" }} />
+                <div style={{ flex: `${s.burnoutGroundSpeed} 1 0`, background: COLORS.text }} />
                 {losses.map(([name, v, c]) => (
                   <div key={name} style={{ flex: `${v} 1 0`, background: c }} />
                 ))}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px", fontSize: 14 }} className="soft">
                 <span>
-                  <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, marginRight: 6, background: "#e8ecef" }} />
+                  <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, marginRight: 6, background: COLORS.text }} />
                   Ground speed {Math.round(s.burnoutGroundSpeed)} m/s
                 </span>
                 {losses.map(([name, v, c]) => (

@@ -2,6 +2,7 @@ import type { FlightEvent, Sample } from "../../sim/ascent.ts";
 import { R_EARTH } from "../../sim/constants.ts";
 import type { InsertionTarget } from "../../sim/mission.ts";
 import type { OrbitElements } from "../../sim/orbit.ts";
+import { COLORS } from "../palette.ts";
 
 /**
  * The flight seen from above the trajectory plane: Earth to scale, the path
@@ -61,32 +62,32 @@ export function OrbitPlot({ samples, t, events, orbit, target, label }: Props) {
       <defs>
         <radialGradient id="earth-glow" cx="50%" cy="50%" r="50%">
           <stop offset="0.85" stopColor="#1b3a52" />
-          <stop offset="1" stopColor="#0e1216" />
+          <stop offset="1" stopColor={COLORS.ground} />
         </radialGradient>
       </defs>
       <circle cx={c} cy={c} r={R_EARTH * k * 1.03} fill="url(#earth-glow)" />
-      <circle cx={c} cy={c} r={R_EARTH * k} fill="#173049" stroke="#2e6e8e" />
+      <circle cx={c} cy={c} r={R_EARTH * k} fill="#173049" stroke={COLORS.dataDeep} />
       {target && Number.isFinite(target.apoapsis) && target.apoapsis === target.periapsis && (
-        <circle cx={c} cy={c} r={(R_EARTH + target.apoapsis) * k} fill="none" stroke="#f0a43a" strokeDasharray="3 6" opacity={0.6} />
+        <circle cx={c} cy={c} r={(R_EARTH + target.apoapsis) * k} fill="none" stroke={COLORS.action} strokeDasharray="3 6" opacity={0.6} />
       )}
-      {ellipse && <path d={ellipse} fill="none" stroke="#f0a43a" strokeWidth={1.5} strokeDasharray="6 5" />}
-      <path d={path(whole)} fill="none" stroke="#5bb8e3" strokeWidth={1.5} opacity={0.3} />
-      <path d={path(flown)} fill="none" stroke="#5bb8e3" strokeWidth={2.5} />
+      {ellipse && <path d={ellipse} fill="none" stroke={COLORS.action} strokeWidth={1.5} strokeDasharray="6 5" />}
+      <path d={path(whole)} fill="none" stroke={COLORS.data} strokeWidth={1.5} opacity={0.3} />
+      <path d={path(flown)} fill="none" stroke={COLORS.data} strokeWidth={2.5} />
       {marks.map((e, i) => {
         const s = sampleAt(e.t);
         const [x, y] = point(R_EARTH + s.altitude, s.theta);
         const bad = e.kind === "engine-failure";
-        return <circle key={i} cx={x} cy={y} r={4} fill={bad ? "#ef6a5e" : e.kind === "coast" ? "#0e1216" : "#e8ecef"} stroke={bad ? "#ef6a5e" : "#e8ecef"} strokeWidth={1.5} />;
+        return <circle key={i} cx={x} cy={y} r={4} fill={bad ? COLORS.bad : e.kind === "coast" ? COLORS.ground : COLORS.text} stroke={bad ? COLORS.bad : COLORS.text} strokeWidth={1.5} />;
       })}
       {(() => {
         const [x, y] = point(R_EARTH + now.altitude, now.theta);
-        return <circle cx={x} cy={y} r={5} fill="#f0a43a" />;
+        return <circle cx={x} cy={y} r={5} fill={COLORS.action} />;
       })()}
-      <text x={c} y={c + 4} textAnchor="middle" fill="#93a0ad" fontSize={11}>
+      <text x={c} y={c + 4} textAnchor="middle" fill={COLORS.muted} fontSize={11}>
         Earth
       </text>
       {offView && (
-        <text x={SIZE - 8} y={SIZE - 8} textAnchor="end" fill="#f0a43a" fontSize={11}>
+        <text x={SIZE - 8} y={SIZE - 8} textAnchor="end" fill={COLORS.action} fontSize={11}>
           {orbit && Number.isFinite(orbit.apoapsis) ? `orbit reaches ${Math.round(orbit.apoapsis / 1000).toLocaleString("en-US")} km, off the edge` : "escaping: the path leaves the view"}
         </text>
       )}

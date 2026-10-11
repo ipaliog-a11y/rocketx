@@ -8,21 +8,23 @@ import { licenceJob } from "../jobs.ts";
 import { money, shortDate, signed } from "../format.ts";
 import { LABELS, LedgerTab } from "./LedgerTab.tsx";
 import { Work } from "./Work.tsx";
+import { Icon, type IconName } from "../components/Icon.tsx";
+import { CATEGORY } from "../palette.ts";
 
 export type CompanyTab = "overview" | "work" | "achievements" | "ledger";
 
 /** Spend categories, in the order and colours the money bar uses. */
 const SPEND: Array<[Category, string]> = [
-  ["build", "#5bb8e3"],
-  ["rnd", "#d9c35b"],
-  ["test", "#f0a43a"],
-  ["fix", "#c9822a"],
-  ["analysis", "#8a6bd1"],
-  ["launch", "#2e6e8e"],
-  ["licence", "#63c58a"],
-  ["facility", "#9aa86b"],
-  ["overhead", "#5b6773"],
-  ["penalty", "#ef6a5e"],
+  ["build", CATEGORY[0]],
+  ["rnd", CATEGORY[1]],
+  ["test", CATEGORY[2]],
+  ["fix", CATEGORY[3]],
+  ["analysis", CATEGORY[4]],
+  ["launch", CATEGORY[5]],
+  ["licence", CATEGORY[6]],
+  ["facility", CATEGORY[7]],
+  ["overhead", CATEGORY[8]],
+  ["penalty", CATEGORY[9]],
 ];
 
 export function Company({ company, tab, setTab }: { company: CompanyState; tab: CompanyTab; setTab: (t: CompanyTab) => void }) {
@@ -83,7 +85,7 @@ function NameEditor({ company }: { company: CompanyState }) {
     <div className="stack" style={{ gap: 4 }}>
       <div className="actions" style={{ gap: 12 }}>
         <h1>{company.name}</h1>
-        <button type="button" className="btn" style={{ minHeight: 36 }} onClick={() => (setDraft(company.name), setEditing(true))}>
+        <button type="button" className="btn quiet" style={{ minHeight: 36 }} onClick={() => (setDraft(company.name), setEditing(true))}>
           Rename
         </button>
         {quitting ? (
@@ -97,7 +99,7 @@ function NameEditor({ company }: { company: CompanyState }) {
             </button>
           </span>
         ) : (
-          <button type="button" className="btn" style={{ minHeight: 36 }} onClick={() => setQuitting(true)}>
+          <button type="button" className="btn quiet" style={{ minHeight: 36 }} onClick={() => setQuitting(true)}>
             New run
           </button>
         )}
@@ -120,14 +122,14 @@ function Overview({ company, list, openAchievements }: { company: CompanyState; 
   return (
     <>
       <dl className="tiles">
-        <Tile label="Cash" value={money(company.cash)} tone={company.cash < 2_000 ? "bad" : undefined} />
-        <Tile label="Day" value={String(company.day)} sub={shortDate(company.day)} />
-        <Tile label="Reputation" value={signed(rep)} tone={rep > 0 ? "good" : rep < 0 ? "bad" : undefined} />
-        <Tile label="Licence" value={LICENCE_LABELS[company.licence]} />
-        <Tile label="Rockets built" value={String(built)} />
-        <Tile label="In the hangar" value={String(owned)} />
-        <Tile label="Launches" value={String(company.flights.length)} />
-        <Tile label="Orbits" value={String(orbits)} sub={company.firstOrbitDay === null ? "none yet" : `first on day ${company.firstOrbitDay}`} />
+        <Tile icon="money" label="Cash" value={money(company.cash)} tone={company.cash < 2_000 ? "bad" : undefined} />
+        <Tile icon="day" label="Day" value={String(company.day)} sub={shortDate(company.day)} />
+        <Tile icon="reputation" label="Reputation" value={signed(rep)} tone={rep > 0 ? "good" : rep < 0 ? "bad" : undefined} />
+        <Tile icon="licence" label="Licence" value={LICENCE_LABELS[company.licence]} />
+        <Tile icon="factory" label="Rockets built" value={String(built)} />
+        <Tile icon="hangar" label="In the hangar" value={String(owned)} />
+        <Tile icon="launch" label="Launches" value={String(company.flights.length)} />
+        <Tile icon="orbit" label="Orbits" value={String(orbits)} sub={company.firstOrbitDay === null ? "none yet" : `first on day ${company.firstOrbitDay}`} />
       </dl>
 
       <div className="row">
@@ -169,10 +171,13 @@ function Overview({ company, list, openAchievements }: { company: CompanyState; 
   );
 }
 
-function Tile({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "good" | "bad" }) {
+function Tile({ icon, label, value, sub, tone }: { icon: IconName; label: string; value: string; sub?: string; tone?: "good" | "bad" }) {
   return (
     <div className="tile">
-      <dt>{label}</dt>
+      <dt className="with-icon">
+        <Icon name={icon} size="sm" />
+        {label}
+      </dt>
       <dd className={tone}>{value}</dd>
       {sub && <span className="muted">{sub}</span>}
     </div>
@@ -271,13 +276,13 @@ function FleetCard({ company }: { company: CompanyState }) {
     <section className="card" aria-label="Fleet">
       <p className="label">Fleet</p>
       <div className="table-wrap" style={{ border: 0 }}>
-        <table>
+        <table className="compact">
           <thead>
             <tr>
               <th scope="col">Design</th>
               <th scope="col" className="num">Built</th>
               <th scope="col" className="num">Ready</th>
-              <th scope="col" className="num">On line</th>
+              <th scope="col" className="num" title="On the production line">Line</th>
               <th scope="col" className="num">Flown</th>
             </tr>
           </thead>

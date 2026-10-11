@@ -12,12 +12,13 @@ import { game } from "../game.ts";
 import { retuneJob, retuneTestJob, signedContracts } from "../jobs.ts";
 import { km } from "../format.ts";
 import { headline, Replay } from "./Flight.tsx";
+import { COLORS } from "../palette.ts";
 
 /** What a straight-up test flight has to reach to count as space, m. */
 const SPACE = 100_000;
 
-const WORST = "#ef6a5e";
-const BEST = "#7cc07c";
+const WORST = COLORS.bad;
+const BEST = COLORS.good;
 
 export type SimFocus = { design?: string; contract?: string };
 
@@ -150,7 +151,7 @@ function Results({ company, sim, designKey, contract, steering, canTune }: { com
   const m = sim.modelled;
   const cases: SimFlight[] = [sim.worst, m, sim.best].filter((f): f is SimFlight => f !== undefined);
   const name = { worst: "Worst case", modelled: "As modelled", best: "Best case" } as const;
-  const color = { worst: WORST, modelled: "#5bb8e3", best: BEST } as const;
+  const color = { worst: WORST, modelled: COLORS.data, best: BEST } as const;
   const ghosts = [
     ...(sim.worst ? [{ result: sim.worst.result, color: WORST, label: "Red dashes: worst case" }] : []),
     ...(sim.best ? [{ result: sim.best.result, color: BEST, label: "Green dashes: best case" }] : []),

@@ -13,6 +13,8 @@ import { Factory } from "./Factory.tsx";
 import { Crew } from "./Crew.tsx";
 import { Simulator, type SimFocus } from "./Simulator.tsx";
 import { km, money } from "../format.ts";
+import { Icon } from "../components/Icon.tsx";
+import { COLORS } from "../palette.ts";
 
 type Tab = "lineup" | "design" | "sim" | "board" | "factory" | "crew" | "record";
 
@@ -91,7 +93,7 @@ function LineUp({ company, open }: { company: Company; open: (key: string) => vo
   );
 }
 
-const COLOURS = ["#e8ecef", "#5bb8e3", "#2e6e8e", "#f0a43a", "#8a5a1e"];
+const COLOURS = [COLORS.text, COLORS.data, COLORS.dataDeep, COLORS.action, "#8a5a1e"];
 
 function Design({ company, designKey, simulate }: { company: Company; designKey: string; simulate: (key: string) => void }) {
   const v = company.designs[designKey]!;
@@ -149,7 +151,7 @@ function Design({ company, designKey, simulate }: { company: Company; designKey:
           <p className="label">Δv on paper, per stage</p>
           <div className="bar" style={{ height: 20, display: "flex" }}>
             {dv.map((d, i) => (
-              <div key={i} style={{ width: `${(d / 10_000) * 100}%`, background: i === 0 ? "#2e6e8e" : "var(--cyan)" }} />
+              <div key={i} style={{ width: `${(d / 10_000) * 100}%`, background: i === 0 ? COLORS.dataDeep : "var(--cyan)" }} />
             ))}
             <div className="mark" style={{ left: `${(LEO_NEEDS / 10_000) * 100}%` }} />
           </div>
@@ -176,7 +178,8 @@ function Design({ company, designKey, simulate }: { company: Company; designKey:
             Test flight · {mission.target ? `LEO ${km(mission.target.apoapsis, 0)}` : "straight up"}
             {ready !== null && ready > company.day ? ` on rollout, day ${ready}` : ""}
           </button>
-          <button type="button" className="btn" onClick={() => simulate(designKey)}>
+          <button type="button" className="btn quiet" onClick={() => simulate(designKey)}>
+            <Icon name="simulate" size="sm" />
             Simulate
           </button>
           {turns && (

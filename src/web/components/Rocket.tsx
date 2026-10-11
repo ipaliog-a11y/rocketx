@@ -1,6 +1,7 @@
 import { useId } from "react";
 import type { Engine } from "../../sim/engine.ts";
 import type { Vehicle } from "../../sim/vehicle.ts";
+import { COLORS } from "../palette.ts";
 
 /**
  * A vehicle's side profile, drawn to scale from its real data: tank lengths
@@ -77,7 +78,7 @@ export function Rocket({ vehicle, scale, labels = false }: Props) {
     const top = y;
     const len = p.len * scale;
     y += len;
-    const stroke = { stroke: "#5bb8e3", strokeWidth: 1.2 };
+    const stroke = { stroke: COLORS.data, strokeWidth: 1.2 };
     switch (p.kind) {
       case "fairing": {
         const half = (p.d * scale) / 2;
@@ -89,7 +90,7 @@ export function Rocket({ vehicle, scale, labels = false }: Props) {
           <g key={i}>
             <rect x={cx - half} y={top} width={half * 2} height={len} fill="#1a222b" {...stroke} />
             {labels && len > p.label.length * 7 + 12 && (
-              <text x={cx} y={top + len / 2} fill="#93a0ad" fontSize={11} textAnchor="middle" transform={`rotate(-90 ${cx} ${top + len / 2})`} dy={4}>
+              <text x={cx} y={top + len / 2} fill={COLORS.muted} fontSize={11} textAnchor="middle" transform={`rotate(-90 ${cx} ${top + len / 2})`} dy={4}>
                 {p.label}
               </text>
             )}
@@ -119,7 +120,7 @@ export function Rocket({ vehicle, scale, labels = false }: Props) {
                   key={n}
                   points={`${c - throat / 2},${top} ${c + throat / 2},${top} ${c + exit / 2},${top + len} ${c - exit / 2},${top + len}`}
                   fill="#3a2a12"
-                  stroke="#f0a43a"
+                  stroke={COLORS.action}
                   strokeWidth={1.2}
                 />
               );
@@ -134,7 +135,7 @@ export function Rocket({ vehicle, scale, labels = false }: Props) {
       <defs>
         <pattern id={hatch} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <rect width={6} height={6} fill="#1a222b" />
-          <line x1={0} y1={0} x2={0} y2={6} stroke="#2a343f" strokeWidth={3} />
+          <line x1={0} y1={0} x2={0} y2={6} stroke={COLORS.line} strokeWidth={3} />
         </pattern>
       </defs>
       {shapes}
@@ -157,7 +158,7 @@ export function Nozzle({ engine, size = 110 }: { engine: Engine; size?: number }
   const d = `M${cx - cw / 2} 2 L${cx + cw / 2} 2 L${cx + cw / 2} ${ch} L${cx + tw / 2} ${yT} Q${cx + tw / 2 + flare} ${yT + bell * 0.7} ${cx + ex / 2} ${yE} L${cx - ex / 2} ${yE} Q${cx - tw / 2 - flare} ${yT + bell * 0.7} ${cx - tw / 2} ${yT} L${cx - cw / 2} ${ch} Z`;
   return (
     <svg width={size} height={size * 1.15} viewBox={`0 0 ${size} ${size * 1.15}`} aria-hidden="true">
-      <path d={d} fill="#1e2730" stroke={isVacuumBell(engine) ? "#f0a43a" : "#5bb8e3"} strokeWidth={1.5} />
+      <path d={d} fill="#1e2730" stroke={isVacuumBell(engine) ? COLORS.action : COLORS.data} strokeWidth={1.5} />
     </svg>
   );
 }

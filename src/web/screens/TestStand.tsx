@@ -125,8 +125,8 @@ function Firing({ company, focus }: { company: Company; focus: Focus | null }) {
                   setSheet(true);
                 }}
                 aria-pressed={on}
-                className="card"
-                style={{ textAlign: "left", cursor: "pointer", flexDirection: "row", alignItems: "center", gap: 12, padding: "10px 14px", borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
+                className="card pickable"
+                style={{ textAlign: "left", cursor: "pointer", flexDirection: "row", alignItems: "center", gap: 12, padding: "10px 14px", color: "var(--text)", font: "inherit" }}
               >
                 <Nozzle engine={u.engine} size={40} />
                 <span className="stack" style={{ gap: 5, flex: 1, minWidth: 0 }}>
@@ -275,9 +275,9 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
             return (
               <label
                 key={id}
-                className="stack"
+                className={`stack pick-tile pickable ${on ? "on" : ""}`}
                 title={`${(f.ambient / 1000).toFixed(f.ambient < 10_000 ? 0 : 1)} kPa back pressure`}
-                style={{ gap: 2, padding: "8px 10px", border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`, borderRadius: 4, background: on ? "var(--selected)" : undefined, cursor: "pointer" }}
+                style={{ gap: 2, padding: "8px 10px", borderRadius: 4, cursor: "pointer" }}
               >
                 <span style={{ fontWeight: 600 }}>
                   <input type="radio" name="facility" checked={on} onChange={() => setFacility(id)} style={{ marginRight: 6 }} />
