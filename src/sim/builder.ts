@@ -12,7 +12,7 @@ import { idealDeltaV, stackMass, type Stage, type Vehicle } from "./vehicle.ts";
  */
 
 /** Tank and fairing diameters the shop can tool for, m. */
-export const DIAMETERS = [0.6, 0.8, 1.0, 1.2, 1.5, 1.8, 2.4, 3.0];
+export const DIAMETERS = [0.6, 0.8, 1.0, 1.2, 1.5, 1.8, 2.4, 3.0, 4.0];
 
 /** Stage names by position, for one-, two- and three-stage designs. */
 export function stageRole(count: number, index: number): string {
@@ -192,10 +192,12 @@ export function checkVehicle(spec: VehicleSpec, engines: Record<string, Engine>,
 }
 
 /** Drawing office and tooling: what drawing up a design costs. */
-export const DESIGN_COSTS = { office: { cost: 60, days: 10 }, tank: { cost: 250, days: 20 }, bigTank: { cost: 600, days: 30 }, fairing: { cost: 80, days: 5 } };
+export const DESIGN_COSTS = { office: { cost: 60, days: 10 }, tank: { cost: 250, days: 20 }, bigTank: { cost: 600, days: 30 }, heavyTank: { cost: 1_200, days: 45 }, fairing: { cost: 80, days: 5 } };
 
 /** Tanks from this diameter up need a bigger shop's tooling, m. */
 const BIG_TANK = 2.4;
+/** Heavy-lift tanks need a new building: the 4 m class, m. */
+const HEAVY_TANK = 4.0;
 
 export type DesignQuote = { cost: number; days: number; newTanks: number[]; newFairing: boolean };
 
@@ -205,8 +207,8 @@ export function designQuote(spec: VehicleSpec, existing: Vehicle[]): DesignQuote
   const fairings = new Set(existing.map((v) => v.fairingDiameter));
   const newTanks = [...new Set(spec.stages.map((s) => s.diameter))].filter((d) => !tanks.has(d));
   const newFairing = !fairings.has(spec.fairingDiameter);
-  const { office, tank, bigTank, fairing } = DESIGN_COSTS;
-  const tooling = newTanks.map((d) => (d >= BIG_TANK ? bigTank : tank));
+  const { office, tank, bigTank, heavyTank, fairing } = DESIGN_COSTS;
+  const tooling = newTanks.map((d) => (d >= HEAVY_TANK ? heavyTank : d >= BIG_TANK ? bigTank : tank));
   return {
     cost: office.cost + tooling.reduce((a, t) => a + t.cost, 0) + (newFairing ? fairing.cost : 0),
     days: office.days + tooling.reduce((a, t) => a + t.days, 0) + (newFairing ? fairing.days : 0),

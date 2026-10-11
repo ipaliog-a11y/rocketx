@@ -8,7 +8,7 @@ import type { Mission } from "./mission.ts";
  * this, not a single score: a customer may forgive a late launch and still
  * refuse a company that has burned through a chamber.
  */
-export type Tag = FailureMode | "no-orbit" | "short" | "insertion-miss" | "late" | "delivered" | "demonstrated";
+export type Tag = FailureMode | "no-orbit" | "short" | "insertion-miss" | "late" | "delivered" | "demonstrated" | "crew-lost";
 
 /** What sort of work a contract is, for the board's filters. */
 export type ContractKind =
@@ -25,6 +25,7 @@ export type ContractKind =
   | "lunar"
   | "deep-space"
   | "megaconstellation"
+  | "cargo"
   | "crew";
 
 export const KIND_LABELS: Record<ContractKind, string> = {
@@ -41,6 +42,7 @@ export const KIND_LABELS: Record<ContractKind, string> = {
   lunar: "Lunar",
   "deep-space": "Deep space",
   megaconstellation: "Mega-constellation",
+  cargo: "Station cargo",
   crew: "Crew",
 };
 

@@ -18,7 +18,7 @@ import type { FailureMode } from "./hardware.ts";
  */
 
 export type Slot = "cycle" | "injector" | "cooling" | "nozzle";
-export type ChamberSize = 3 | 9 | 25 | 35 | 50 | 100 | 250;
+export type ChamberSize = 3 | 9 | 25 | 35 | 50 | 100 | 250 | 600;
 export type CycleOption = "pressure-fed" | "electric-pump" | "gas-generator" | "storable";
 export type InjectorOption = "showerhead" | "pintle" | "coaxial";
 export type CoolingOption = "ablative" | "film" | "regenerative";
@@ -33,7 +33,7 @@ export type EngineParts = {
   nozzle: NozzleOption;
 };
 
-export const SIZES: ChamberSize[] = [3, 9, 25, 35, 50, 100, 250];
+export const SIZES: ChamberSize[] = [3, 9, 25, 35, 50, 100, 250, 600];
 export const SLOTS: Slot[] = ["cycle", "injector", "cooling", "nozzle"];
 
 type Common = {
@@ -74,7 +74,7 @@ export const CYCLES: Record<CycleOption, Common & { isp: number; hardStart: numb
     relightFails: 0.3,
     cost: 1.25,
     develop: 450,
-    sizes: [25, 35, 50, 100, 250],
+    sizes: [25, 35, 50, 100, 250, 600],
   },
   storable: {
     label: "Storable (hypergolic)",
@@ -305,6 +305,8 @@ export function developmentCost(parts: EngineParts, developed: Iterable<string>)
   const have = new Set(developed);
   const keys = partKeys(parts);
   const newParts = SLOTS.map((s) => keys[s]).filter((k) => !have.has(k));
-  const cost = 80 + newParts.reduce((sum, k) => sum + optionSpec(parsePartKey(k).slot, parsePartKey(k).option).develop, 0);
-  return { cost, days: 15 + 10 * newParts.length, newParts };
+  // A heavy-lift chamber is a bigger programme: twice the money, and longer.
+  const heavy = parts.size >= 600;
+  const cost = 80 + newParts.reduce((sum, k) => sum + optionSpec(parsePartKey(k).slot, parsePartKey(k).option).develop, 0) * (heavy ? 2 : 1);
+  return { cost, days: 15 + (heavy ? 18 : 10) * newParts.length, newParts };
 }

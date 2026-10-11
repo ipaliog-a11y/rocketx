@@ -23,6 +23,11 @@ export type Vehicle = {
   /** Payload fairing diameter, m. A fat fairing on a skinny stack sets the area. */
   fairingDiameter: number;
   dragCurve: DragCurve;
+  /**
+   * A launch-abort tower on a crew capsule: counted in the payload mass
+   * until it is jettisoned, `jettisonAt` seconds after liftoff.
+   */
+  escapeTower?: { mass: number; jettisonAt: number };
   /** How the vehicle steers on the way up. Vertical when left out. */
   pitchProgram?: PitchProgram;
   limits: {

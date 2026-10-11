@@ -91,6 +91,8 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 - High-energy work on the board from about day 350: geostationary comsats, navigation satellites at 1,200 km, lunar probes, deep-space probes and the Skyweb mega-constellation (a 500–750 kg batch every month). Payloads are sized against a developed 100 kN gas-generator booster with a margin; the tests fly the heaviest of each
 - Engines are priced from their parts, so a pressure-fed engine costs about half as much per kN as a gas-generator one
 - Work on tracks that run side by side: the sea-level stand, the altitude cell, the engineering office (fixes, refinements, engine development, drawings, re-tunes), the wind tunnel and the regulator. Each job is paid when booked, starts when its track is free, and shows what it found only on the day it finishes. Jobs on the same hardware keep the order they were booked in, so a re-test waits for the fix to its parts. A lost test engine ties up its stand while a new one is built. A second sea-level stand ($1.5M), a second altitude cell ($5M) and more engineering teams ($1M, $2M) add capacity. The command line and the bots still run each job to its end before the next
+- Heavy lift: a 600 kN gas-generator chamber (twice the development money, and longer) and 4.0 m tanks ($1.2M and 45 days of tooling). The sizing guide reaches past 16 m of core and 6 m of upper stage on the 3 m class and up, so it can size a 2.9 t station payload: eight or nine 600 kN engines on a 4 m core, about $61M a rocket
+- Crew. A capsule ($8M, 150 days in the engineering office; needs the orbital licence) for two crew, 2.4 t, under a 500 kg abort tower dropped at T+150 s. Its abort system has hidden flaws like an engine's: a tower that misfires, parachutes that fail, a capsule that breaks up pulling away in thick air. A pad abort on the new test range ($1.5M, 20 days) shows the first two; an in-flight abort spends a built rocket and fires at max-q, and only counts if it really came above 15 kPa. Each flaw has a fix in the office, and a fix means flying both tests again. A rocket is crew-rated once its engines are proven for their full burns, its last three flights reached orbit cleanly and both abort tests have passed. The crewed-flight licence wants five orbital deliveries, reputation 5, both abort tests and a crew-rated rocket ($2M, 90 days). Station resupply (the capsule with cargo, $75–90M a flight, from about day 500) needs only the orbital licence and builds the record; crew rotations ($130M) come later. If a rocket fails under a crew, the abort fires and the hidden truth decides: crew safe and an ordinary failed contract, or crew lost, the crewed-flight licence revoked, $50M and −10 reputation. The company survives
 - An engine identical to one the company already has (same parts, same size) can't be developed again
 - Achievements worked out from the record: first firing, first flight above 100 km, first orbit, the orbital licence, a fleet of five, $10M earned, a completed series and so on
 
@@ -100,16 +102,16 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 
 | Strategy | Survive | Reach orbit | Median cash at end |
 |---|---|---|---|
-| careful | 29 | 29 | $34.9M |
+| careful | 29 | 29 | $44.5M |
 | greedy | 5 | 28 | −$0.9M |
-| cheap | 15 | 8 | $4.4M |
-| reckless | 10* | 3 | $3.8M |
+| cheap | 17 | 8 | $4.6M |
+| reckless | 13* | 3 | $3.9M |
 
 \* Some reckless bots never earn the orbital licence; they stop trying and sit on their cash, so they count as alive.
 
-Since engines share parts, testing one Harrier teaches about the other, so careful play reaches orbit sooner (median day 322, down from 406 before parts) and richer. Failures are shared too: a flaw in the shared cycle, injector or liner sinks both stages, and the greedy SSO bid kills 25 of 30. Student payloads and recovery flights give a company with a bad record a way back, so fewer runs stall; reckless bots now fly more and fail more. The bots build and launch straight away, so they don't use parallel builds or the drawing board, and they leave high-energy work (anything that needs a parking orbit and relights) alone: they only fly the preset Meridian. The table is unchanged by the high-energy update. Testing pays, and testing the wrong question costs nearly as much as not testing. Before the generated board, careful survived 24 of 30 with $15.1M: with more work posted, careful play is now comfortable and the money has nothing to buy. That waits on things worth spending on (a second pad and production line, bigger vehicles) rather than lower payouts. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
+Since engines share parts, testing one Harrier teaches about the other, so careful play reaches orbit sooner (median day 322, down from 406 before parts) and richer. Failures are shared too: a flaw in the shared cycle, injector or liner sinks both stages, and the greedy SSO bid kills 25 of 30. Student payloads and recovery flights give a company with a bad record a way back, so fewer runs stall; reckless bots now fly more and fail more. The bots build and launch straight away, so they don't use parallel builds or the drawing board, and they leave high-energy work (anything that needs a parking orbit and relights) alone: they only fly the preset Meridian. The table is unchanged by the high-energy update. Since the factory learns and failed test flights stopped costing reputation, careful play ends about $10M richer and cheap and reckless bots survive a little more often (from 34.9M, 15 and 10). The crew update leaves the bots alone: they never develop a capsule. Testing pays, and testing the wrong question costs nearly as much as not testing. Before the generated board, careful survived 24 of 30 with $15.1M: with more work posted, careful play is now comfortable and the money has nothing to buy. That waits on things worth spending on (a second pad and production line, bigger vehicles) rather than lower payouts. Payroll is $5k a day. An altitude-cell firing costs $200k plus $1.5k a second, so a full-duration upper-stage firing is about a sixth of a Meridian.
 
-Not modelled yet: running tests in parallel with each other, loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
+Not modelled yet: loans or investors, and the rest of DESIGN.md's later domains (structures, thermal, avionics, manufacturing, ground systems).
 
 ## Roadmap
 
@@ -117,8 +119,9 @@ Not modelled yet: running tests in parallel with each other, loans or investors,
 2. ~~Engines built from parts~~ (done)
 3. ~~Vehicle builder, sizing guide, production lines~~ (done)
 4. ~~New regimes, part a: coast and relight, transfer orbits, deep-space engines, mega-constellations~~ (done)
-5. New regimes, part b: crew (a capsule with a launch-abort system, pad- and in-flight abort tests, the crewed-flight licence, cargo then crew to the station). Losing a crew revokes the licence, costs a heavy penalty and much of the company's reputation
-6. After that: reusable boosters (land and refurbish), the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
+5. ~~New regimes, part b: crew~~ (done)
+6. Mobile-first UI overhaul. On a phone the game is unplayable today: the top nav wraps, two-column screens squeeze, the calendar's cells are slivers and dialogs overflow. The overhaul: a bottom tab bar; one column per screen with detail panels as full-screen sheets; touch-sized controls; the calendar as an agenda list on narrow screens; dialogs as bottom sheets; the plan strip folded into one "Plan · N" chip; checked at 360–430 px
+7. After that: reusable boosters (land and refurbish), the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
 
 ## Playing in the browser
 
@@ -134,6 +137,7 @@ A React + Vite front end (`src/web/`) on the same sim code the tests and the com
 - **Launch:** build, re-tune and fly signed contracts.
 - **Every job on a track** asks: Start now (the calendar runs to its end) or Add to plan (booked and paid; the calendar stays put). A plan strip under the top bar shows what each track is doing, with Advance to the next finish or to when it's all done; Company → Work lists the tracks, queues (cancel for a refund), extra units and recent results; the calendar shows when booked work finishes.
 - **Hangar:** design drawings with an engine picker per stage; a Drawing board with the sizing guide; a Factory with the production lines; and the flight record.
+- **Hangar → Crew:** the capsule, the abort system with its tests, flaws and fixes, an in-flight abort on any built rocket strong enough to lift the capsule, crew-rated status per design and what the crewed-flight licence still wants.
 - **Test stand:** firings, an Engine shop to develop engines from parts, and a Parts tab with each part's revision, record, relight status and maturity (prototype, fired, qualified, flight-proven). Each part card names what it still has to prove, and "Test it" opens the Firing tab on the cheapest engine built with it, with that firing set up. Injector and nozzle cards show the Isp their engines deliver against the drawings, the range the part type allows, what the last refinement bought once re-measured, and what another is worth in Δv and payload on each design.
 - **Tunnel:** wind-tunnel and CFD runs.
 

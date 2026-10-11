@@ -1,6 +1,7 @@
 import type { Company } from "./company.ts";
 import type { Contract } from "./contracts.ts";
 import type { Mission } from "./mission.ts";
+import { CLEAN_FLIGHTS_FOR_CREW, crewRating } from "./crew.ts";
 
 /**
  * Launch licences. A young company flies sounding rockets until the
@@ -83,9 +84,12 @@ export function nextLicence(company: Company, reputation: number): Application |
       progress: [Math.min(delivered, CREW_DELIVERIES_NEEDED), CREW_DELIVERIES_NEEDED],
     });
     requirements.push({ text: "A reputation of 5 or better", met: reputation >= 5 });
-    // Crew needs a launch-abort system and a crew-rated vehicle, which the
-    // company can't build yet. The tier is on the map so players see the road.
-    requirements.push({ text: "A crew-rated vehicle with a launch-abort system (not yet buildable)", met: false });
+    const known = company.capsule?.known;
+    requirements.push({ text: "A crew capsule", met: company.capsule !== undefined });
+    requirements.push({ text: "A pad abort passed on the current abort system", met: known?.padAbortPassed ?? false });
+    requirements.push({ text: "An in-flight abort passed on the current abort system", met: known?.inflightAbortPassed ?? false });
+    const rated = Object.keys(company.designs).filter((key) => crewRating(company, key).rated);
+    requirements.push({ text: `A crew-rated rocket: engines proven for their full burns, ${CLEAN_FLIGHTS_FOR_CREW} clean orbital flights in a row`, met: rated.length > 0 });
   }
   const { fee, days } = LICENCE_COSTS[tier];
   return { tier, fee, days, requirements, ready: requirements.every((r) => r.met) };

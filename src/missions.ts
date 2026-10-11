@@ -83,6 +83,9 @@ export function circular(altitudeKm: number, inclination: number): Mission {
   };
 }
 
+/** The space station: where cargo and crew go. */
+export const STATION: Mission = circular(400, 51.6);
+
 /** Geostationary transfer orbit from Port Avery: perigee low, apogee at geostationary height. */
 export function gto(): Mission {
   return {

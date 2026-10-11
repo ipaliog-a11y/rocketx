@@ -1,5 +1,6 @@
 import { build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import { designSpec, runTask, type TaskSpec } from "../sim/schedule.ts";
+import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, PAD_ABORT, type AbortFlaw } from "../sim/crew.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { COSTS, vehicleCost } from "../sim/cost.ts";
 import { flowSeparates, type Engine } from "../sim/engine.ts";
@@ -279,4 +280,64 @@ export function refineJob(key: string): Job {
     cost: REFINE.cost,
     caveat: "The gain only shows once Isp is measured again: the next firing or flight.",
   }, () => ({ kind: "refine", part: key }));
+}
+
+export function capsuleJob(): Job {
+  return trackJob(
+    {
+      title: "Develop the crew capsule?",
+      doing: "Developing the crew capsule and its abort system",
+      verb: "Develop",
+      days: CAPSULE.develop.days,
+      cost: CAPSULE.develop.cost,
+      alwaysAsk: true,
+      caveat: "Whether its abort system would save a crew stays unknown until the pad and in-flight abort tests.",
+    },
+    () => ({ kind: "capsule" }),
+  );
+}
+
+export function padAbortJob(): Job {
+  return trackJob(
+    {
+      title: "Fly a pad abort test?",
+      doing: "Pad abort test: the tower fires from the pad",
+      verb: "Test",
+      days: PAD_ABORT.days,
+      cost: PAD_ABORT.cost,
+      caveat: "It shows whether the tower fires and the parachutes open. It says nothing about an abort in thick air at speed.",
+    },
+    () => ({ kind: "pad-abort" }),
+  );
+}
+
+export function fixAbortJob(flaw: AbortFlaw): Job {
+  const fix = ABORT_FIXES[flaw];
+  return trackJob(
+    {
+      title: `Fix the ${ABORT_FLAW_LABELS[flaw]}?`,
+      doing: `${capital(fix.name)}`,
+      verb: "Apply fix",
+      days: fix.days,
+      cost: fix.cost,
+      caveat: `${fix.text} A new revision of the abort system: both abort tests have to be flown again.`,
+    },
+    () => ({ kind: "fix-abort", flaw }),
+  );
+}
+
+/** Spend a built rocket on an in-flight abort: the capsule pulls away at max-q and the booster is lost. */
+export function abortTestJob(company: Company, key: string, mission: Mission, onDone: (r: FlightReport) => void): Job<FlightReport> {
+  const v = company.designs[key]!;
+  return {
+    title: `Spend a ${v.name} on an in-flight abort test?`,
+    doing: waitForRollout(company, key) > 0 ? `Waiting for the ${v.name} to roll out, then the pad` : `${v.name} on the pad with the capsule`,
+    verb: "Launch",
+    days: waitForRollout(company, key) + COSTS.padDays,
+    cost: COSTS.launchFee,
+    alwaysAsk: true,
+    caveat: "The abort fires at max-q and the booster is lost on purpose. Telemetry still learns what its engines did on the way up.",
+    run: (c) => fly(c, key, { mission, abortTest: true }),
+    onDone,
+  };
 }

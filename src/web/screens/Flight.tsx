@@ -32,6 +32,8 @@ const EVENT_LABELS: Partial<Record<FlightEvent["kind"], string>> = {
   impact: "Ground impact",
   "flow-separation": "Nozzle flow separating",
   "no-liftoff": "Held on the pad",
+  "tower-jettison": "Abort tower jettisoned",
+  abort: "Abort: capsule pulls clear",
 };
 
 function eventLabel(e: FlightEvent): string {
@@ -228,7 +230,9 @@ export function Flight({ report, design }: { report: FlightReport; design: strin
 function headline(r: FlightResult): { text: string; tone: "good" | "warn" | "bad" } {
   const s = r.summary;
   const lost = r.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
-  if (lost?.mode) return { text: `Vehicle lost at T+${lost.t.toFixed(1)} s: ${FAILURE_LABELS[lost.mode]}`, tone: "bad" };
+  const abort = r.events.find((e) => e.kind === "abort");
+  if (r.outcome === "abort" && abort) return { text: `In-flight abort test at T+${abort.t.toFixed(1)} s: the booster is spent`, tone: "warn" };
+  if (lost?.mode) return { text: `Vehicle lost at T+${lost.t.toFixed(1)} s: ${FAILURE_LABELS[lost.mode]}${abort ? ": the abort fired" : ""}`, tone: "bad" };
   if (r.outcome === "no-liftoff") return { text: "Never left the pad", tone: "bad" };
   if (r.outcome === "orbit" && s.orbit) {
     const spec = s.insertion ? (s.insertion.inSpec ? ", in spec" : ", out of spec") : "";

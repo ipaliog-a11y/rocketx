@@ -41,6 +41,8 @@ export type EventKind =
   | "transfer"
   | "circularize"
   | "escape"
+  | "tower-jettison"
+  | "abort"
   | "apogee"
   | "impact"
   | "timeout";
@@ -106,7 +108,8 @@ export type Losses = {
 };
 
 /** "apogee" means the flight topped out and fell back: suborbital. "failure" means the vehicle was lost to an engine or structural failure. */
-export type Outcome = "no-liftoff" | "failure" | "orbit" | "escape" | "apogee" | "impact" | "timeout";
+/** "abort": the capsule was pulled off a booster on purpose, in an in-flight abort test. */
+export type Outcome = "no-liftoff" | "failure" | "orbit" | "escape" | "apogee" | "impact" | "timeout" | "abort";
 
 export type FlightResult = {
   vehicle: string;
@@ -401,6 +404,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
   };
 
   let liftedOff = false;
+  let towerGone = false;
   let passedMach1 = false;
   let qLimitHit = false;
   let qAlphaLimitHit = false;
@@ -523,6 +527,14 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       outcome = "impact";
       record(k);
       break;
+    }
+
+    // The abort tower goes once the vehicle is clear of the thick air: its mass stops counting.
+    if (vehicle.escapeTower && !towerGone && t >= vehicle.escapeTower.jettisonAt) {
+      towerGone = true;
+      s[M] -= vehicle.escapeTower.mass;
+      k = snapshot(ctx, phase, t, s);
+      event("tower-jettison", k, vehicle.escapeTower.mass);
     }
 
     if (phase.kickStart === null && kickDue(program, k.airSpeed) && program.kind === "gravity-turn") {

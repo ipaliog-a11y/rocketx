@@ -45,7 +45,8 @@ test("every generated sounding contract is in reach of a Pathfinder with weak en
 test("the heaviest generated payload for each orbit can be put there with typical engines", () => {
   const heaviest = new Map<string, Contract>();
   for (const c of generateBoard(1)) {
-    if (!c.mission.target || c.kind === "crew" || /^(leo|sso|equatorial|rideshare-)/.test(c.id)) continue;
+    // Station work flies the capsule on heavy lift; test/crew.test.ts covers it.
+    if (!c.mission.target || c.kind === "crew" || c.kind === "cargo" || /^(leo|sso|equatorial|rideshare-)/.test(c.id)) continue;
     // High-energy work needs the bigger hardware; test/coast.test.ts flies it.
     if (missionPlan(c.mission).burns.length > 0) continue;
     const prev = heaviest.get(c.mission.name);

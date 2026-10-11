@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { bid, readyDay, type Company } from "../../sim/company.ts";
 import type { Contract } from "../../sim/contracts.ts";
+import { CAPSULE, crewRating } from "../../sim/crew.ts";
+import { STATION } from "../../missions.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
 import { Chip, Facts } from "../components/Bits.tsx";
@@ -130,14 +132,15 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
           </span>
         )}
         {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
+        {(contract.kind === "crew" || contract.kind === "cargo") && <StationNote company={company} design={design} crew={contract.kind === "crew"} />}
         <Findings b={b} />
         <Forecast b={b} />
         <div className="actions">
           <button
             type="button"
             className="btn primary"
-            disabled={ready === null}
-            title={ready === null ? `Order a ${v.name} first` : undefined}
+            disabled={ready === null || (contract.kind === "crew" && !crewRating(company, design, contract.mission).rated)}
+            title={ready === null ? `Order a ${v.name} first` : contract.kind === "crew" && !crewRating(company, design, contract.mission).rated ? `The ${v.name} isn't crew-rated` : undefined}
             onClick={() => game.schedule(launchJob(company, design, contract, (r) => game.showFlight(r, design)))}
           >
             {ready !== null && ready > company.day ? `Launch on rollout · day ${ready}` : `Launch ${v.name}`}
@@ -161,5 +164,20 @@ function Prep({ company, version, contract, design, setDesign, goTo }: { company
         )}
       </div>
     </section>
+  );
+}
+
+/** What flying the capsule means for this launch: crew aboard and whether the rocket may carry them, or cargo. */
+function StationNote({ company, design, crew }: { company: Company; design: string; crew: boolean }) {
+  if (!company.capsule) return <span className="bad">This flight needs the company's capsule. Develop it from Hangar → Crew.</span>;
+  if (!crew) return <span className="soft">The capsule flies with cargo and no crew, without its abort tower.</span>;
+  const rating = crewRating(company, design, STATION);
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <span>
+        <strong>{CAPSULE.crew} crew aboard</strong> <span className="soft">in the capsule, under its {CAPSULE.tower.mass} kg abort tower.</span>
+      </span>
+      {rating.rated ? <span className="good">Crew-rated.</span> : <span className="bad">Not crew-rated: {rating.missing.join(" · ")}</span>}
+    </div>
   );
 }
