@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { developedParts, type Company } from "../../sim/company.ts";
 import { twinOf } from "../../sim/schedule.ts";
 import { P_SEA_LEVEL } from "../../sim/constants.ts";
@@ -74,13 +74,39 @@ function Option({
         <strong>{title}</strong>
         {have ? <Chip tone="good">IN PRODUCTION</Chip> : <Chip tone="warn">{`NEW +${money(develop)}`}</Chip>}
       </span>
-      <span className="soft" style={{ fontSize: 14 }}>
-        {disabled ?? text}
-      </span>
       <span className="mono muted" style={{ fontSize: 12 }}>
-        {facts}
+        {disabled ?? facts}
       </span>
+      {on && (
+        <span className="soft" style={{ fontSize: 14 }}>
+          {text}
+        </span>
+      )}
     </button>
+  );
+}
+
+/** One slot: a single line with the choice, opening into its options. */
+function SlotPicker({ title, owns, open, toggle, choice, have, children }: { title: string; owns: string; open: boolean; toggle: () => void; choice: string; have: boolean; children: ReactNode }) {
+  return (
+    <fieldset className={`slot slot-picker ${open ? "open" : ""}`}>
+      <legend className="sr-only">{title}</legend>
+      <button type="button" className="slot-head" aria-expanded={open} onClick={toggle}>
+        <span className="stack" style={{ gap: 2 }}>
+          <span className="label">
+            {title} <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 500 }}>· {owns}</span>
+          </span>
+          <strong>{choice}</strong>
+        </span>
+        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {have ? <Chip tone="good">IN PRODUCTION</Chip> : <Chip tone="warn">NEW</Chip>}
+          <span className="muted" aria-hidden="true">
+            {open ? "▴" : "▾"}
+          </span>
+        </span>
+      </button>
+      {open && children}
+    </fieldset>
   );
 }
 
@@ -103,26 +129,38 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
   const twin = twinOf(company, parts);
   const separates = flowSeparates(engine, P_SEA_LEVEL);
   const keyFor = (slot: Slot, option: string) => partKey({ ...parts, [slot]: option } as EngineParts, slot);
+  // One slot's options open at a time; the rest show what is chosen.
+  const [openSlot, setOpenSlot] = useState<Slot | null>(null);
+  const choiceOf = (slot: Slot): string => {
+    switch (slot) {
+      case "cycle":
+        return CYCLES[parts.cycle].label;
+      case "injector":
+        return INJECTORS[parts.injector].label;
+      case "cooling":
+        return COOLINGS[parts.cooling].label;
+      case "nozzle":
+        return NOZZLES[parts.nozzle].label;
+    }
+  };
 
   return (
     <div className="row">
       <section className="grow stack" aria-label="Choose parts" style={{ gap: 18 }}>
         <p className="muted" style={{ margin: 0 }}>
-          An engine is four parts at one chamber size. Parts already in production cost nothing to reuse and bring what tests have learned about them; a new part costs
-          development and starts unproven.
+          Four parts at one chamber size. Parts in production are free and keep what tests learned; new ones cost development and start unproven.
         </p>
-        <fieldset className="slot">
-          <legend className="label">Chamber size</legend>
-          <div className="actions" style={{ gap: 8 }}>
+        <div className="slot">
+          <span className="label">Chamber size</span>
+          <div className="filter-chips" role="group" aria-label="Chamber size">
             {SIZES.map((size) => (
-              <button key={size} type="button" className={`btn ${parts.size === size ? "primary" : ""}`} aria-pressed={parts.size === size} onClick={() => set({ size: size as ChamberSize })}>
+              <button key={size} type="button" aria-pressed={parts.size === size} onClick={() => set({ size: size as ChamberSize })}>
                 {size} kN
               </button>
             ))}
           </div>
-        </fieldset>
-        <fieldset className="slot">
-          <legend className="label">Feed cycle · owns the start sequence</legend>
+        </div>
+        <SlotPicker title="Feed cycle" owns="owns the start sequence" open={openSlot === "cycle"} toggle={() => setOpenSlot(openSlot === "cycle" ? null : "cycle")} choice={choiceOf("cycle")} have={developed.has(keyFor("cycle", parts.cycle))}>
           <div className="options">
             {Object.entries(CYCLES).map(([id, o]) => (
               <Option
@@ -139,9 +177,8 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
               />
             ))}
           </div>
-        </fieldset>
-        <fieldset className="slot">
-          <legend className="label">Injector · owns combustion stability</legend>
+        </SlotPicker>
+        <SlotPicker title="Injector" owns="owns combustion stability" open={openSlot === "injector"} toggle={() => setOpenSlot(openSlot === "injector" ? null : "injector")} choice={choiceOf("injector")} have={developed.has(keyFor("injector", parts.injector))}>
           <div className="options">
             {Object.entries(INJECTORS).map(([id, o]) => (
               <Option
@@ -157,9 +194,8 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
               />
             ))}
           </div>
-        </fieldset>
-        <fieldset className="slot">
-          <legend className="label">Chamber cooling · owns chamber life</legend>
+        </SlotPicker>
+        <SlotPicker title="Chamber cooling" owns="owns chamber life" open={openSlot === "cooling"} toggle={() => setOpenSlot(openSlot === "cooling" ? null : "cooling")} choice={choiceOf("cooling")} have={developed.has(keyFor("cooling", parts.cooling))}>
           <div className="options">
             {Object.entries(COOLINGS).map(([id, o]) => (
               <Option
@@ -175,9 +211,8 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
               />
             ))}
           </div>
-        </fieldset>
-        <fieldset className="slot">
-          <legend className="label">Nozzle · owns expansion and flow separation</legend>
+        </SlotPicker>
+        <SlotPicker title="Nozzle" owns="owns expansion and flow separation" open={openSlot === "nozzle"} toggle={() => setOpenSlot(openSlot === "nozzle" ? null : "nozzle")} choice={choiceOf("nozzle")} have={developed.has(keyFor("nozzle", parts.nozzle))}>
           <div className="options">
             {Object.entries(NOZZLES).map(([id, o]) => (
               <Option
@@ -193,7 +228,7 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
               />
             ))}
           </div>
-        </fieldset>
+        </SlotPicker>
       </section>
 
       <aside className="side card" aria-label="The engine on paper" style={{ position: "sticky", top: 12 }}>
@@ -230,7 +265,7 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
             ["Unit cost", money(engine.unitCost ?? 0)],
           ]}
         />
-        {separates && <span className="warn">This bell separates on a sea-level stand and on the pad. It can only be tested in the altitude cell and only flies on an upper stage.</span>}
+        {separates && <span className="warn">This bell separates at sea level: altitude cell and upper stages only.</span>}
         <div className="stack" style={{ gap: 4 }}>
           <span>
             Development: <strong className="mono">{money(quote.cost)}</strong> and <strong className="mono">{quote.days} days</strong>
@@ -269,8 +304,8 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
           </button>
         </div>
         )}
-        <span className="muted" style={{ fontSize: 14 }}>
-          Ranges are what the parts promise. The real numbers sit somewhere inside, and only firings say where.
+        <span className="muted" style={{ fontSize: 13 }}>
+          Ranges are what the parts promise; only firings say where the real numbers sit.
         </span>
       </aside>
     </div>

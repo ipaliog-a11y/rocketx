@@ -299,8 +299,14 @@ svg text { font-family: var(--mono); }
 /* Engine shop */
 .slot { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .slot legend { margin-bottom: 10px; padding: 0; }
+.slot-picker { border: 1px solid var(--line); border-radius: 6px; background: var(--panel); padding: 0; gap: 0; }
+.slot-picker.open { border-color: var(--line-strong); padding-bottom: 12px; }
+.slot-picker.open > .options { padding: 0 12px; }
+.slot-head { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; }
+.slot-head:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; border-radius: 6px; }
+.stage-body { display: flex; flex-direction: column; gap: 12px; padding: 0 14px; }
 .options { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-.option { text-align: left; cursor: pointer; gap: 6px; padding: 14px 16px; color: var(--text); font: inherit; }
+.option { text-align: left; cursor: pointer; gap: 4px; padding: 10px 12px; color: var(--text); font: inherit; }
 .option:disabled { opacity: 0.45; cursor: not-allowed; }
 .blueprint { background-color: #121820; background-image: linear-gradient(#18202a 1px, transparent 1px), linear-gradient(90deg, #18202a 1px, transparent 1px); background-size: 16px 16px; }
 
