@@ -4,7 +4,7 @@ import { COSTS } from "../../sim/cost.ts";
 import { flowSeparates, type Engine } from "../../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../../sim/hardware.ts";
 import { partKeys, partLabel } from "../../sim/parts.ts";
-import { FACILITIES, FIXES, HARDWARE_LOSS, RESTART_TEST, revisionLetter, seenAt as seenAtKnown, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
+import { FACILITIES, FIXES, HARDWARE_LOSS, RESTART_TEST, revisionLetter, START_CHECK, seenAt as seenAtKnown, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
 import { burnTime } from "../../sim/vehicle.ts";
 import { Chip, ProofBar, Tabs } from "../components/Bits.tsx";
 import { isVacuumBell, Nozzle } from "../components/Rocket.tsx";
@@ -152,14 +152,16 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
   // Where would this firing stop, as far as the company knows?
   const stops: Array<[number, string]> = [];
   if (known?.open.includes("hard-start")) stops.push([0.3, "the known hard start"]);
-  if (flowSeparates(engine, spec.ambient)) stops.push([2, `flow separation: this bell can't run against ${(spec.ambient / 1000).toFixed(0)} kPa`]);
+  // A vacuum bell on the sea-level stand only gets a start check.
+  const startCheck = flowSeparates(engine, spec.ambient);
+  const planned = startCheck ? START_CHECK : duration;
   for (const mode of ["combustion-instability", "burn-through"] as const) {
     const t = seenAt(known, mode);
-    if (t !== undefined && t < duration) stops.push([t, `the known ${FAILURE_LABELS[mode]} at ${t.toFixed(1)} s`]);
+    if (t !== undefined && t < planned) stops.push([t, `the known ${FAILURE_LABELS[mode]} at ${t.toFixed(1)} s`]);
   }
   stops.sort((a, b) => a[0] - b[0]);
   const stop = stops[0];
-  const runs = stop ? Math.min(stop[0], duration) : duration;
+  const runs = stop ? Math.min(stop[0], planned) : planned;
   const cost = spec.setup * (restart ? 2 : 1) + spec.perSecond * runs;
   const days = spec.days + (restart ? RESTART_TEST.days : 0);
   const last = known?.history.at(-1);
@@ -253,19 +255,36 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
                 <span className="mono soft" style={{ fontSize: 13 }}>
                   ${f.setup}k + ${f.perSecond}k/s · {f.days} days
                 </span>
+                {flowSeparates(engine, f.ambient) && (
+                  <span className="warn" style={{ fontSize: 14 }}>
+                    Start check only: this bell can't run against sea-level air.
+                  </span>
+                )}
               </label>
             );
           })}
         </fieldset>
-        <label className="stack" style={{ gap: 8 }}>
-          <span className="soft">Duration</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <input type="range" min={5} max={Math.ceil((burn * 1.6) / 5) * 5} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} style={{ flex: 1 }} />
-            <output className="mono" style={{ minWidth: 64, textAlign: "right", fontWeight: 600 }}>
-              {duration} s
-            </output>
-          </span>
-        </label>
+        {startCheck ? (
+          <div className="stack" style={{ gap: 4 }}>
+            <span className="soft">Duration</span>
+            <span>
+              <strong className="mono">{START_CHECK} s</strong>{" "}
+              <span className="soft">
+                Lit, then shut down before the flow separates in the bell. It shows whether the engine starts cleanly. Isp, chamber life and vacuum running need the altitude cell.
+              </span>
+            </span>
+          </div>
+        ) : (
+          <label className="stack" style={{ gap: 8 }}>
+            <span className="soft">Duration</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <input type="range" min={5} max={Math.ceil((burn * 1.6) / 5) * 5} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} style={{ flex: 1 }} />
+              <output className="mono" style={{ minWidth: 64, textAlign: "right", fontWeight: 600 }}>
+                {duration} s
+              </output>
+            </span>
+          </label>
+        )}
         <label className="actions" style={{ gap: 10, opacity: facility === "altitude" ? 1 : 0.5 }}>
           <input type="checkbox" checked={restart} disabled={facility !== "altitude"} onChange={(e) => setRestart(e.target.checked)} />
           <span className="soft">
@@ -275,16 +294,18 @@ function EngineDetail({ company, use }: { company: Company; use: EngineUse }) {
           </span>
         </label>
         <ProofBar proven={runs} required={burn} label={`This firing would run ${runs.toFixed(1)} s of a ${burn.toFixed(0)} s flight burn`} />
-        <span className={stop ? "bad" : duration >= burn ? "good" : "warn"}>
+        <span className={stop ? "bad" : startCheck ? "warn" : duration >= burn ? "good" : "warn"}>
           {stop
             ? `Expect it to stop at ${stop[0].toFixed(1)} s: ${stop[1]}.`
-            : duration >= burn
+            : startCheck
+              ? `A start check proves the engine lights, not the ${burn.toFixed(0)} s burn.`
+              : duration >= burn
               ? `Covers the ${burn.toFixed(0)} s flight burn, if the hardware lives that long.`
               : `Proves at most ${duration} s of a ${burn.toFixed(0)} s burn.`}
         </span>
         <div className="actions">
-          <button type="button" className="btn primary" onClick={() => game.schedule(fireJob(engine, duration, facility, runs, restart))}>
-            {restart ? "Fire and restart" : "Fire"} · {money(cost)} · {days} days
+          <button type="button" className="btn primary" onClick={() => game.schedule(fireJob(engine, planned, facility, runs, restart))}>
+            {startCheck ? "Start check" : restart ? "Fire and restart" : "Fire"} · {money(cost)} · {days} days
           </button>
           <span className="muted" style={{ fontSize: 14 }}>
             Plus {money(days * COSTS.overheadPerDay)} payroll. If the engine fails: +{money(HARDWARE_LOSS.cost)} and {HARDWARE_LOSS.days} days for a new one.

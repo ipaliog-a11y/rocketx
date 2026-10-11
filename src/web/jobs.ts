@@ -1,7 +1,7 @@
 import { applyForLicence, build, buyLine, designVehicle, developEngine, LINE_COSTS, nextSlot, readyDay, refinePart, REFINE, retuneForMission, fire, fixAero, fixEngine, fly, retune, tunnel, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { COSTS, vehicleCost } from "../sim/cost.ts";
-import type { Engine } from "../sim/engine.ts";
+import { flowSeparates, type Engine } from "../sim/engine.ts";
 import { FAILURE_LABELS, type FailureMode } from "../sim/hardware.ts";
 import { LICENCE_LABELS, type Application } from "../sim/licence.ts";
 import { partLabel, type EngineParts } from "../sim/parts.ts";
@@ -130,9 +130,14 @@ const waitForRollout = (company: Company, key: string) => Math.max(0, (readyDay(
 
 export function fireJob(engine: Engine, seconds: number, facility: Facility, expectedRun: number, restart = false): Job {
   const f = FACILITIES[facility];
+  const startCheck = flowSeparates(engine, f.ambient);
   return {
-    title: restart ? `Fire the ${engine.name} for ${seconds} s, then restart it in vacuum?` : `Fire the ${engine.name} for ${seconds} s?`,
-    doing: `${restart ? "Restart test" : "Hot-firing"} the ${engine.name} · ${f.name}`,
+    title: startCheck
+      ? `Start-check the ${engine.name} on the ${f.name}?`
+      : restart
+        ? `Fire the ${engine.name} for ${seconds} s, then restart it in vacuum?`
+        : `Fire the ${engine.name} for ${seconds} s?`,
+    doing: `${startCheck ? "Start check" : restart ? "Restart test" : "Hot-firing"} the ${engine.name} · ${f.name}`,
     verb: "Fire",
     days: f.days + (restart ? RESTART_TEST.days : 0),
     cost: f.setup * (restart ? 2 : 1) + f.perSecond * expectedRun,

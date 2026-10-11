@@ -48,8 +48,12 @@ export const HARDWARE_LOSS = { cost: 350, days: 25 };
 
 /** Ignition transient: a hard start shows up this far into the firing, s. */
 const HARD_START_AT = 0.3;
-/** The stand trips on side loads this far into a separated firing, s. */
-const SEPARATION_TRIP_AT = 2;
+/**
+ * A vacuum bell can't run against sea-level air: the flow would separate in
+ * the bell. The sea-level stand can still light it and shut it down this
+ * far in, before the side loads build: a cheap check that it starts, s.
+ */
+export const START_CHECK = 2;
 /** Firing needed past the start transient before Isp can be measured, s. */
 const STEADY_STATE = 5;
 
@@ -236,6 +240,17 @@ export function learnParts(
 }
 
 /**
+ * Older saves recorded flow separation from a sea-level firing as an open
+ * fault. It never was one: the stand now runs a vacuum bell as a start check.
+ */
+export function forgetStandSeparation(campaign: Campaign): void {
+  for (const k of [...Object.values(campaign.knowledge), ...Object.values(campaign.parts)]) {
+    k.open = k.open.filter((m) => m !== "flow-separation");
+    delete k.seen["flow-separation"];
+  }
+}
+
+/**
  * Rewrite what is known about every engine built from parts from what is
  * known about its parts. An engine that has never fired can still be
  * partly proven, by its sisters.
@@ -290,10 +305,11 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
   const stand = FACILITIES[facility];
   const findings: Finding[] = [];
 
-  let fired = duration;
+  const startCheck = flowSeparates(engine, stand.ambient);
+  const planned = startCheck ? Math.min(duration, START_CHECK) : duration;
+  let fired = planned;
   let hardwareLost = false;
   const failure = firstFailure(truth);
-  const separates = flowSeparates(engine, stand.ambient);
 
   if (failure?.mode === "hard-start") {
     fired = HARD_START_AT;
@@ -303,14 +319,7 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
       t: fired,
       text: `Hard start at T+${fired} s: propellant pooled in the chamber before the igniter caught and lit all at once. The pressure spike cracked the chamber.`,
     });
-  } else if (separates) {
-    fired = Math.min(duration, SEPARATION_TRIP_AT);
-    findings.push({
-      mode: "flow-separation",
-      t: fired,
-      text: `Flow separation: exhaust leaves the bell at ${kPa(engine.exitPressure)}, under 40% of the ${kPa(stand.ambient)} around the stand, so the jet peeled off the nozzle wall. Side loads trip the stand limits by T+${SEPARATION_TRIP_AT} s. This bell needs the altitude cell.`,
-    });
-  } else if (failure && failure.t < duration) {
+  } else if (failure && failure.t < planned) {
     fired = failure.t;
     hardwareLost = true;
     const at = `T+${failure.t.toFixed(1)} s`;
@@ -342,8 +351,8 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
     } else relit = true;
   }
 
-  // Isp is measurable once the firing settles, unless the flow is separated.
-  const steady = !separates && fired >= STEADY_STATE;
+  // Isp is measurable once the firing settles: never in a start check.
+  const steady = !startCheck && fired >= STEADY_STATE;
   const real = asBuilt(engine, truth);
   const isp = steady
     ? { predicted: ispAt(engine, stand.ambient), measured: ispAt(real, stand.ambient), ambient: stand.ambient }
@@ -373,9 +382,13 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
   campaign.spent += cost;
   campaign.days += days;
 
-  const lines = [`${engine.name}, ${stand.name}, ${duration} s planned, ${fired.toFixed(1)} s fired.`];
+  const lines = [`${engine.name}, ${stand.name}${startCheck ? ", start check" : ""}, ${planned} s planned, ${fired.toFixed(1)} s fired.`];
   for (const f of findings) lines.push(`  ${f.text}`);
-  if (findings.length === 0) lines.push(relit ? `  Clean firing, then a clean restart in vacuum.` : `  Clean firing.`);
+  if (findings.length === 0 && startCheck) {
+    lines.push(
+      `  Clean start. The bell exhausts at ${kPa(engine.exitPressure)}, too far under the ${kPa(stand.ambient)} around the stand to run without the flow separating, so it was shut down at T+${fired} s. Isp, chamber life and vacuum running need the altitude cell.`,
+    );
+  } else if (findings.length === 0) lines.push(relit ? `  Clean firing, then a clean restart in vacuum.` : `  Clean firing.`);
   if (isp) {
     const delta = isp.measured / isp.predicted - 1;
     lines.push(
@@ -385,7 +398,7 @@ export function hotFire(campaign: Campaign, engine: Engine, duration: number, fa
   if (hardwareLost) lines.push(`  Test engine destroyed. A replacement costs $${HARDWARE_LOSS.cost}k and ${HARDWARE_LOSS.days} days.`);
   lines.push(`  $${Math.round(cost)}k, ${days} days.`);
 
-  const report: TestReport = { engine: engine.name, facility, planned: duration, fired, findings, isp, hardwareLost, cost, days, text: lines.join("\n") };
+  const report: TestReport = { engine: engine.name, facility, planned, fired, findings, isp, hardwareLost, cost, days, text: lines.join("\n") };
   known.history.push(report);
   refreshFromParts(campaign);
   return report;

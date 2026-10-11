@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { newCompany, rename, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { forgetStandSeparation } from "../sim/teststand.ts";
 import { generateBoard, startingCash } from "../contracts.ts";
 import { DESIGNS } from "./designs.ts";
 import { deadlineRisks, signedContracts, type Job } from "./jobs.ts";
@@ -55,7 +56,10 @@ function load(): Company | null {
       }
     }
     const raw = localStorage.getItem(SAVE_KEY);
-    return raw ? (JSON.parse(raw) as Company) : null;
+    if (!raw) return null;
+    const company = JSON.parse(raw) as Company;
+    forgetStandSeparation(company.campaign);
+    return company;
   } catch {
     return null;
   }
