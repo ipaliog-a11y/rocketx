@@ -3,7 +3,8 @@ import { assembleVehicle, checkVehicle, designQuote, type VehicleSpec } from "./
 import { COSTS } from "./cost.ts";
 import type { Engine } from "./engine.ts";
 import { combineTruth, FAILURE_LABELS, rollPartTruths, type FailureMode } from "./hardware.ts";
-import { LICENCE_LABELS, nextLicence, type Licence } from "./licence.ts";
+import { holds, LICENCE_LABELS, nextLicence, type Licence } from "./licence.ts";
+import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, fixAbortFlaw, newCapsule, PAD_ABORT, padAbort, type AbortFlaw } from "./crew.ts";
 import { assembleEngine, developmentCost, INJECTORS, NOZZLES, OWNER, parsePartKey, partKeys, partLabel, partsProblems, type EngineParts, type InjectorOption, type NozzleOption } from "./parts.ts";
 import {
   applyFix,
@@ -37,7 +38,7 @@ import { developedParts, REFINE, reputation, settleDays, type ActionResult, type
  * firings of those parts booked before it.
  */
 
-export type Track = "stand" | "cell" | "office" | "tunnel" | "regulator";
+export type Track = "stand" | "cell" | "office" | "tunnel" | "range" | "regulator";
 
 export type TrackSpec = {
   name: string;
@@ -56,10 +57,11 @@ export const TRACKS: Record<Track, TrackSpec> = {
     ],
   },
   tunnel: { name: "Wind tunnel", extra: [] },
+  range: { name: "Test range", extra: [] },
   regulator: { name: "Regulator", extra: [] },
 };
 
-export const TRACK_ORDER: Track[] = ["stand", "cell", "office", "tunnel", "regulator"];
+export const TRACK_ORDER: Track[] = ["stand", "cell", "office", "tunnel", "range", "regulator"];
 
 export type TaskSpec =
   | { kind: "fire"; engine: string; seconds: number; facility: Facility; restart: boolean }
@@ -71,7 +73,10 @@ export type TaskSpec =
   | { kind: "develop"; name: string; parts: EngineParts }
   | { kind: "design"; vehicle: Vehicle; tooling: string[]; cost: number; days: number }
   | { kind: "retune"; design: string; pitchProgram: Vehicle["pitchProgram"]; text: string }
-  | { kind: "licence"; tier: Licence };
+  | { kind: "licence"; tier: Licence }
+  | { kind: "capsule" }
+  | { kind: "pad-abort" }
+  | { kind: "fix-abort"; flaw: AbortFlaw };
 
 export type Task = {
   id: number;
@@ -102,6 +107,7 @@ export function upgradeCompany(company: Company): void {
   company.done ??= [];
   company.nextTask ??= 1;
   company.units ??= newUnits();
+  company.units.range ??= [0];
   // Test-flight failures used to cost reputation. They no longer do.
   for (const r of company.record) {
     if (r.note.endsWith(" test flight") && r.tag !== "demonstrated") {
@@ -111,7 +117,7 @@ export function upgradeCompany(company: Company): void {
   }
 }
 
-export const newUnits = (): Record<Track, number[]> => ({ stand: [0], cell: [0], office: [0], tunnel: [0], regulator: [0] });
+export const newUnits = (): Record<Track, number[]> => ({ stand: [0], cell: [0], office: [0], tunnel: [0], range: [0], regulator: [0] });
 
 // ── What a job is ───────────────────────────────────────────────────────
 
@@ -218,6 +224,21 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       if (missing.length > 0) throw new Error(`The regulator wants: ${missing.map((r) => r.text.toLowerCase()).join("; ")}.`);
       return { track: "regulator", title: `${LICENCE_LABELS[next.tier]} licence review`, cost: next.fee, days: next.days, reads: [], writes: ["licence"] };
     }
+    case "capsule": {
+      if (company.capsule || pendingOf(company, "capsule").length > 0) throw new Error("The company already has a capsule programme.");
+      if (!holds(company, "orbital")) throw new Error("A capsule programme needs the orbital licence first: the regulator won't look at people before orbit.");
+      return { track: "office", title: "Develop the crew capsule", cost: CAPSULE.develop.cost, days: CAPSULE.develop.days, reads: [], writes: ["capsule"] };
+    }
+    case "pad-abort": {
+      if (!company.capsule) throw new Error("There is no capsule to test yet.");
+      return { track: "range", title: "Pad abort test", cost: PAD_ABORT.cost, days: PAD_ABORT.days, reads: ["capsule"], writes: [] };
+    }
+    case "fix-abort": {
+      if (!company.capsule?.known.open.includes(spec.flaw)) throw new Error(`No ${ABORT_FLAW_LABELS[spec.flaw]} has been seen. A test has to show a problem before it can be fixed.`);
+      if (pendingOf(company, "fix-abort").some((t) => t.spec.flaw === spec.flaw)) throw new Error("That fix is already booked.");
+      const fix = ABORT_FIXES[spec.flaw];
+      return { track: "office", title: `Fix: ${fix.name}`, cost: fix.cost, days: fix.days, reads: [], writes: ["capsule"] };
+    }
   }
 }
 
@@ -317,9 +338,11 @@ function categoryOf(spec: TaskSpec): Category {
     case "fire":
     case "replace":
     case "tunnel":
+    case "pad-abort":
       return "test";
     case "fix-engine":
     case "fix-aero":
+    case "fix-abort":
       return "fix";
     case "retune":
       return "analysis";
@@ -479,6 +502,20 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
     case "licence":
       company.licence = spec.tier;
       return { summary: `${LICENCE_LABELS[spec.tier]} licence granted.`, text: `${LICENCE_LABELS[spec.tier]} licence granted on day ${company.day}.` };
+    case "capsule":
+      company.capsule = newCapsule(company.seed, company.day);
+      return {
+        summary: "Crew capsule developed.",
+        text: `The crew capsule is ready: ${CAPSULE.mass.toLocaleString("en-US")} kg with ${CAPSULE.crew} crew, under a ${CAPSULE.tower.mass} kg abort tower dropped at T+${CAPSULE.tower.jettisonAt} s. Whether its abort system would save a crew is unknown until the pad and in-flight abort tests.`,
+      };
+    case "pad-abort": {
+      const text = padAbort(company.capsule!, company.day);
+      return { summary: text.split(":")[0] + (company.capsule!.known.padAbortPassed ? ": passed." : ": failed."), text };
+    }
+    case "fix-abort": {
+      const text = fixAbortFlaw(company.capsule!, spec.flaw, company.day);
+      return { summary: `${ABORT_FIXES[spec.flaw].name} fitted.`, text };
+    }
   }
 }
 

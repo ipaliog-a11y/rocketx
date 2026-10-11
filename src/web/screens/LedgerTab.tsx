@@ -32,6 +32,8 @@ function tagText(tag: Tag): string {
       return "Orbit out of spec";
     case "late":
       return "Missed a deadline";
+    case "crew-lost":
+      return "Crew lost";
     default:
       return FAILURE_LABELS[tag];
   }

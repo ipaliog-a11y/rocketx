@@ -344,9 +344,9 @@ function generated(seed: number): Contract[] {
     });
   }
 
-  // Crew rotations to the station. Posted so players see where the road
-  // goes; nobody can hold a crew licence yet.
-  for (const [i, day] of [420, 700, 980].entries()) {
+  // Crew rotations to the station: two astronauts in the company's capsule.
+  // They need the crew licence and a crew-rated rocket, so they come late.
+  for (const [i, day] of [800, 950, 1_100].entries()) {
     out.push({
       id: `crew-${i + 1}`,
       kind: "crew",
@@ -357,13 +357,13 @@ function generated(seed: number): Contract[] {
       licence: "crew",
       mission: circular(400, 51.6),
       payloadMass: 2_400,
-      payout: 60_000,
+      payout: 130_000,
       degradedShare: 0,
-      penalty: 20_000,
+      penalty: 40_000,
       deadline: day + 240,
       minReputation: 6,
       postedDay: day + int(-20, 20),
-      refuses: [...FAILURE_TAGS, "no-orbit", "late"],
+      refuses: [...FAILURE_TAGS, "no-orbit", "late", "crew-lost"],
     });
   }
   // Student payloads: small, poorly paid, and open to any company. A firm
@@ -500,6 +500,32 @@ function generated(seed: number): Contract[] {
         minReputation: 3,
         postedDay: day,
         refuses: [],
+      });
+    }
+  }
+  {
+    // Station resupply: the capsule flown without crew, full of cargo. The
+    // stepping stone to crew: it needs only the orbital licence and builds
+    // the clean record a crew-rated rocket needs.
+    let day = int(520, 600);
+    for (let i = 0; i < 6; i++, day += int(80, 110)) {
+      const payout = step(between(75_000, 90_000), 500);
+      out.push({
+        id: `cargo-${i + 1}`,
+        kind: "cargo",
+        customer: "National Space Agency",
+        title: `Station resupply ${i + 1} of 6: the capsule with cargo to 400 km, 51.6°`,
+        seriesId: "cargo",
+        seriesIndex: i + 1,
+        mission: circular(400, 51.6),
+        payloadMass: 2_400,
+        payout,
+        degradedShare: 0,
+        penalty: step(payout * 0.25, 500),
+        deadline: day + 150,
+        minReputation: 4,
+        postedDay: day,
+        refuses: [...FAILURE_TAGS, "no-orbit", "crew-lost"],
       });
     }
   }

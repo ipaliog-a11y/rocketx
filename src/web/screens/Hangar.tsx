@@ -10,9 +10,10 @@ import { game } from "../game.ts";
 import { buildJob, retuneTestJob, testFlightJob } from "../jobs.ts";
 import { DrawingBoard } from "./DrawingBoard.tsx";
 import { Factory } from "./Factory.tsx";
+import { Crew } from "./Crew.tsx";
 import { km, money } from "../format.ts";
 
-type Tab = "lineup" | "design" | "board" | "factory" | "record";
+type Tab = "lineup" | "design" | "board" | "factory" | "crew" | "record";
 
 /** Ideal Δv a 300 km orbit from Port Avery takes in this sim, losses included, m/s. */
 const LEO_NEEDS = 9_400;
@@ -34,6 +35,7 @@ export function Hangar({ company }: { company: Company }) {
             ["design", "Design"],
             ["board", "Drawing board"],
             ["factory", "Factory"],
+            ["crew", "Crew"],
             ["record", "Flight record"],
           ]}
         />
@@ -42,6 +44,7 @@ export function Hangar({ company }: { company: Company }) {
       {tab === "design" && <Design company={company} designKey={company.designs[key] ? key : "meridian"} />}
       {tab === "board" && <DrawingBoard company={company} drawn={(k) => (setKey(k), setTab("design"))} />}
       {tab === "factory" && <Factory company={company} />}
+      {tab === "crew" && <Crew company={company} />}
       {tab === "record" && <Record company={company} />}
     </div>
   );

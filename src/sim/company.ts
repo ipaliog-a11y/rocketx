@@ -10,6 +10,7 @@ import type { Mission } from "./mission.ts";
 import { holds, LICENCE_LABELS, LICENCE_COSTS, missionLicence, nextLicence, requiredLicence, SPACE_LINE, type Licence } from "./licence.ts";
 import { designSpec, newUnits, nextEvent, runTask, runTracks, type Task, type TaskDone, type TaskSpec, type Track } from "./schedule.ts";
 import { partKeys, type EngineParts } from "./parts.ts";
+import { abortAt, abortOutcome, crewRating, inflightAbort, qAt, withCapsule, type Capsule } from "./crew.ts";
 import { learnFromFlight } from "./telemetry.ts";
 import { believedHardware, flightUnknowns, newCampaign, type Campaign, type Facility, type Unknown } from "./teststand.ts";
 import { retuneFromTests } from "./tuning.ts";
@@ -94,6 +95,8 @@ export type Company = {
   nextTask: number;
   /** Units on each track, as the day each comes into service. */
   units: Record<Track, number[]>;
+  /** The crew capsule, once developed. */
+  capsule?: Capsule;
 };
 
 export function newCompany(
@@ -344,6 +347,7 @@ function signingProblem(company: Company, contract: Contract, announcedOk = fals
   if (company.day > contract.deadline) return `"${contract.title}" has expired.`;
   const needs = requiredLicence(contract);
   if (!holds(company, needs)) return `"${contract.title}" needs the ${LICENCE_LABELS[needs].toLowerCase()} licence.`;
+  if ((contract.kind === "cargo" || contract.kind === "crew") && !company.capsule) return `"${contract.title}" flies the company's own capsule: develop one first.`;
   if (reputation(company) < contract.minReputation) return `${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`;
   const objection = objectionTo(company, contract);
   if (objection) return `${contract.customer} won't sign with a company whose record shows ${describeTag(objection.tag)}.`;
@@ -403,6 +407,19 @@ export function commitSeries(company: Company, seriesId: string): ActionResult {
   };
 }
 
+/** What losing a crew costs: the licence to fly people, a heavy penalty and much of the company's standing. The company itself survives. */
+export const LOSS_OF_CREW = { penalty: 50_000, reputation: -10 };
+
+function lossOfCrew(company: Company, contract: Contract): string[] {
+  company.licence = "orbital";
+  company.cash -= LOSS_OF_CREW.penalty;
+  company.ledger.push({ day: company.day, category: "penalty", amount: -LOSS_OF_CREW.penalty, note: `${contract.title}: loss of crew` });
+  company.record.push({ day: company.day, tag: "crew-lost", reputation: LOSS_OF_CREW.reputation, note: contract.title });
+  return [
+    `The regulator revokes the crewed-flight licence. Compensation and the investigation cost ${money(LOSS_OF_CREW.penalty)}, and the record shows it: reputation ${LOSS_OF_CREW.reputation}. The company goes on, but it will have to earn the right to fly people again.`,
+  ];
+}
+
 /** After a series launch is settled: if every launch is now delivered, the customer pays the bonus. */
 export function seriesCompletion(company: Company, contract: Contract): string[] {
   if (!contract.seriesId) return [];
@@ -435,7 +452,8 @@ export function fixAero(company: Company, key: string, mode: FailureMode): Actio
 export function retuneSpec(company: Company, key: string, target: { contract: string } | { mission: Mission }): TaskSpec {
   const design = designOf(company, key);
   const contract = "contract" in target ? contractOf(company, target.contract) : null;
-  const loaded = contract ? { ...design, payloadMass: contract.payloadMass } : design;
+  // A crew flight carries the abort tower too: tune for what really flies.
+  const loaded = contract?.kind === "crew" ? withCapsule(design) : contract ? { ...design, payloadMass: contract.payloadMass } : design;
   const mission = contract?.mission ?? (target as { mission: Mission }).mission;
   const { vehicle, text } = retuneFromTests(company.campaign, loaded, mission);
   return { kind: "retune", design: key, pitchProgram: vehicle.pitchProgram, text };
@@ -547,7 +565,7 @@ export type FlightReport = ActionResult & {
  * given mission. The debrief is written from what the company knew before
  * the flight; then the telemetry is learned.
  */
-export function fly(company: Company, key: string, target: { contract: string } | { mission: Mission }): FlightReport {
+export function fly(company: Company, key: string, target: { contract: string } | { mission: Mission; abortTest?: boolean }): FlightReport {
   alive(company);
   const design = designOf(company, key);
   const ready = readyDay(company, key);
@@ -555,8 +573,15 @@ export function fly(company: Company, key: string, target: { contract: string } 
   const contract = "contract" in target ? contractOf(company, target.contract) : null;
   if (contract && !company.accepted.includes(contract.id)) throw new Error(`"${contract.title}" isn't signed.`);
   const mission = contract?.mission ?? (target as { mission: Mission }).mission;
-  const needs = missionLicence(mission);
-  if (!holds(company, needs)) throw new Error(`Flying to orbit needs an orbital licence. Apply on the company page.`);
+  const abortTest = "abortTest" in target && target.abortTest === true;
+  const crewed = contract?.kind === "crew";
+  const needs = contract ? requiredLicence(contract) : missionLicence(mission);
+  if (!holds(company, needs)) throw new Error(needs === "crew" ? "Flying people needs the crewed-flight licence." : `Flying to orbit needs an orbital licence. Apply on the company page.`);
+  if ((abortTest || crewed || contract?.kind === "cargo") && !company.capsule) throw new Error("That flight needs the company's capsule: develop one first.");
+  if (crewed) {
+    const rating = crewRating(company, key, mission);
+    if (!rating.rated) throw new Error(`The ${design.name} isn't crew-rated. Still needed: ${rating.missing.join(" ")}`);
+  }
   const early: string[] = [];
   if (ready > company.day) {
     // Launch on rollout: the calendar runs, and the payroll with it, until the vehicle is ready.
@@ -566,13 +591,34 @@ export function fly(company: Company, key: string, target: { contract: string } 
       throw new Error(`The ${design.name} rolled out on day ${ready}, after "${contract.title}" was due.`);
     }
   }
-  const vehicle = { ...design, payloadMass: contract?.payloadMass ?? design.payloadMass };
+  // The capsule rides under its abort tower when people could be aboard, or to prove the tower.
+  const vehicle = crewed || abortTest ? withCapsule(design) : { ...design, payloadMass: contract?.payloadMass ?? design.payloadMass };
 
   const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`)];
   company.inventory[key]! -= 1;
-  const result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth });
+  let result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth });
+  // The abort: on purpose at max-q in a test, or because the rocket is failing under a crew.
+  let abortText: string | null = null;
+  let crewLost = false;
+  if (abortTest) {
+    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+    // At max-q, or earlier if the booster fails first: then the abort fires on a real failure.
+    const at = failure && failure.t <= result.summary.maxQ.t + 1 ? failure.t : result.summary.maxQ.t;
+    const q = qAt(result, at);
+    result = abortAt(result, at, q);
+    abortText = inflightAbort(company.capsule!, company.day, q);
+  } else if (crewed) {
+    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+    if (failure) {
+      const q = qAt(result, failure.t);
+      const outcome = abortOutcome(company.capsule!.truth, failure.t, q);
+      result = { ...result, events: [...result.events.filter((e) => e.t <= failure.t), { ...failure, kind: "abort", value: q }, ...result.events.filter((e) => e.t > failure.t)] };
+      crewLost = !outcome.survived;
+      abortText = outcome.survived ? `The abort worked: ${outcome.why}. Both crew are safe.` : `The crew were lost: ${outcome.why}.`;
+    }
+  }
   const written = debrief(result, vehicle, mission, company.campaign);
-  const lines = [written];
+  const lines = abortText ? [written, "", abortText] : [written];
   let settlement: Settlement | null = null;
   const orbitedBefore = (company.experience[key]?.orbits ?? 0) > 0;
   learnFromFlight(company.campaign, vehicle, result);
@@ -602,6 +648,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
     if (after.length > 0) lines.push(...after);
     const completed = seriesCompletion(company, contract);
     if (completed.length > 0) lines.push("", ...completed);
+    if (crewLost) lines.push("", ...lossOfCrew(company, contract));
   } else {
     const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
     // A test flight risks only the company's own vehicle: the record keeps it, reputation doesn't move.
@@ -666,7 +713,7 @@ export type Bid = {
 export function bid(company: Company, contractId: string, key: string): Bid {
   const contract = contractOf(company, contractId);
   const design = designOf(company, key);
-  const vehicle = { ...design, payloadMass: contract.payloadMass };
+  const vehicle = contract.kind === "crew" ? withCapsule(design) : { ...design, payloadMass: contract.payloadMass };
   const mission = contract.mission;
   const build = { cost: vehicleCost(vehicle).cost, days: buildDays(company, key, vehicle) };
 
@@ -778,6 +825,8 @@ function describeTag(tag: Tag): string {
       return "a delivery";
     case "demonstrated":
       return "an orbital demonstration";
+    case "crew-lost":
+      return "a crew lost";
     default:
       return `a ${FAILURE_LABELS[tag]}`;
   }

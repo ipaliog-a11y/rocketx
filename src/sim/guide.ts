@@ -175,10 +175,11 @@ export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, exist
   for (const d of DIAMETERS.filter((x) => x >= 0.8)) {
     const uppers = DIAMETERS.filter((x) => x <= d).slice(-2);
     for (const engine of padEngines) {
-      for (const len of lengths(2, 16, 1)) {
+      // Heavy-lift cores run long: past 16 m only on the 3 m class and up.
+      for (const len of lengths(2, d >= 3 ? 26 : 16, 1)) {
         for (const ud of uppers) {
           for (const upper of all) {
-            for (const ulen of lengths(0.5, 6, 0.5)) {
+            for (const ulen of lengths(0.5, ud >= 3 ? 9 : 6, 0.5)) {
               if ((len + ulen) / d > MAX_SLENDERNESS) continue;
               const base: VehicleSpec = {
                 name,

@@ -103,3 +103,15 @@ test("the heaviest high-energy payloads on the board can be flown on developed e
   assert.equal(retunePitch(pick.vehicle, nav.mission, { hardware: typical }).inSpec, true);
   void circular;
 });
+
+test("heavy lift: 600 kN chambers on a 4 m core put a crew capsule and its tower on the station orbit", () => {
+  const GG = { cycle: "gas-generator", injector: "coaxial", cooling: "film" } as const;
+  const heavy = [assembleEngine({ ...GG, size: 600, nozzle: "sea-level" }, "Condor-600"), assembleEngine({ ...GG, size: 250, nozzle: "large-vacuum" }, "Osprey-250-XV")];
+  const fleet = Object.fromEntries([...Object.values(engines), ...heavy].map((e) => [e.name, e]));
+  const hardware = Object.fromEntries(Object.values(fleet).map((e) => [e.name, { ...IDEAL_TRUTH, ispFactor: 0.975 }]));
+  const station = circular(400, 51.6);
+  const pick = suggestBuilds({ mission: station, payloadMass: 2_900 }, fleet, [PATHFINDER, MERIDIAN])[0];
+  assert.ok(pick, "no design for 2.9 t");
+  assert.equal(pick.vehicle.stages[0]!.diameter, 4.0);
+  assert.equal(retunePitch(pick.vehicle, station, { hardware }).inSpec, true);
+});

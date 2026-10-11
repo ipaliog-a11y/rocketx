@@ -34,6 +34,8 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     "no-liftoff": `Held on the pad, T/W ${e.value?.toFixed(2)}`,
     "flow-separation": `Nozzle flow separating at ${kPa(e.value ?? 0)} ambient`,
     "pitch-kick": `Pitch kick, ${Number((e.value ?? 0).toFixed(1))}°`,
+    "tower-jettison": `Abort tower jettisoned, ${Math.round(e.value ?? 0)} kg`,
+    abort: `Abort: the capsule pulls clear${e.value ? ` at ${kPa(e.value)}` : ""}`,
     "mach-1": "Mach 1",
     "max-q": `Max-q ${kPa(e.value ?? 0)}`,
     "q-limit-exceeded": `Load budget exceeded, q ${kPa(e.value ?? 0)}`,

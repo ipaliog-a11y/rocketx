@@ -50,13 +50,13 @@ test("the orbital licence takes two flights above 100 km, a fee and a review", (
   assert.throws(() => accept(c, "leo-150"), /reputation of 1/);
 });
 
-test("nobody can hold a crew licence yet", () => {
+test("the crew licence wants a capsule, both abort tests and a crew-rated rocket", () => {
   const c = company();
   c.licence = "orbital";
   const crew = nextLicence(c, 10)!;
   assert.equal(crew.tier, "crew");
   assert.equal(crew.ready, false);
-  assert.ok(crew.requirements.some((r) => /launch-abort/.test(r.text) && !r.met));
+  for (const want of [/capsule/, /pad abort/, /in-flight abort/, /crew-rated/]) assert.ok(crew.requirements.some((r) => want.test(r.text) && !r.met), String(want));
 });
 
 test("renaming keeps a sensible name", () => {
