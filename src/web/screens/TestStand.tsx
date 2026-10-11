@@ -6,7 +6,7 @@ import { FAILURE_LABELS, type FailureMode } from "../../sim/hardware.ts";
 import { partKeys, partLabel } from "../../sim/parts.ts";
 import { FACILITIES, FIXES, HARDWARE_LOSS, RESTART_TEST, revisionLetter, START_CHECK, seenAt as seenAtKnown, type EngineKnowledge, type Facility } from "../../sim/teststand.ts";
 import { burnTime } from "../../sim/vehicle.ts";
-import { Chip, ProofBar, Tabs } from "../components/Bits.tsx";
+import { Chip, Facts, ProofBar, Tabs } from "../components/Bits.tsx";
 import { isVacuumBell, Nozzle } from "../components/Rocket.tsx";
 import { game } from "../game.ts";
 import { fireJob, fixEngineJob } from "../jobs.ts";
@@ -108,7 +108,7 @@ function Firing({ company, focus }: { company: Company; focus: Focus | null }) {
 
   return (
     <>
-      <span className="muted">A firing proves only what it reaches. Bars show proven running against the longest flight burn. Engines that share a part share what the stand learns about it.</span>
+      <span className="muted">Bars: proven running against the longest flight burn. Engines sharing a part share what the stand learns.</span>
       <div className="row">
         <section className="side stack" aria-label="Engines" style={{ flexBasis: 420 }}>
           {uses.map((u) => {
@@ -126,18 +126,17 @@ function Firing({ company, focus }: { company: Company; focus: Focus | null }) {
                 }}
                 aria-pressed={on}
                 className="card"
-                style={{ textAlign: "left", cursor: "pointer", flexDirection: "row", alignItems: "center", gap: 16, borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
+                style={{ textAlign: "left", cursor: "pointer", flexDirection: "row", alignItems: "center", gap: 12, padding: "10px 14px", borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
               >
-                <Nozzle engine={u.engine} size={64} />
-                <span className="stack" style={{ gap: 6, flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                    <strong style={{ fontSize: 18 }}>{u.engine.name}</strong>
+                <Nozzle engine={u.engine} size={40} />
+                <span className="stack" style={{ gap: 5, flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                    <strong style={{ fontSize: 17 }}>{u.engine.name}</strong>
                     <Chip tone={st.tone}>{st.text}</Chip>
                   </span>
-                  <span className="muted" style={{ fontSize: 14 }}>
-                    {u.usedBy.length > 0 ? `${u.usedBy.join(" / ")} · ${u.burn.toFixed(0)} s burn` : `No design flies it yet · ${u.burn.toFixed(0)} s rated`}
+                  <span className="muted" style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {u.usedBy.length > 0 ? `${u.usedBy[0]}${u.usedBy.length > 1 ? ` +${u.usedBy.length - 1}` : ""} · ${u.burn.toFixed(0)} s burn` : `No design flies it · ${u.burn.toFixed(0)} s rated`}
                   </span>
-                  {u.engine.parts && <PartLine company={company} engine={u.engine} />}
                   <ProofBar
                     proven={known?.provenDuration ?? 0}
                     required={u.burn}
@@ -210,8 +209,12 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
     <section ref={top} className="grow stack" aria-label={`${engine.name} campaign`} style={{ gap: 18, scrollMarginTop: 12 }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "6px 16px" }}>
         <h2 style={{ fontSize: 26 }}>{engine.name}</h2>
-        <span className="muted">
-          {(engine.thrustVac / 1000).toFixed(1)} kN vacuum · Isp {engine.ispVac} s on paper · rated {engine.ratedLife ?? 300} s · exit {(engine.exitPressure / 1000).toFixed(0)} kPa
+        <span className="muted" style={{ fontSize: 14 }}>
+          {(engine.thrustVac / 1000).toFixed(1)} kN · Isp {engine.ispVac} s · rated {engine.ratedLife ?? 300} s · exit {(engine.exitPressure / 1000).toFixed(0)} kPa
+        </span>
+        {engine.parts && <PartLine company={company} engine={engine} />}
+        <span className="muted" style={{ fontSize: 13 }}>
+          {use.usedBy.length > 0 ? `Flies on ${use.usedBy.join(", ")}` : "No design flies it yet"}
         </span>
       </div>
       {plan?.why && (
@@ -222,35 +225,16 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
         </div>
       )}
 
-      <div className="row" style={{ gap: 16 }}>
-        <div className="card" style={{ flex: "1 1 200px" }}>
-          <span className="muted" style={{ fontSize: 13 }}>
-            Proven running
-          </span>
-          <span className="mono" style={{ fontSize: 22, fontWeight: 600 }}>
-            {(known?.provenDuration ?? 0).toFixed(1)} s <span className="muted" style={{ fontSize: 14 }}>of {burn.toFixed(0)} s</span>
-          </span>
-        </div>
-        <div className="card" style={{ flex: "1 1 200px" }}>
-          <span className="muted" style={{ fontSize: 13 }}>
-            Isp against the drawings
-          </span>
-          <span className="mono" style={{ fontSize: 22, fontWeight: 600 }}>
-            {measured === null ? "not measured" : pct(measured - 1)}
-          </span>
-        </div>
-        <div className="card" style={{ flex: "1 1 200px" }}>
-          <span className="muted" style={{ fontSize: 13 }}>
-            Vacuum running
-          </span>
-          <span style={{ fontSize: 18, fontWeight: 600 }}>{known?.altitudeTested ? "Measured in the cell" : use.upper ? "Never in vacuum" : "Not needed"}</span>
-          {use.upper && (
-            <span className={known?.open.includes("relight-failure") ? "bad" : known?.relightProven ? "good" : "muted"} style={{ fontSize: 14 }}>
-              {known?.open.includes("relight-failure") ? "Won't relight" : known?.relightProven ? "Relight proven" : "Relight never tried"}
-            </span>
-          )}
-        </div>
-      </div>
+      <Facts
+        items={[
+          ["Proven", `${(known?.provenDuration ?? 0).toFixed(0)} / ${burn.toFixed(0)} s`],
+          ["Isp vs drawings", measured === null ? "—" : pct(measured - 1)],
+          ["Vacuum", known?.altitudeTested ? "measured" : use.upper ? "never" : "not needed"],
+          ...(use.upper
+            ? [["Relight", known?.open.includes("relight-failure") ? "fails" : known?.relightProven ? "proven" : "never tried"] as [string, string]]
+            : []),
+        ]}
+      />
 
       {(known?.open ?? []).map((mode) => {
         const fix = FIXES[mode];
@@ -264,7 +248,8 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
             {fix ? (
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 20px" }}>
                 <span style={{ flex: "1 1 260px" }}>
-                  <strong>Fix: {fix.name}.</strong> <span className="soft">{fix.text} {engine.parts ? "A new revision of the part: every engine built with it gets the fix, and what was proven about that part has to be proven again." : "Earlier firings stop counting."}</span>
+                  <strong>Fix: {fix.name}.</strong> <span className="soft">{fix.text}</span>{" "}
+                  <span className="muted">{engine.parts ? "Fixes every engine with the part; its proof starts over." : "Earlier firings stop counting."}</span>
                 </span>
                 <span className="mono soft">
                   {money(fix.cost)} · {fix.days} days
@@ -282,28 +267,29 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
 
       <form className="card" onSubmit={(e) => e.preventDefault()} aria-label="Plan a firing">
         <p className="label">Plan a firing</p>
-        <fieldset style={{ margin: 0, padding: 0, border: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
-          <legend className="soft" style={{ marginBottom: 8 }}>
-            Facility
-          </legend>
+        <fieldset style={{ margin: 0, padding: 0, border: 0, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+          <legend className="sr-only">Facility</legend>
           {(Object.keys(FACILITIES) as Facility[]).map((id) => {
             const f = FACILITIES[id];
             const on = facility === id;
             return (
-              <label key={id} className="stack" style={{ gap: 4, padding: "10px 12px", border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`, borderRadius: 4, background: on ? "var(--selected)" : undefined, cursor: "pointer" }}>
+              <label
+                key={id}
+                className="stack"
+                title={`${(f.ambient / 1000).toFixed(f.ambient < 10_000 ? 0 : 1)} kPa back pressure`}
+                style={{ gap: 2, padding: "8px 10px", border: `1px solid ${on ? "var(--amber)" : "var(--line)"}`, borderRadius: 4, background: on ? "var(--selected)" : undefined, cursor: "pointer" }}
+              >
                 <span style={{ fontWeight: 600 }}>
-                  <input type="radio" name="facility" checked={on} onChange={() => setFacility(id)} style={{ marginRight: 8 }} />
+                  <input type="radio" name="facility" checked={on} onChange={() => setFacility(id)} style={{ marginRight: 6 }} />
                   {f.name.charAt(0).toUpperCase() + f.name.slice(1)}
                 </span>
-                <span className="muted" style={{ fontSize: 14 }}>
-                  {(f.ambient / 1000).toFixed(f.ambient < 10_000 ? 0 : 1)} kPa back pressure
-                </span>
-                <span className="mono soft" style={{ fontSize: 13 }}>
-                  ${f.setup}k + ${f.perSecond}k/s · {f.days} days
+                <span className="mono soft" style={{ fontSize: 12 }}>
+                  {f.days} days
+                  <br />${f.setup}k + ${f.perSecond}k/s
                 </span>
                 {flowSeparates(engine, f.ambient) && (
-                  <span className="warn" style={{ fontSize: 14 }}>
-                    Start check only: this bell can't run against sea-level air.
+                  <span className="warn" style={{ fontSize: 13 }}>
+                    Start check only
                   </span>
                 )}
               </label>
@@ -315,9 +301,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
             <span className="soft">Duration</span>
             <span>
               <strong className="mono">{START_CHECK} s</strong>{" "}
-              <span className="soft">
-                Lit, then shut down before the flow separates in the bell. It shows whether the engine starts cleanly. Isp, chamber life and vacuum running need the altitude cell.
-              </span>
+              <span className="soft">Lit and shut down before the bell's flow separates: a start check only.</span>
             </span>
           </div>
         ) : (
@@ -331,12 +315,12 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
             </span>
           </label>
         )}
-        <label className="actions" style={{ gap: 10, opacity: facility === "altitude" ? 1 : 0.5 }}>
+        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", opacity: facility === "altitude" ? 1 : 0.5 }}>
           <input type="checkbox" checked={restart} disabled={facility !== "altitude"} onChange={(e) => setRestart(e.target.checked)} />
           <span className="soft">
-            Restart test: shut down, purge, and relight in vacuum, the way an upper stage does after a coast.
-            {facility !== "altitude" && " Needs the altitude cell."}
-            {known?.relightProven ? " Relight already proven." : ""}
+            Restart test: relight in vacuum, as after a coast.
+            {facility !== "altitude" && <span className="muted"> Altitude cell only.</span>}
+            {known?.relightProven ? <span className="good"> Already proven.</span> : ""}
           </span>
         </label>
         <ProofBar proven={runs} required={burn} label={`This firing would run ${runs.toFixed(1)} s of a ${burn.toFixed(0)} s flight burn`} />
@@ -353,8 +337,8 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
           <button type="button" className="btn primary" onClick={() => game.schedule(fireJob(engine, planned, facility, runs, restart))}>
             {startCheck ? "Start check" : restart ? "Fire and restart" : "Fire"} · {money(cost)} · {days} days
           </button>
-          <span className="muted" style={{ fontSize: 14 }}>
-            Plus {money(days * COSTS.overheadPerDay)} payroll. If the engine fails: +{money(HARDWARE_LOSS.cost)} and {HARDWARE_LOSS.days} days for a new one.
+          <span className="muted" style={{ fontSize: 13 }}>
+            +{money(days * COSTS.overheadPerDay)} payroll · a lost engine costs {money(HARDWARE_LOSS.cost)} and {HARDWARE_LOSS.days} d
           </span>
         </div>
       </form>

@@ -172,7 +172,8 @@ svg text { font-family: var(--mono); }
   .tabs::-webkit-scrollbar { display: none; }
   .tabs button { flex: 0 0 auto; white-space: nowrap; }
   .card { padding: 14px 14px; }
-  .facts { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .facts { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  .facts div { padding: 10px 12px; }
   .actions .btn { flex: 1 1 auto; justify-content: center; }
 
   .notices { left: 12px; right: 12px; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 10px); max-width: none; z-index: 27; }
@@ -254,6 +255,23 @@ svg text { font-family: var(--mono); }
 .workstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 28px; border-bottom: 1px solid var(--line); background: #13202a; font-size: 14px; }
 .work-items { display: flex; flex-wrap: wrap; gap: 4px 18px; flex: 1 1 320px; min-width: 0; }
 .work-item { min-width: 0; overflow-wrap: anywhere; }
+.filter-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.filter-chips::-webkit-scrollbar { display: none; }
+.filter-chips button { flex: 0 0 auto; min-height: 36px; padding: 0 14px; border: 1px solid var(--line-strong); border-radius: 18px; background: transparent; color: var(--muted); font-weight: 600; cursor: pointer; white-space: nowrap; }
+.filter-chips button[aria-pressed="true"] { border-color: var(--amber); color: var(--text); background: var(--selected); }
+.part-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; align-items: start; }
+.part-card { padding: 0; gap: 0; }
+.part-card.open { border-color: var(--line-strong); padding-bottom: 14px; }
+.part-card.open > .stack { padding: 0 14px; }
+.part-head { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; }
+.part-head:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; border-radius: 6px; }
+.part-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.part-title strong { margin-right: auto; }
+.part-figure { font-size: 13px; color: var(--text-soft); }
+.part-next { display: flex; justify-content: space-between; font-size: 13px; }
+.mini-bar { display: block; height: 4px; border-radius: 2px; background: var(--ground); overflow: hidden; }
+.mini-bar > span { display: block; height: 100%; background: var(--cyan); }
+.mini-bar > span.full { background: var(--green); }
 .chip-button { min-height: 36px; padding: 0 12px; border: 1px solid #24506a; border-radius: 18px; background: #132430; color: var(--text); font-weight: 700; cursor: pointer; }
 .workstrip.folded { flex-wrap: nowrap; justify-content: space-between; padding-top: 6px; padding-bottom: 6px; }
 .workstrip.folded .actions { flex-wrap: nowrap; }
