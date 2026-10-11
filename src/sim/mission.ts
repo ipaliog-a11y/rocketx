@@ -46,7 +46,7 @@ export type OrbitBurn = {
 export type FlightPlan = { ascent: InsertionTarget | undefined; burns: OrbitBurn[] };
 
 /** Highest orbit flown straight up from the pad, m: anything higher goes via a parking orbit. */
-export const DIRECT_LIMIT = { periapsis: 400_000, apoapsis: 600_000 };
+export const DIRECT_LIMIT = { periapsis: 500_000, apoapsis: 600_000 };
 /** Parking orbit for high-energy missions, m, and the coast before the first relight, s. */
 export const PARKING = { altitude: 200_000, coast: 600 };
 
