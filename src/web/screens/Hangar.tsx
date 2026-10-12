@@ -9,49 +9,52 @@ import { height, Rocket } from "../components/Rocket.tsx";
 import { game } from "../game.ts";
 import { buildJob, retuneTestJob, testFlightJob } from "../jobs.ts";
 import { DrawingBoard } from "./DrawingBoard.tsx";
-import { Factory } from "./Factory.tsx";
-import { Crew } from "./Crew.tsx";
 import { Simulator, type SimFocus } from "./Simulator.tsx";
+import type { Route } from "../nav.ts";
 import { km, money } from "../format.ts";
 import { Icon } from "../components/Icon.tsx";
 import { COLORS } from "../palette.ts";
 
-type Tab = "lineup" | "design" | "sim" | "board" | "factory" | "crew" | "record";
+type Tab = "lineup" | "design" | "board" | "sim";
 
 /** Ideal Δv a 300 km orbit from Port Avery takes in this sim, losses included, m/s. */
 const LEO_NEEDS = 9_400;
 
-export function Hangar({ company, focus }: { company: Company; focus?: SimFocus }) {
-  const [tab, setTab] = useState<Tab>(focus ? "sim" : "lineup");
-  const [key, setKey] = useState("meridian");
-  const [simFocus, setSimFocus] = useState<SimFocus | undefined>(focus);
+/**
+ * Rockets: what to fly it on. The line-up and each design's record, one
+ * design's drawing, the drawing board for new ones, and the simulator.
+ */
+export function Rockets({ company, route }: { company: Company; route: Route }) {
+  const first = (["lineup", "design", "board", "sim"] as const).find((t) => t === route.tab) ?? (route.design ? "design" : "lineup");
+  const [tab, setTab] = useState<Tab>(first);
+  const [key, setKey] = useState(route.design && company.designs[route.design] ? route.design : "meridian");
+  const [simFocus, setSimFocus] = useState<SimFocus | undefined>(route.tab === "sim" ? { design: route.design, contract: route.contract } : undefined);
 
   return (
     <div className="screen">
       <div className="screen-head">
-        <h1>Hangar</h1>
+        <h1>Rockets</h1>
         <Tabs<Tab>
-          label="Hangar views"
+          label="Rocket views"
           value={tab}
           onChange={setTab}
           tabs={[
             ["lineup", "Line-up"],
             ["design", "Design"],
-            ["sim", "Simulator"],
             ["board", "Drawing board"],
-            ["factory", "Factory"],
-            ["crew", "Crew"],
-            ["record", "Flight record"],
+            ["sim", "Simulator"],
           ]}
         />
       </div>
-      {tab === "lineup" && <LineUp company={company} open={(k) => (setKey(k), setTab("design"))} />}
+      {tab === "lineup" && (
+        <>
+          <LineUp company={company} open={(k) => (setKey(k), setTab("design"))} />
+          <Record company={company} />
+        </>
+      )}
       {tab === "design" && <Design company={company} designKey={company.designs[key] ? key : "meridian"} simulate={(k) => (setSimFocus({ design: k }), setTab("sim"))} />}
       {tab === "sim" && <Simulator key={JSON.stringify(simFocus ?? {})} company={company} focus={simFocus} />}
       {tab === "board" && <DrawingBoard company={company} drawn={(k) => (setKey(k), setTab("design"))} />}
-      {tab === "factory" && <Factory company={company} />}
-      {tab === "crew" && <Crew company={company} />}
-      {tab === "record" && <Record company={company} />}
     </div>
   );
 }
@@ -203,7 +206,9 @@ function Design({ company, designKey, simulate }: { company: Company; designKey:
 
 function Record({ company }: { company: Company }) {
   return (
-    <section className="row" aria-label="Flight record">
+    <section className="stack" aria-label="Flight record">
+      <p className="label">Flight record</p>
+      <div className="row">
       {Object.entries(company.designs).map(([key, v]) => {
         const xp = company.experience[key];
         const flights = company.flights.filter((f) => f.design === v.name);
@@ -240,6 +245,7 @@ function Record({ company }: { company: Company }) {
           </div>
         );
       })}
+      </div>
     </section>
   );
 }

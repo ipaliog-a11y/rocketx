@@ -66,7 +66,7 @@ export function Factory({ company }: { company: Company }) {
                     ))}
                 </ul>
               )}
-              {orders.length === 0 && !settingUp && <span className="muted">Waiting for an order. Order vehicles from the Hangar or the Launch page.</span>}
+              {orders.length === 0 && !settingUp && <span className="muted">Waiting for an order. Order vehicles from Rockets › Design or a signed flight.</span>}
             </div>
           );
         })}

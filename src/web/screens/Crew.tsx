@@ -188,7 +188,7 @@ function Licence({ company }: { company: Company }) {
   }
   return (
     <section className="card" aria-label="Crewed-flight licence">
-      <p className="label">Crewed-flight licence · apply on the Company page</p>
+      <p className="label">Crewed-flight licence · apply from Home › Company</p>
       <ul className="list" style={{ gap: 4 }}>
         {application.requirements.map((r) => (
           <li key={r.text}>

@@ -509,3 +509,59 @@ table.compact th:last-child, table.compact td:last-child { padding-right: 0; }
   .milestone { top: 64px; }
   .delta { font-size: 11px; right: 0; left: auto; }
 }
+
+/* Step 3: Home › Today and the Advance button. */
+.advance-btn { min-height: 36px; padding: 0 12px; gap: 6px; flex: 0 0 auto; }
+.advance-short { display: none; }
+/* Desktop: one line in the top bar. The licence is on Home when space runs short. */
+@media (min-width: 1000px) { .topbar { flex-wrap: nowrap; } .nav { flex-wrap: nowrap; } }
+@media (min-width: 701px) and (max-width: 1360px) { .stat-licence { display: none !important; } .nav-long { white-space: nowrap; } }
+@media (min-width: 1000px) and (max-width: 1100px) { .nav-icon { display: none; } .stats { gap: 6px 12px; } }
+
+.today { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.today > * { min-width: 0; }
+.today-campus { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; }
+.next-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.next-item button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 12px 10px 16px; border-radius: 4px; background: var(--raised); position: relative; overflow: hidden; transition: transform var(--fast) var(--ease-out), background var(--fast); }
+.next-item button::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--data); }
+.next-item.tone-bad button::before { background: var(--bad); }
+.next-item.tone-caution button::before { background: var(--caution); }
+.next-item.tone-good button::before { background: var(--good); }
+.next-item button:hover { transform: translateX(3px); background: var(--selected); }
+.next-item button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.next-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.next-words .muted { font-size: 14px; }
+.next-go { display: inline-flex; align-items: center; gap: 4px; color: var(--data); font-weight: 600; white-space: nowrap; }
+
+.pipelines { display: flex; flex-direction: column; gap: 10px; }
+.pipe { all: unset; box-sizing: border-box; display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 12px; align-items: start; cursor: pointer; width: 100%; padding: 12px; border-radius: 4px; background: var(--raised); border: 1px solid transparent; row-gap: 8px; transition: border-color var(--fast); }
+.pipe:hover { border-color: var(--line-strong); }
+.pipe:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.pipe-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.pipe-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.pipe-step { font: 600 11px/1.2 var(--mono); letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); padding-top: 7px; border-top: 3px solid var(--line-strong); overflow-wrap: anywhere; }
+.pipe-step.done { border-color: var(--good); color: var(--good); }
+.pipe-step.now { border-color: var(--action); color: var(--action); }
+.pipe-step.bad { border-color: var(--bad); color: var(--bad-text); }
+.pipe-meta { font-size: 13px; }
+
+.campus { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background-color: var(--blueprint); background-image: linear-gradient(var(--hover) 1px, transparent 1px), linear-gradient(90deg, var(--hover) 1px, transparent 1px); background-size: 20px 20px; }
+.campus svg { display: block; width: 100%; min-width: 860px; height: auto; }
+.campus .facility { cursor: pointer; outline: none; }
+.campus .facility:hover g, .campus .facility:focus-visible g { filter: brightness(1.35); }
+.campus .facility:focus-visible .campus-name { fill: var(--action); }
+.campus-name { font: 600 12px var(--mono); fill: var(--text-soft); letter-spacing: 0.04em; }
+.campus-sub { font: 11px var(--mono); fill: var(--muted); }
+.campus .facility.busy .campus-sub { fill: var(--action); }
+.campus .flow { animation: flow 0.6s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -12; } }
+
+@media (max-width: 900px) {
+  .today { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .advance-long { display: none; }
+  .advance-short { display: inline; font-family: var(--mono); }
+  .advance-btn { padding: 0 10px; min-height: 34px; }
+  .stats { gap: 8px; }
+}

@@ -14,6 +14,8 @@ import { money, pct } from "../format.ts";
 import { EngineShop } from "./EngineShop.tsx";
 import { Parts } from "./Parts.tsx";
 import { Sheet } from "../components/Sheet.tsx";
+import { Tunnel } from "./Tunnel.tsx";
+import type { Route } from "../nav.ts";
 
 type EngineUse = { engine: Engine; burn: number; upper: boolean; usedBy: string[] };
 
@@ -49,40 +51,48 @@ function statusOf(known: EngineKnowledge | undefined, burn: number): { text: str
   return { text: "PARTLY PROVEN", tone: "warn" };
 }
 
-type Tab = "firing" | "shop" | "parts";
+type Tab = "engines" | "parts" | "shop" | "tunnel";
 
-/** An engine to open on the Firing tab, with a firing already planned: from the Parts page. */
+/** An engine to open on the Engines tab, with a firing already planned: from the Parts page or a link elsewhere. */
 export type Focus = { engine: string; facility?: Facility; seconds?: number; restart?: boolean; why?: string };
 
-export function TestStand({ company }: { company: Company }) {
-  const [tab, setTab] = useState<Tab>("firing");
-  const [focus, setFocus] = useState<Focus | null>(null);
+/**
+ * Testing: everything the company doesn't know yet. Engines on the stands,
+ * the parts they share, new engines from the shop, and shapes in the tunnel.
+ */
+export function TestStand({ company, route }: { company: Company; route: Route }) {
+  const first = (["engines", "parts", "shop", "tunnel"] as const).find((t) => t === route.tab) ?? "engines";
+  const [tab, setTab] = useState<Tab>(first);
+  const [focus, setFocus] = useState<Focus | null>(
+    route.engine ? { engine: route.engine, facility: route.facility, seconds: route.seconds, restart: route.restart, why: route.why } : null,
+  );
   return (
     <div className="screen">
       <div className="screen-head">
-        <h1>Test stand</h1>
+        <h1>Testing</h1>
         <Tabs<Tab>
-          label="Test stand views"
+          label="Testing views"
           value={tab}
           onChange={(t) => {
             setTab(t);
             setFocus(null);
           }}
           tabs={[
-            ["firing", "Firing"],
-            ["shop", "Engine shop"],
+            ["engines", "Engines"],
             ["parts", "Parts"],
+            ["shop", "Engine shop"],
+            ["tunnel", "Wind tunnel"],
           ]}
         />
       </div>
-      {tab === "firing" && <Firing company={company} focus={focus} />}
+      {tab === "engines" && <Firing company={company} focus={focus} />}
       {tab === "shop" && (
         <EngineShop
           company={company}
-          done={() => setTab("firing")}
+          done={() => setTab("engines")}
           show={(engine) => {
             setFocus({ engine });
-            setTab("firing");
+            setTab("engines");
           }}
         />
       )}
@@ -91,10 +101,11 @@ export function TestStand({ company }: { company: Company }) {
           company={company}
           test={(f) => {
             setFocus(f);
-            setTab("firing");
+            setTab("engines");
           }}
         />
       )}
+      {tab === "tunnel" && <Tunnel company={company} design={route.design} />}
     </div>
   );
 }

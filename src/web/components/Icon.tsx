@@ -31,6 +31,8 @@ export const ICONS = {
   play: "M8 5l11 7-11 7z",
   next: "M5 12h14M13 6l6 6-6 6",
   simulate: "M3 19l5-7 4 4 4-7 5 6M3 21h18",
+  pad: "M4 21h16M7 21V7M7 7h4M7 11h4M7 15h4M15 21v-9c0-3 1-5 2.5-7 1.5 2 2.5 4 2.5 7v9",
+  home: "M3 11l9-7 9 7M5 9.5V21h14V9.5M10 21v-6h4v6",
 } as const;
 
 export type IconName = keyof typeof ICONS;

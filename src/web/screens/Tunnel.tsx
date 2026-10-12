@@ -32,9 +32,11 @@ function shapes(company: Company): Array<{ key: string; label: string; design: s
   return [...out.values()];
 }
 
-export function Tunnel({ company }: { company: Company }) {
+/** The wind tunnel: a tab of Testing. `design` opens on that design's shape. */
+export function Tunnel({ company, design }: { company: Company; design?: string }) {
   const all = shapes(company);
-  const [selected, setSelected] = useState(all[all.length - 1]!.key);
+  const wanted = design && company.designs[design] ? aeroShape(company.designs[design]!).key : undefined;
+  const [selected, setSelected] = useState(wanted ?? all[all.length - 1]!.key);
   const shape = all.find((s) => s.key === selected) ?? all[0]!;
   const vehicle = company.designs[shape.design]!;
   const known = company.campaign.aeroKnowledge[shape.key];
@@ -55,11 +57,8 @@ export function Tunnel({ company }: { company: Company }) {
   const peak = Math.max(...series.flatMap((s) => s.points.map((p) => p[1])));
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <h1>Wind tunnel</h1>
-        <span className="muted">One shape per outer mould line. Designs that share a shape share what the tunnel learns.</span>
-      </div>
+    <>
+      <span className="muted">One shape per outer mould line. Designs that share a shape share what the tunnel learns.</span>
       <div className="row">
         <section className="side stack" aria-label="Shapes" style={{ flexBasis: 360 }}>
           {all.map((s) => {
@@ -216,6 +215,6 @@ export function Tunnel({ company }: { company: Company }) {
           )}
         </section>
       </div>
-    </div>
+    </>
   );
 }

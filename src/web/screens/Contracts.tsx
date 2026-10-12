@@ -12,8 +12,9 @@ import { Sheet } from "../components/Sheet.tsx";
 import { useNarrow } from "../narrow.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
 import { glyphKind, MissionGlyph } from "../components/Icon.tsx";
+import { useGo, type Route } from "../nav.ts";
 
-type Props = { company: Company; version: number; goTo: (screen: "launch") => void };
+type Props = { company: Company; version: number; route?: Route };
 type View = "table" | "calendar";
 type Tone = "good" | "warn" | "bad" | "muted" | undefined;
 type StatusFilter = "active" | "open" | "signed" | "announced" | "closed" | "all";
@@ -47,15 +48,15 @@ function visible(company: Company): Contract[] {
 
 const regimeOf = (c: Contract) => (c.mission.target ? c.mission.name.replace(/^LEO /, "") : c.minApogee ? `↑ ${km(c.minApogee, 0)}` : "suborbital");
 
-export function Contracts({ company, version, goTo }: Props) {
-  const [view, setView] = useState<View>("table");
+export function Contracts({ company, version, route }: Props) {
+  const [view, setView] = useState<View>(route?.tab === "calendar" ? "calendar" : "table");
   const rows: Row[] = visible(company).map((c) => ({ c, status: statusOf(company, c) }));
-  const [selected, setSelected] = useState<string | undefined>(() => rows.find((r) => r.status.key === "open")?.c.id);
+  const [selected, setSelected] = useState<string | undefined>(() => (route?.contract && rows.some((r) => r.c.id === route.contract) ? route.contract : rows.find((r) => r.status.key === "open")?.c.id));
   const contract = rows.find((r) => r.c.id === selected)?.c;
   const [designChoice, setDesign] = useState<Record<string, string>>({});
   // On a phone the bid opens over the list once a contract is picked.
   const narrow = useNarrow();
-  const [sheet, setSheet] = useState(false);
+  const [sheet, setSheet] = useState(route?.contract !== undefined);
   const pick = (id: string) => {
     setSelected(id);
     setSheet(true);
@@ -89,7 +90,7 @@ export function Contracts({ company, version, goTo }: Props) {
             <div className="card alert" role="note">
               <p className="label bad">Reputation {reputation(company)}: most customers won't sign</p>
               <span className="soft">
-                Two ways back. Student payloads accept any record and earn +1 when delivered. And every clean test flight above 100 km, from the Hangar, wins back a point
+                Two ways back. Student payloads accept any record and earn +1 when delivered. And every clean test flight above 100 km, from Rockets › Design, wins back a point
                 until you are at 0.{company.licence === "suborbital" ? " The orbital licence also needs a reputation of 0 or better." : ""}
               </span>
             </div>
@@ -121,7 +122,6 @@ export function Contracts({ company, version, goTo }: Props) {
               contract={contract}
               design={designChoice[contract.id] ?? defaultDesign(contract)}
               setDesign={(d) => setDesign({ ...designChoice, [contract.id]: d })}
-              goTo={goTo}
             />
           </Sheet>
         ) : (
@@ -504,7 +504,8 @@ function AdvanceBar({ company, day, clear }: { company: Company; day: number; cl
   );
 }
 
-function BidPanel({ company, version, contract, design, setDesign, goTo }: { company: Company; version: number; contract: Contract; design: string; setDesign: (d: string) => void; goTo: Props["goTo"] }) {
+function BidPanel({ company, version, contract, design, setDesign }: { company: Company; version: number; contract: Contract; design: string; setDesign: (d: string) => void }) {
+  const go = useGo();
   // The forecast flies the vehicle once; recompute only when something changed.
   const b = useMemo(() => bid(company, contract.id, design), [company, contract.id, design, version]);
   const signed = company.accepted.includes(contract.id);
@@ -571,7 +572,7 @@ function BidPanel({ company, version, contract, design, setDesign, goTo }: { com
       {signed ? (
         <div className="actions">
           <span className="soft">Signed. Build, re-tune and fly it from the Launch page.</span>
-          <button type="button" className="btn primary" onClick={() => goTo("launch")}>
+          <button type="button" className="btn primary" onClick={() => go({ place: "launch", contract: contract.id })}>
             Go to Launch
           </button>
         </div>

@@ -39,7 +39,7 @@ function tagText(tag: Tag): string {
   }
 }
 
-/** The ledger and the record: the Company page's money tab. */
+/** The ledger and the record: Home's ledger tab. */
 export function LedgerTab({ company }: { company: Company }) {
   const totals = new Map<Category, number>();
   for (const e of company.ledger) totals.set(e.category, (totals.get(e.category) ?? 0) + e.amount);
