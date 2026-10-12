@@ -101,7 +101,11 @@ export type Task = {
 };
 
 /** A finished job, for the record and the notices. */
-export type TaskDone = { id: number; track: Track; title: string; day: number; summary: string; text: string; key?: string };
+/** How a finished job went: good news, bad news, or just news. */
+export type DoneTone = "good" | "bad" | "info";
+
+/** A finished job, for the record and the notices. */
+export type TaskDone = { id: number; track: Track; title: string; day: number; summary: string; text: string; key?: string; tone?: DoneTone };
 
 /** Fields older saves lack. */
 export function upgradeCompany(company: Company): void {
@@ -429,21 +433,22 @@ function complete(company: Company, task: Task): string[] {
   let summary: string;
   let text: string;
   let key: string | undefined;
+  let tone: DoneTone = "info";
   try {
-    ({ summary, text, key } = effect(company, task));
+    ({ summary, text, key, tone } = effect(company, task));
   } catch (error) {
     // The world moved while it waited: nothing left to do. The money comes back.
     pay(company, categoryOf(task.spec), -task.cost, `${task.title}: not needed`);
     summary = `${task.title}: not done. ${(error as Error).message} The money is refunded.`;
     text = summary;
   }
-  const done: TaskDone = { id: task.parent ?? task.id, track: task.track, title: task.title, day: company.day, summary, text, ...(key ? { key } : {}) };
+  const done: TaskDone = { id: task.parent ?? task.id, track: task.track, title: task.title, day: company.day, summary, text, tone, ...(key ? { key } : {}) };
   company.done.push(done);
   if (company.done.length > 40) company.done.splice(0, company.done.length - 40);
   return task.spec.kind === "replace" ? [] : [completionNotice(done)];
 }
 
-function effect(company: Company, task: Task): { summary: string; text: string; key?: string } {
+function effect(company: Company, task: Task): { summary: string; text: string; key?: string; tone: DoneTone } {
   const spec = task.spec;
   const campaign = company.campaign;
   switch (spec.kind) {
@@ -457,25 +462,25 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
       }
       const f = report.findings[0];
       const what = f ? `${FAILURE_LABELS[f.mode]} at ${f.t.toFixed(1)} s${report.hardwareLost ? ", test engine lost" : ""}` : report.isp ? `clean, Isp ${(report.isp.measured / report.isp.predicted - 1 >= 0 ? "+" : "")}${((report.isp.measured / report.isp.predicted - 1) * 100).toFixed(1)}% against the drawings` : "clean";
-      return { summary: `${engine.name} ${spec.restart ? "restart test" : `${report.fired.toFixed(0)} s`}: ${what}.`, text: report.text };
+      return { summary: `${engine.name} ${spec.restart ? "restart test" : `${report.fired.toFixed(0)} s`}: ${what}.`, text: report.text, tone: f || report.hardwareLost ? "bad" : "good" };
     }
     case "replace":
-      return { summary: `a new ${spec.engine} test engine is ready.`, text: "" };
+      return { summary: `a new ${spec.engine} test engine is ready.`, text: "", tone: "info" };
     case "fix-engine": {
       const r = applyFix(campaign, engineOf(company, spec.engine), spec.mode);
-      return { summary: `${r.text.split(".")[0]}.`, text: r.text };
+      return { summary: `${r.text.split(".")[0]}.`, text: r.text, tone: "good" };
     }
     case "tunnel": {
       const r = tunnelRun(campaign, designOf(company, spec.design), spec.facility);
-      return { summary: `${r.shape}: ${r.buffet ? "transonic buffet found" : "data in"}.`, text: r.text };
+      return { summary: `${r.shape}: ${r.buffet ? "transonic buffet found" : "data in"}.`, text: r.text, tone: r.buffet ? "bad" : "info" };
     }
     case "fix-aero": {
       const text = applyAeroFix(campaign, designOf(company, spec.design), spec.mode);
-      return { summary: text.split(".")[0] + ".", text };
+      return { summary: text.split(".")[0] + ".", text, tone: "good" };
     }
     case "refine": {
       const text = refine(company, spec.part);
-      return { summary: text.split(":")[0] + ".", text };
+      return { summary: text.split(":")[0] + ".", text, tone: "good" };
     }
     case "develop": {
       const engine = assembleEngine(spec.parts, spec.name);
@@ -485,7 +490,7 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
       campaign.engines[spec.name] = engine;
       refreshFromParts(campaign);
       const text = `${spec.name} developed: ${(engine.thrustVac / 1000).toFixed(1)} kN, Isp ${engine.ispVac} s on paper. ${newParts.length === 0 ? "Every part was already in production." : `New parts: ${newParts.map(partLabel).join(", ")}.`}`;
-      return { summary: `${spec.name} developed.`, text };
+      return { summary: `${spec.name} developed.`, text, tone: "good" };
     }
     case "design": {
       const key = designKey(company, spec.vehicle.name);
@@ -494,29 +499,31 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
       const newShape = !campaign.aeroTruth[shape.key];
       campaign.aeroTruth[shape.key] ??= rollAeroTruth(spec.vehicle, company.seed);
       const text = `${spec.vehicle.name} drawn up.${spec.tooling.length > 0 ? ` New: ${spec.tooling.join(", ")}.` : ""}${newShape ? ` Its ${shape.label} is a shape the tunnel has never seen.` : ""}`;
-      return { summary: `${spec.vehicle.name} drawn up: ready to build.`, text, key };
+      return { summary: `${spec.vehicle.name} drawn up: ready to build.`, text, key, tone: "info" };
     }
     case "retune": {
       const design = designOf(company, spec.design);
       company.designs[spec.design] = { ...design, pitchProgram: spec.pitchProgram };
-      return { summary: `${design.name} re-tuned.`, text: spec.text };
+      return { summary: `${design.name} re-tuned.`, text: spec.text, tone: "info" };
     }
     case "licence":
       company.licence = spec.tier;
-      return { summary: `${LICENCE_LABELS[spec.tier]} licence granted.`, text: `${LICENCE_LABELS[spec.tier]} licence granted on day ${company.day}.` };
+      return { summary: `${LICENCE_LABELS[spec.tier]} licence granted.`, text: `${LICENCE_LABELS[spec.tier]} licence granted on day ${company.day}.`, tone: "good" };
     case "capsule":
       company.capsule = newCapsule(company.seed, company.day);
       return {
         summary: "Crew capsule developed.",
+        tone: "good",
         text: `The crew capsule is ready: ${CAPSULE.mass.toLocaleString("en-US")} kg with ${CAPSULE.crew} crew, under a ${CAPSULE.tower.mass} kg abort tower dropped at T+${CAPSULE.tower.jettisonAt} s. Whether its abort system would save a crew is unknown until the pad and in-flight abort tests.`,
       };
     case "pad-abort": {
       const text = padAbort(company.capsule!, company.day);
-      return { summary: text.split(":")[0] + (company.capsule!.known.padAbortPassed ? ": passed." : ": failed."), text };
+      const passed = company.capsule!.known.padAbortPassed;
+      return { summary: text.split(":")[0] + (passed ? ": passed." : ": failed."), text, tone: passed ? "good" : "bad" };
     }
     case "fix-abort": {
       const text = fixAbortFlaw(company.capsule!, spec.flaw, company.day);
-      return { summary: `${ABORT_FIXES[spec.flaw].name} fitted.`, text };
+      return { summary: `${ABORT_FIXES[spec.flaw].name} fitted.`, text, tone: "good" };
     }
   }
 }

@@ -438,3 +438,74 @@ svg text { font-family: var(--mono); }
 table.compact th, table.compact td { padding: 8px 8px; }
 table.compact th:first-child, table.compact td:first-child { padding-left: 0; }
 table.compact th:last-child, table.compact td:last-child { padding-right: 0; }
+
+/* Step 2: feedback and big moments. */
+
+/* The top bar's change, beside the figure for a moment. */
+.stats dd { position: relative; }
+.delta { position: absolute; left: 0; top: 100%; margin-top: 2px; font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; animation: delta 2.4s var(--ease-out) forwards; }
+@keyframes delta { 0% { opacity: 0; transform: translateY(-4px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .delta { animation: none; } }
+
+/* Result toasts: a stripe in the tone's colour, the news, and where and when. */
+.notice.good { border-color: var(--good-line); }
+.notice.result { position: relative; padding-left: 18px; overflow: hidden; }
+.notice.result::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--data); }
+.notice.result.good::before { background: var(--good); }
+.notice.result.bad::before { background: var(--bad); }
+.notice-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notice-words small { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.notice.leaving { animation: leave var(--base) var(--ease-in) forwards; }
+@keyframes leave { to { opacity: 0; transform: translateX(16px); } }
+
+/* The firing, played back. */
+.moment { position: relative; overflow: hidden; max-width: 760px; }
+.moment-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.moment-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
+.moment-engine { display: block; }
+.moment-data { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.moment-clock { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+.moment-clock .mono:first-child { font-size: 32px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.moment-trace { width: 100%; height: auto; display: block; }
+.moment-verdict { min-height: 44px; padding: 10px 12px; border-radius: 4px; font-weight: 600; opacity: 0; transform: translateY(6px); transition: opacity var(--base) var(--ease-out), transform var(--base) var(--ease-out); }
+.moment-verdict.show { opacity: 1; transform: none; }
+.moment-verdict.good { background: var(--good-bg); color: var(--good); }
+.moment-verdict.bad { background: var(--bad-bg); color: var(--bad-text); }
+.moment.failed { border-color: var(--bad-line); }
+.moment-flash { position: absolute; inset: 0; background: var(--bad); pointer-events: none; animation: flash 0.5s ease-out forwards; }
+@keyframes flash { from { opacity: 0.3; } to { opacity: 0; } }
+.plume { transform-box: fill-box; transform-origin: 50% 0; animation: flicker 0.11s infinite alternate; }
+@keyframes flicker { from { transform: scaleY(0.9) scaleX(0.97); opacity: 0.85; } to { transform: scaleY(1.06) scaleX(1.02); opacity: 1; } }
+
+/* Countdown and liftoff, before the replay. */
+.countdown { gap: 0; padding: 0; overflow: hidden; }
+.countdown-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px 0; }
+.countdown-stage { position: relative; height: 360px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 28px; }
+.countdown-rocket { position: relative; display: flex; flex-direction: column; align-items: center; transition: transform 1s cubic-bezier(0.55, 0, 0.9, 0.4); }
+.countdown-rocket.lift { transform: translateY(-420px); }
+.countdown-plume { position: absolute; top: 100%; width: 22px; height: 0; border-radius: 0 0 50% 50%; background: linear-gradient(#fff6e0, var(--action) 35%, color-mix(in srgb, var(--data) 40%, transparent) 80%, transparent); opacity: 0; transition: height 0.35s var(--ease-out), opacity 0.2s; }
+.countdown-rocket.lift .countdown-plume { height: 90px; opacity: 1; animation: flicker 0.1s infinite alternate; transform-origin: 50% 0; }
+.countdown-pad { width: 160px; height: 3px; background: var(--line-strong); border-radius: 2px; }
+.countdown-number { position: absolute; top: 24px; right: 28px; font-size: 56px; font-weight: 600; color: var(--text); animation: count 0.6s var(--ease-out); }
+@keyframes count { from { opacity: 0; transform: scale(1.4); } to { opacity: 1; transform: none; } }
+
+/* Milestones: a banner that lands at the top, holds, and goes. */
+.milestone { position: fixed; left: 0; right: 0; top: 76px; z-index: 35; display: flex; justify-content: center; padding: 0 16px; pointer-events: none; }
+.milestone-card { all: unset; pointer-events: auto; box-sizing: border-box; cursor: pointer; display: flex; gap: 16px; align-items: center; max-width: 520px; width: 100%; padding: 16px 20px; border: 1px solid var(--action-line); border-radius: 8px; background: linear-gradient(180deg, var(--action-bg), var(--panel)); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); animation: rise var(--slow) var(--ease-out); }
+.milestone-card:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.milestone-icon { position: relative; flex: 0 0 auto; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--action); background: var(--ground); }
+.milestone-icon::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--action); animation: ring 1.6s var(--ease-out) infinite; }
+@keyframes ring { from { opacity: 0.8; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+.milestone-icon .icon { width: 26px; height: 26px; }
+.milestone-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.milestone-words strong { font-size: 22px; }
+
+@media (max-width: 700px) {
+  .moment-body { grid-template-columns: 1fr; justify-items: center; }
+  .moment-data { width: 100%; }
+  .moment-engine { max-height: 200px; width: auto; }
+  .countdown-stage { height: 300px; }
+  .countdown-number { font-size: 34px; top: 12px; left: 18px; right: auto; }
+  .milestone { top: 64px; }
+  .delta { font-size: 11px; right: 0; left: auto; }
+}

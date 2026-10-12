@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import type { Vehicle } from "../../sim/vehicle.ts";
+import { height, Rocket } from "../components/Rocket.tsx";
+import { reducedMotion } from "../motion.ts";
+import { useNarrow } from "../narrow.ts";
 import type { FlightEvent, FlightResult, Sample } from "../../sim/ascent.ts";
 import type { FlightReport } from "../../sim/company.ts";
 import { FAILURE_LABELS } from "../../sim/hardware.ts";
@@ -54,13 +58,65 @@ function at(samples: Sample[], t: number): Sample {
 }
 
 export function Flight({ report, design }: { report: FlightReport; design: string }) {
-  const [showDebrief, setShowDebrief] = useState(report.result.samples.length <= 1);
-  const budget = game.snapshot().company?.designs[design]?.limits.maxDynamicPressure ?? 50_000;
+  const flies = report.result.samples.length > 1;
+  const [phase, setPhase] = useState<"countdown" | "flight">(flies && !reducedMotion() ? "countdown" : "flight");
+  const [showDebrief, setShowDebrief] = useState(!flies);
+  const vehicle = game.snapshot().company?.designs[design];
+  const budget = vehicle?.limits.maxDynamicPressure ?? 50_000;
+  // News the flight brought (a first orbit, a licence) waits for the debrief.
+  useEffect(() => {
+    if (showDebrief) game.endCinema();
+  }, [showDebrief]);
+  if (phase === "countdown" && vehicle) {
+    return (
+      <div className="screen">
+        <Countdown vehicle={vehicle} title={`${report.result.vehicle} · ${report.result.mission}`} onDone={() => setPhase("flight")} />
+      </div>
+    );
+  }
   return (
     <div className="screen">
       <Replay result={report.result} budget={budget} title={`${report.result.vehicle} · ${report.result.mission}`} skip="Skip to debrief" onEnd={() => setShowDebrief(true)} />
       {showDebrief && <Debrief report={report} />}
     </div>
+  );
+}
+
+/** Before the replay: the rocket on the pad, a count from three, and liftoff. */
+function Countdown({ vehicle, title, onDone }: { vehicle: Vehicle; title: string; onDone: () => void }) {
+  const [count, setCount] = useState(3);
+  const done = useRef(onDone);
+  done.current = onDone;
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => setCount(2), 700),
+      setTimeout(() => setCount(1), 1400),
+      setTimeout(() => setCount(0), 2100),
+      setTimeout(() => done.current(), 3200),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, []);
+  const narrow = useNarrow();
+  const scale = Math.min(14, (narrow ? 190 : 260) / height(vehicle));
+  return (
+    <section className="countdown card blueprint" aria-label="Countdown">
+      <div className="countdown-head">
+        <p className="label">{title}</p>
+        <button type="button" className="btn quiet" onClick={() => done.current()}>
+          Skip
+        </button>
+      </div>
+      <div className="countdown-stage">
+        <div className={`countdown-rocket ${count === 0 ? "lift" : ""}`}>
+          <Rocket vehicle={vehicle} scale={scale} />
+          <span className="countdown-plume" aria-hidden="true" />
+        </div>
+        <span className="countdown-pad" aria-hidden="true" />
+        <span key={count} className="countdown-number mono" role="status" aria-live="assertive">
+          {count > 0 ? `T−${count}` : "Liftoff"}
+        </span>
+      </div>
+    </section>
   );
 }
 
