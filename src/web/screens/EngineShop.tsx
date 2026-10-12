@@ -68,8 +68,7 @@ function Option({
       disabled={disabled !== undefined}
       title={disabled}
       onClick={onPick}
-      className="card option"
-      style={{ borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
+      className="card option pickable"
     >
       <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
         <strong>{title}</strong>

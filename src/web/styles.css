@@ -1,22 +1,61 @@
-/* Instrument-panel look from the UI drafts: graphite ground, amber for
-   action and caution, cyan for data, condensed sans with monospaced numbers. */
+/* Instrument-panel look: graphite ground, condensed sans, monospaced numbers.
+   Every colour has one meaning, everywhere:
+     action  amber   what you can do: primary buttons, focus, the current tab, a selection
+     data    cyan    measured and planned figures, plots, progress
+     good    green   verdicts that went well: proven, delivered, held
+     bad     red     verdicts that went badly: failed, lost, late, over budget
+     caution yellow  unknowns and risks: never tested, on trust, cutting it close
+     crew    violet  people: capsule, abort system, crewed flights
+   Three surfaces, darkest to lightest: ground, panel, raised. */
 :root {
   --ground: #0e1216;
   --panel: #151b21;
   --raised: #1c242c;
   --selected: #1e2730;
+  --hover: #18202a;
+  --blueprint: #121820;
   --line: #2a343f;
   --line-strong: #3a4652;
   --text: #e8ecef;
   --text-soft: #c3ccd5;
   --muted: #93a0ad;
-  --amber: #f0a43a;
-  --cyan: #5bb8e3;
-  --red: #ef6a5e;
-  --red-text: #ef8a80;
-  --green: #63c58a;
-  --red-ground: #1f1716;
-  --red-line: #5a2a26;
+  --faint: #5b6773;
+
+  --action: #f0a43a;
+  --data: #5bb8e3;
+  --data-deep: #2e6e8e;
+  --good: #63c58a;
+  --bad: #ef6a5e;
+  --bad-text: #ef8a80;
+  --caution: #e3c25e;
+  --crew: #a993e8;
+  --action-bg: color-mix(in srgb, var(--action) 16%, var(--ground));
+  --data-bg: color-mix(in srgb, var(--data) 12%, var(--ground));
+  --good-bg: color-mix(in srgb, var(--good) 14%, var(--ground));
+  --bad-bg: color-mix(in srgb, var(--bad) 12%, var(--ground));
+  --caution-bg: color-mix(in srgb, var(--caution) 14%, var(--ground));
+  --crew-bg: color-mix(in srgb, var(--crew) 14%, var(--ground));
+  --good-line: color-mix(in srgb, var(--good) 40%, var(--line));
+  --bad-line: color-mix(in srgb, var(--bad) 40%, var(--line));
+  --data-line: color-mix(in srgb, var(--data) 40%, var(--line));
+  --action-line: color-mix(in srgb, var(--action) 45%, var(--line));
+
+  /* Older names, kept so every screen reads the same tokens. */
+  --amber: var(--action);
+  --cyan: var(--data);
+  --green: var(--good);
+  --red: var(--bad);
+  --red-text: var(--bad-text);
+  --red-ground: var(--bad-bg);
+  --red-line: var(--bad-line);
+
+  /* Motion: quick for presses, base for things opening, slow for things arriving. */
+  --fast: 120ms;
+  --base: 220ms;
+  --slow: 380ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
   --sans: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
   color-scheme: dark;
@@ -32,7 +71,9 @@ a { color: var(--amber); }
 .muted { color: var(--muted); }
 .soft { color: var(--text-soft); }
 .good { color: var(--green); }
-.warn { color: var(--amber); }
+.warn { color: var(--caution); }
+.crew { color: var(--crew); }
+.data { color: var(--data); }
 .bad { color: var(--red-text); }
 
 .app { min-height: 100vh; display: flex; flex-direction: column; }
@@ -49,8 +90,8 @@ a { color: var(--amber); }
 }
 .nav button[aria-current="page"] { background: var(--raised); color: var(--text); }
 .stats { margin: 0 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--mono); font-size: 14px; }
-.stats div { display: flex; gap: 8px; }
-.stats dt { color: var(--muted); }
+.stats div { display: flex; gap: 6px; align-items: center; }
+.stats dt { color: var(--muted); display: flex; }
 .stats dd { margin: 0; font-weight: 600; }
 
 .screen { flex: 1; padding: 24px 28px 40px; display: flex; flex-direction: column; gap: 20px; }
@@ -67,34 +108,54 @@ h2 { margin: 0; font-size: 22px; font-weight: 700; }
 .card { padding: 18px 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
 .card.alert { border-color: var(--red-line); background: var(--red-ground); }
 .card.blueprint {
-  background-color: #121820;
-  background-image: linear-gradient(#18202a 1px, transparent 1px), linear-gradient(90deg, #18202a 1px, transparent 1px);
+  background-color: var(--blueprint);
+  background-image: linear-gradient(var(--hover) 1px, transparent 1px), linear-gradient(90deg, var(--hover) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
-.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs { position: relative; display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); }
 .tabs button {
-  min-height: 44px; padding: 0 16px; border: 0; border-bottom: 2px solid transparent;
+  min-height: 44px; padding: 0 16px; border: 0;
   background: transparent; color: var(--muted); font-weight: 600; cursor: pointer;
+  transition: color var(--fast);
 }
-.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--amber); }
+.tabs button:hover { color: var(--text-soft); }
+.tabs button[aria-selected="true"] { color: var(--text); }
+/* The underline slides from tab to tab. */
+.tab-indicator { position: absolute; bottom: -1px; left: 0; height: 2px; width: 0; background: var(--action); border-radius: 2px 2px 0 0; transition: transform var(--base) var(--ease-out), width var(--base) var(--ease-out); pointer-events: none; }
 
+/* Buttons in three weights. Primary: the one thing this panel is for (one per panel).
+   Secondary (plain .btn): other real actions. Quiet: ways to go somewhere or look closer. */
 .btn {
   min-height: 44px; padding: 0 18px; border: 1px solid var(--line-strong); border-radius: 4px;
   background: transparent; color: var(--text); font-weight: 600; cursor: pointer;
   display: inline-flex; align-items: center; gap: 8px;
+  transition: background var(--fast), border-color var(--fast), color var(--fast), transform var(--fast) var(--ease-out);
 }
-.btn.primary { border: 0; background: var(--amber); color: var(--ground); font-weight: 700; }
+.btn:hover:not(:disabled) { border-color: var(--muted); background: var(--hover); }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn.primary { border: 1px solid var(--action); background: var(--action); color: var(--ground); font-weight: 700; }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--action) 88%, white); border-color: color-mix(in srgb, var(--action) 88%, white); }
+.btn.quiet { border-color: transparent; color: var(--data); padding: 0 10px; }
+.btn.quiet:hover:not(:disabled) { background: var(--data-bg); border-color: transparent; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* A primary that can't be pressed yet shouldn't glow: it sits back until it can. */
+.btn.primary:disabled { opacity: 1; background: var(--raised); border-color: var(--line-strong); color: var(--muted); }
+.btn .icon { width: 18px; height: 18px; flex: 0 0 auto; }
+.btn[aria-pressed="true"] { border-color: var(--action); color: var(--text); background: var(--selected); }
+.pick-tile { border: 1px solid var(--line); }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
 .chip {
   display: inline-block; padding: 4px 8px; border-radius: 3px; font-family: var(--mono);
   font-size: 12px; font-weight: 600; background: var(--raised); color: var(--text-soft); white-space: nowrap;
 }
-.chip.good { background: #17301f; color: var(--green); }
-.chip.warn { background: #3a2a12; color: var(--amber); }
-.chip.bad { background: #3a1d1a; color: var(--red-text); }
+.chip.good { background: var(--good-bg); color: var(--good); }
+.chip.warn { background: var(--caution-bg); color: var(--caution); }
+.chip.bad { background: var(--bad-bg); color: var(--bad-text); }
+.chip.action { background: var(--action-bg); color: var(--action); }
+.chip.data { background: var(--data-bg); color: var(--data); }
+.chip.crew { background: var(--crew-bg); color: var(--crew); }
 .chip.muted { color: var(--muted); }
 
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
@@ -102,7 +163,7 @@ table { width: 100%; border-collapse: collapse; font-size: 15px; }
 th { text-align: left; color: var(--muted); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; padding: 12px 14px; }
 td { padding: 12px 14px; border-top: 1px solid var(--line); vertical-align: top; }
 tr.clickable { cursor: pointer; }
-tr.clickable:hover { background: #18202a; }
+tr.clickable:hover { background: var(--hover); }
 tr.selected { background: var(--selected); box-shadow: inset 3px 0 0 var(--amber); }
 td.num, th.num { text-align: right; font-family: var(--mono); }
 
@@ -128,7 +189,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
 
 pre.report { margin: 0; padding: 14px 16px; border-radius: 4px; background: var(--ground); color: var(--text-soft); font-family: var(--mono); font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-x: auto; }
 
-.notice.clock { border-color: #24506a; background: #132430; }
+.notice.clock { border-color: var(--data-line); background: var(--data-bg); }
 
 .progress-bar { height: 12px; border-radius: 3px; background: var(--ground); overflow: hidden; }
 .progress-bar > div { height: 100%; width: 0; background: var(--amber); animation: progress-fill var(--ms) linear forwards; }
@@ -140,7 +201,11 @@ input[type="number"], select { min-height: 40px; padding: 0 10px; border: 1px so
 
 svg text { font-family: var(--mono); }
 
-.nav-icon, .nav-short { display: none; }
+.nav-short { display: none; }
+.nav button { display: inline-flex; align-items: center; gap: 7px; transition: color var(--fast), background var(--fast); }
+.nav button:hover { color: var(--text-soft); }
+.nav-icon { width: 18px; height: 18px; opacity: 0.8; }
+.nav button[aria-current="page"] .nav-icon { color: var(--action); opacity: 1; }
 
 /* Phones: a bottom tab bar, a one-line top bar, details as full-screen
    sheets, dialogs as bottom sheets, and tabs that scroll sideways. */
@@ -175,6 +240,7 @@ svg text { font-family: var(--mono); }
   .facts { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
   .facts div { padding: 10px 12px; }
   .actions .btn { flex: 1 1 auto; justify-content: center; }
+  .actions .btn.quiet { flex: 0 0 auto; }
 
   .notices { left: 12px; right: 12px; bottom: calc(var(--tabbar) + env(safe-area-inset-bottom) + 10px); max-width: none; z-index: 27; }
 
@@ -206,13 +272,13 @@ svg text { font-family: var(--mono); }
 .ladder { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ladder li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; font-weight: 600; color: var(--muted); }
 .ladder li .dot { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--raised); font-family: var(--mono); font-size: 13px; margin-bottom: 4px; }
-.ladder li.held { color: var(--text); border-color: #2d5a3c; }
-.ladder li.held .dot { background: #17301f; color: var(--green); }
+.ladder li.held { color: var(--text); border-color: var(--good-line); }
+.ladder li.held .dot { background: var(--good-bg); color: var(--good); }
 .ladder li.next { color: var(--text); border-color: var(--amber); }
-.ladder li.next .dot { background: #3a2a12; color: var(--amber); }
+.ladder li.next .dot { background: var(--action-bg); color: var(--action); }
 .achievements { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
 .achievement { opacity: 0.75; }
-.achievement.earned { opacity: 1; border-color: #5a4320; background: linear-gradient(180deg, #1f1a12, var(--panel)); }
+.achievement.earned { opacity: 1; border-color: var(--action-line); background: linear-gradient(180deg, var(--action-bg), var(--panel)); }
 
 /* Contracts page */
 .filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
@@ -233,26 +299,26 @@ svg text { font-family: var(--mono); }
 .month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
 .month .dow { padding: 6px 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .month .cell { min-height: 92px; padding: 4px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.month .cell.outside { background: #11161b; }
-.month .cell.outside .date { color: #4c5864; }
+.month .cell.outside { background: var(--ground); }
+.month .cell.outside .date { color: var(--faint); }
 .month .cell.past .date { color: var(--muted); }
 .month .cell.today { box-shadow: inset 0 0 0 2px var(--amber); }
 .month .date { font-family: var(--mono); font-size: 12px; padding: 2px 4px; }
 .month .more { font-size: 12px; padding: 0 4px; }
 .ev { display: block; width: 100%; min-height: 22px; padding: 2px 6px; border: 0; border-radius: 3px; text-align: left; cursor: pointer; font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ground); }
 .ev.posted { background: var(--cyan); }
-.ev.due { background: #8a6420; color: var(--text); }
+.ev.due { background: var(--action-line); color: var(--text); }
 .ev.due.signed { background: var(--amber); color: var(--ground); }
 .ev.on { outline: 2px solid var(--text); outline-offset: 1px; }
 .ev-text { display: block; overflow: hidden; text-overflow: ellipsis; }
 .ev.rollout { background: var(--green); cursor: default; }
-.ev.job { background: #8a6bd1; color: var(--text); cursor: default; }
+.ev.job { background: var(--data-deep); color: var(--text); cursor: default; }
 .month .cell.future { cursor: pointer; }
-.month .cell.future:hover { background: #18212a; }
+.month .cell.future:hover { background: var(--hover); }
 .month .cell.future:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
-.month .cell.span { background: #15232d; }
-.month .cell.picked { background: #1b3140; box-shadow: inset 0 0 0 2px var(--cyan); }
-.workstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 28px; border-bottom: 1px solid var(--line); background: #13202a; font-size: 14px; }
+.month .cell.span { background: var(--data-bg); }
+.month .cell.picked { background: color-mix(in srgb, var(--data) 20%, var(--ground)); box-shadow: inset 0 0 0 2px var(--data); }
+.workstrip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 28px; border-bottom: 1px solid var(--line); background: var(--data-bg); font-size: 14px; }
 .work-items { display: flex; flex-wrap: wrap; gap: 4px 18px; flex: 1 1 320px; min-width: 0; }
 .work-item { min-width: 0; overflow-wrap: anywhere; }
 .filter-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
@@ -272,7 +338,7 @@ svg text { font-family: var(--mono); }
 .mini-bar { display: block; height: 4px; border-radius: 2px; background: var(--ground); overflow: hidden; }
 .mini-bar > span { display: block; height: 100%; background: var(--cyan); }
 .mini-bar > span.full { background: var(--green); }
-.chip-button { min-height: 36px; padding: 0 12px; border: 1px solid #24506a; border-radius: 18px; background: #132430; color: var(--text); font-weight: 700; cursor: pointer; }
+.chip-button { min-height: 36px; padding: 0 12px; border: 1px solid var(--data-line); border-radius: 18px; background: var(--data-bg); color: var(--text); font-weight: 700; cursor: pointer; }
 .workstrip.folded { flex-wrap: nowrap; justify-content: space-between; padding-top: 6px; padding-bottom: 6px; }
 .workstrip.folded .actions { flex-wrap: nowrap; }
 .workstrip.folded .btn { min-height: 36px; padding: 0 12px; }
@@ -281,12 +347,15 @@ svg text { font-family: var(--mono); }
 .task-bar > div { height: 100%; background: var(--cyan); }
 .contract-cards { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .contract-cards .card { width: 100%; text-align: left; cursor: pointer; gap: 6px; color: var(--text); font: inherit; }
-.contract-cards .card.selected { border-color: var(--amber); background: var(--selected); }
+/* A card led by its mission glyph: the picture first, then the words. */
+.glyph-card { display: grid; grid-template-columns: 44px minmax(0, 1fr); column-gap: 12px; align-items: start; }
+.glyph-card > .glyph { grid-row: span 3; }
+.glyph-card > :not(.glyph) { grid-column: 2; }
 .cc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .cc-figures { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; }
 .choice { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .choice > div { padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; }
-.advance { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--cyan); border-radius: 6px; background: #13202a; }
+.advance { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--data); border-radius: 6px; background: var(--data-bg); }
 
 @media (max-width: 700px) {
   .ladder { grid-template-columns: 1fr; }
@@ -308,7 +377,7 @@ svg text { font-family: var(--mono); }
 .options { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .option { text-align: left; cursor: pointer; gap: 4px; padding: 10px 12px; color: var(--text); font: inherit; }
 .option:disabled { opacity: 0.45; cursor: not-allowed; }
-.blueprint { background-color: #121820; background-image: linear-gradient(#18202a 1px, transparent 1px), linear-gradient(90deg, #18202a 1px, transparent 1px); background-size: 16px 16px; }
+.blueprint { background-color: var(--blueprint); background-image: linear-gradient(var(--hover) 1px, transparent 1px), linear-gradient(90deg, var(--hover) 1px, transparent 1px); background-size: 16px 16px; }
 
 /* Drawing board and factory */
 .stage-editor { margin: 0; gap: 14px; }
@@ -330,4 +399,113 @@ svg text { font-family: var(--mono); }
 @media (max-width: 700px) {
   .sim-cases li { grid-template-columns: 1fr auto; }
   .sim-cases li > :nth-child(2) { grid-column: 1 / -1; order: 3; }
+}
+
+/* Icons: line-drawn on a 24-unit grid, in the colour of their text. */
+.icon { width: 20px; height: 20px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
+.icon.sm { width: 16px; height: 16px; vertical-align: -3px; }
+.glyph { flex: 0 0 auto; display: block; }
+.with-icon { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Something you can pick: a card, an option, an engine, a contract. One look for all of them. */
+.pickable { transition: border-color var(--fast), background var(--fast), transform var(--fast) var(--ease-out); }
+.pickable:hover { border-color: var(--line-strong); }
+.pickable.on, .pickable[aria-pressed="true"] { border-color: var(--action); background: var(--selected); }
+.card.clickable:hover, .part-card:hover, .slot-picker:hover { border-color: var(--line-strong); }
+.part-card, .slot-picker, .contract-cards .card { transition: border-color var(--fast), background var(--fast); }
+
+/* Things arriving: sheets, dialogs, notices and panels that open. */
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes slide-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.overlay { animation: fade var(--base) var(--ease-out); }
+.overlay .card { animation: rise var(--slow) var(--ease-out); }
+.notice { animation: slide-in var(--slow) var(--ease-out); }
+.part-card.open > .stack, .slot-picker.open > .options, .slot-picker.open > .stage-body, details[open] > :not(summary) { animation: rise var(--base) var(--ease-out); }
+.screen { animation: fade var(--base) var(--ease-out); }
+@media (max-width: 700px) {
+  .sheet { animation: slide-in var(--base) var(--ease-out); }
+  .overlay .card { animation-name: rise; }
+}
+
+/* Anyone who asks for less motion gets fades only, and quick ones. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+  .btn:active:not(:disabled) { transform: none; }
+}
+
+/* Compact tables in narrow cards. */
+table.compact th, table.compact td { padding: 8px 8px; }
+table.compact th:first-child, table.compact td:first-child { padding-left: 0; }
+table.compact th:last-child, table.compact td:last-child { padding-right: 0; }
+
+/* Step 2: feedback and big moments. */
+
+/* The top bar's change, beside the figure for a moment. */
+.stats dd { position: relative; }
+.delta { position: absolute; left: 0; top: 100%; margin-top: 2px; font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; animation: delta 2.4s var(--ease-out) forwards; }
+@keyframes delta { 0% { opacity: 0; transform: translateY(-4px); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { .delta { animation: none; } }
+
+/* Result toasts: a stripe in the tone's colour, the news, and where and when. */
+.notice.good { border-color: var(--good-line); }
+.notice.result { position: relative; padding-left: 18px; overflow: hidden; }
+.notice.result::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--data); }
+.notice.result.good::before { background: var(--good); }
+.notice.result.bad::before { background: var(--bad); }
+.notice-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.notice-words small { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.notice.leaving { animation: leave var(--base) var(--ease-in) forwards; }
+@keyframes leave { to { opacity: 0; transform: translateX(16px); } }
+
+/* The firing, played back. */
+.moment { position: relative; overflow: hidden; max-width: 760px; }
+.moment-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.moment-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 20px; align-items: center; }
+.moment-engine { display: block; }
+.moment-data { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.moment-clock { display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+.moment-clock .mono:first-child { font-size: 32px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.moment-trace { width: 100%; height: auto; display: block; }
+.moment-verdict { min-height: 44px; padding: 10px 12px; border-radius: 4px; font-weight: 600; opacity: 0; transform: translateY(6px); transition: opacity var(--base) var(--ease-out), transform var(--base) var(--ease-out); }
+.moment-verdict.show { opacity: 1; transform: none; }
+.moment-verdict.good { background: var(--good-bg); color: var(--good); }
+.moment-verdict.bad { background: var(--bad-bg); color: var(--bad-text); }
+.moment.failed { border-color: var(--bad-line); }
+.moment-flash { position: absolute; inset: 0; background: var(--bad); pointer-events: none; animation: flash 0.5s ease-out forwards; }
+@keyframes flash { from { opacity: 0.3; } to { opacity: 0; } }
+.plume { transform-box: fill-box; transform-origin: 50% 0; animation: flicker 0.11s infinite alternate; }
+@keyframes flicker { from { transform: scaleY(0.9) scaleX(0.97); opacity: 0.85; } to { transform: scaleY(1.06) scaleX(1.02); opacity: 1; } }
+
+/* Countdown and liftoff, before the replay. */
+.countdown { gap: 0; padding: 0; overflow: hidden; }
+.countdown-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px 0; }
+.countdown-stage { position: relative; height: 360px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 28px; }
+.countdown-rocket { position: relative; display: flex; flex-direction: column; align-items: center; transition: transform 1s cubic-bezier(0.55, 0, 0.9, 0.4); }
+.countdown-rocket.lift { transform: translateY(-420px); }
+.countdown-plume { position: absolute; top: 100%; width: 22px; height: 0; border-radius: 0 0 50% 50%; background: linear-gradient(#fff6e0, var(--action) 35%, color-mix(in srgb, var(--data) 40%, transparent) 80%, transparent); opacity: 0; transition: height 0.35s var(--ease-out), opacity 0.2s; }
+.countdown-rocket.lift .countdown-plume { height: 90px; opacity: 1; animation: flicker 0.1s infinite alternate; transform-origin: 50% 0; }
+.countdown-pad { width: 160px; height: 3px; background: var(--line-strong); border-radius: 2px; }
+.countdown-number { position: absolute; top: 24px; right: 28px; font-size: 56px; font-weight: 600; color: var(--text); animation: count 0.6s var(--ease-out); }
+@keyframes count { from { opacity: 0; transform: scale(1.4); } to { opacity: 1; transform: none; } }
+
+/* Milestones: a banner that lands at the top, holds, and goes. */
+.milestone { position: fixed; left: 0; right: 0; top: 76px; z-index: 35; display: flex; justify-content: center; padding: 0 16px; pointer-events: none; }
+.milestone-card { all: unset; pointer-events: auto; box-sizing: border-box; cursor: pointer; display: flex; gap: 16px; align-items: center; max-width: 520px; width: 100%; padding: 16px 20px; border: 1px solid var(--action-line); border-radius: 8px; background: linear-gradient(180deg, var(--action-bg), var(--panel)); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); animation: rise var(--slow) var(--ease-out); }
+.milestone-card:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.milestone-icon { position: relative; flex: 0 0 auto; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--action); background: var(--ground); }
+.milestone-icon::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--action); animation: ring 1.6s var(--ease-out) infinite; }
+@keyframes ring { from { opacity: 0.8; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+.milestone-icon .icon { width: 26px; height: 26px; }
+.milestone-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.milestone-words strong { font-size: 22px; }
+
+@media (max-width: 700px) {
+  .moment-body { grid-template-columns: 1fr; justify-items: center; }
+  .moment-data { width: 100%; }
+  .moment-engine { max-height: 200px; width: auto; }
+  .countdown-stage { height: 300px; }
+  .countdown-number { font-size: 34px; top: 12px; left: 18px; right: auto; }
+  .milestone { top: 64px; }
+  .delta { font-size: 11px; right: 0; left: auto; }
 }

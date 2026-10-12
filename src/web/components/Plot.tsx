@@ -1,3 +1,4 @@
+import { COLORS } from "../palette.ts";
 /**
  * A small line plot in SVG: enough for trajectories, load curves and drag
  * curves. Data in, scaled paths out; no chart library.
@@ -54,25 +55,25 @@ export function Plot({ x, y, series, markers = [], bands = [], rules = [], curso
         {y.ticks.map((t) => (
           <g key={`y${t}`}>
             <line x1={0} x2={iw} y1={sy(t)} y2={sy(t)} stroke="#222b34" />
-            <text x={-10} y={sy(t) + 4} fill="#93a0ad" fontSize={12} textAnchor="end">
+            <text x={-10} y={sy(t) + 4} fill={COLORS.muted} fontSize={12} textAnchor="end">
               {fy(t)}
             </text>
           </g>
         ))}
         {x.ticks.map((t) => (
-          <text key={`x${t}`} x={sx(t)} y={ih + 22} fill="#93a0ad" fontSize={12} textAnchor="middle">
+          <text key={`x${t}`} x={sx(t)} y={ih + 22} fill={COLORS.muted} fontSize={12} textAnchor="middle">
             {fx(t)}
           </text>
         ))}
-        <line x1={0} x2={iw} y1={ih} y2={ih} stroke="#3a4652" />
-        <line x1={0} x2={0} y1={0} y2={ih} stroke="#3a4652" />
+        <line x1={0} x2={iw} y1={ih} y2={ih} stroke={COLORS.lineStrong} />
+        <line x1={0} x2={0} y1={0} y2={ih} stroke={COLORS.lineStrong} />
         {x.title && (
-          <text x={iw} y={ih + 36} fill="#93a0ad" fontSize={11} textAnchor="end">
+          <text x={iw} y={ih + 36} fill={COLORS.muted} fontSize={11} textAnchor="end">
             {x.title}
           </text>
         )}
         {y.title && (
-          <text x={4} y={10} fill="#93a0ad" fontSize={11}>
+          <text x={4} y={10} fill={COLORS.muted} fontSize={11}>
             {y.title}
           </text>
         )}
@@ -101,9 +102,9 @@ export function Plot({ x, y, series, markers = [], bands = [], rules = [], curso
         {cursor && <line x1={sx(cursor.at)} x2={sx(cursor.at)} y1={0} y2={ih} stroke={cursor.color} strokeWidth={2} />}
         {markers.map((m, i) => (
           <g key={`m${i}`}>
-            <circle cx={sx(m.x)} cy={sy(m.y)} r={5} fill={m.hollow ? "#0e1216" : m.color} stroke={m.color} strokeWidth={2} />
+            <circle cx={sx(m.x)} cy={sy(m.y)} r={5} fill={m.hollow ? COLORS.ground : m.color} stroke={m.color} strokeWidth={2} />
             {m.label && (
-              <text x={sx(m.x) + (m.anchor === "end" ? -10 : 10)} y={sy(m.y) - 8} fill="#e8ecef" fontSize={12} textAnchor={m.anchor ?? "start"}>
+              <text x={sx(m.x) + (m.anchor === "end" ? -10 : 10)} y={sy(m.y) - 8} fill={COLORS.text} fontSize={12} textAnchor={m.anchor ?? "start"}>
                 {m.label}
               </text>
             )}

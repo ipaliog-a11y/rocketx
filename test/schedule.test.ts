@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { build, buildDays, fire, LEARNING, learningFactor, newCompany, nextSlot, wait, type Company } from "../src/sim/company.ts";
+import { build, buildDays, fire, fixEngine, LEARNING, learningFactor, newCompany, nextSlot, wait, type Company } from "../src/sim/company.ts";
 import { COSTS, vehicleCost } from "../src/sim/cost.ts";
 import { IDEAL_TRUTH, type EngineTruth } from "../src/sim/hardware.ts";
 import { book, buyUnit, cancelTask, quoteTask, TRACKS } from "../src/sim/schedule.ts";
@@ -124,4 +124,14 @@ test("an engine identical to one the company has can't be developed again", () =
   const parts = { ...HARRIER_SL.parts!, nozzle: "vacuum" as const };
   book(c, { kind: "develop", name: "Harrier-V2", parts });
   assert.throws(() => book(c, { kind: "develop", name: "Harrier-V3", parts }), /Harrier-V2 is already this engine/, "nor one already being developed");
+});
+
+test("each finished job says whether it went well", () => {
+  const c = company({ [KESTREL_SL.name]: { ...IDEAL_TRUTH, instabilityOnset: 10 } });
+  fire(c, HARRIER_SL, 30, "sea-level");
+  assert.equal(c.done.at(-1)!.tone, "good", "a clean firing");
+  fire(c, KESTREL_SL, 30, "sea-level");
+  assert.equal(c.done.find((d) => d.title.includes(KESTREL_SL.name))!.tone, "bad", "a firing that found a problem");
+  fixEngine(c, KESTREL_SL, "combustion-instability");
+  assert.equal(c.done.at(-1)!.tone, "good", "a fix");
 });

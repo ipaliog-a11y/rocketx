@@ -14,17 +14,22 @@ import { NewGame } from "./screens/NewGame.tsx";
 import { TestStand } from "./screens/TestStand.tsx";
 import { Tunnel } from "./screens/Tunnel.tsx";
 import { WorkStrip } from "./screens/Work.tsx";
+import { Icon, type IconName } from "./components/Icon.tsx";
+import { Ticker } from "./components/Ticker.tsx";
+import { FiringMoment } from "./components/FiringMoment.tsx";
+import { MilestoneBanner } from "./components/Milestone.tsx";
+import { useHold } from "./motion.ts";
 
 type Screen = "company" | "contracts" | "launch" | "hangar" | "stand" | "tunnel";
 
-/** Each screen: its label, a shorter one for the phone's tab bar, and a line-drawn icon (24-unit box). */
-const SCREENS: Array<[Screen, string, string, string]> = [
-  ["company", "Company", "Company", "M4 21V8l8-5 8 5v13M9 21v-6h6v6M3 21h18"],
-  ["contracts", "Contracts", "Contracts", "M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"],
-  ["launch", "Launch", "Launch", "M12 2c3 3 4 7 4 11l-4 3-4-3c0-4 1-8 4-11zM8 13l-3 4 3 1M16 13l3 4-3 1M10 19l2 3 2-3"],
-  ["hangar", "Hangar", "Hangar", "M3 21V10l9-6 9 6v11M7 21v-8h10v8M7 17h10"],
-  ["stand", "Test stand", "Stand", "M12 3c2 3 4 5 4 8a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2 1 3 2 3 0-2-1-4 0-7zM6 21h12M9 17v4M15 17v4"],
-  ["tunnel", "Tunnel", "Tunnel", "M3 8h12a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h9"],
+/** Each screen: its label, a shorter one for the phone's tab bar, and its icon. */
+const SCREENS: Array<[Screen, string, string, IconName]> = [
+  ["company", "Company", "Company", "company"],
+  ["contracts", "Contracts", "Contracts", "contract"],
+  ["launch", "Launch", "Launch", "launch"],
+  ["hangar", "Hangar", "Hangar", "hangar"],
+  ["stand", "Test stand", "Stand", "stand"],
+  ["tunnel", "Tunnel", "Tunnel", "tunnel"],
 ];
 
 export function App() {
@@ -34,9 +39,10 @@ export function App() {
   const [simFocus, setSimFocus] = useState<SimFocus | undefined>();
   const simulate = (focus: SimFocus) => (setSimFocus({ ...focus }), setScreen("hangar"), window.scrollTo(0, 0));
   const company = state.company;
+  // While a launch plays, the top bar keeps its money and reputation back for the debrief.
+  const cash = useHold(company?.cash ?? 0, state.cinema);
+  const shownRep = useHold(company ? reputation(company) : 0, state.cinema);
   if (!company) return <NewGame />;
-
-  const rep = reputation(company);
   return (
     <div className="app">
       <header className="topbar">
@@ -46,9 +52,7 @@ export function App() {
         <nav className="nav" aria-label="Sections">
           {SCREENS.map(([id, label, short, icon]) => (
             <button key={id} type="button" aria-label={label} aria-current={!state.flight && screen === id ? "page" : undefined} onClick={() => (game.closeFlight(), setSimFocus(undefined), setScreen(id), window.scrollTo(0, 0))}>
-              <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d={icon} />
-              </svg>
+              <Icon name={icon} className="nav-icon" />
               <span className="nav-long">{label}</span>
               <span className="nav-short" aria-hidden="true">
                 {short}
@@ -57,31 +61,46 @@ export function App() {
           ))}
         </nav>
         <dl className="stats">
-          <div>
-            <dt>DAY</dt>
-            <dd>{company.day}</dd>
+          <div title="Day">
+            <dt>
+              <Icon name="day" size="sm" />
+              <span className="sr-only">Day</span>
+            </dt>
+            <dd>
+              <Ticker value={company.day} format={(d) => String(Math.round(d))} ms={500} />
+            </dd>
           </div>
-          <div>
-            <dt>CASH</dt>
-            <dd className={company.cash < 2_000 ? "bad" : undefined}>{money(company.cash)}</dd>
+          <div title="Cash">
+            <dt>
+              <Icon name="money" size="sm" />
+              <span className="sr-only">Cash</span>
+            </dt>
+            <dd className={cash < 2_000 ? "bad" : undefined}>
+              <Ticker value={cash} format={money} delta={(d) => `${d > 0 ? "+" : "−"}${money(Math.abs(d))}`} />
+            </dd>
           </div>
-          <div className="stat-licence">
-            <dt>LICENCE</dt>
+          <div className="stat-licence" title="Launch licence">
+            <dt>
+              <Icon name="licence" size="sm" />
+              <span className="sr-only">Licence</span>
+            </dt>
             <dd>{LICENCE_LABELS[company.licence].toUpperCase()}</dd>
           </div>
-          <div>
+          <div title="Reputation">
             <dt>
-              <span className="nav-long">REPUTATION</span>
-              <span className="nav-short">REP</span>
+              <Icon name="reputation" size="sm" />
+              <span className="sr-only">Reputation</span>
             </dt>
-            <dd className={rep > 0 ? "good" : rep < 0 ? "bad" : undefined}>{signed(rep)}</dd>
+            <dd className={shownRep > 0 ? "good" : shownRep < 0 ? "bad" : undefined}>
+              <Ticker value={shownRep} format={(r) => signed(Math.round(r))} delta={(d) => signed(d)} />
+            </dd>
           </div>
         </dl>
       </header>
       <WorkStrip company={company} open={() => (game.closeFlight(), setCompanyTab("work"), setScreen("company"))} />
 
       {state.flight ? (
-        <Flight key={state.flight.id} report={state.flight.report} design={state.flight.design} />
+        <Flight key={`flight-${state.flight.id}`} report={state.flight.report} design={state.flight.design} />
       ) : (
         <>
           {screen === "company" && <Company company={company} tab={companyTab} setTab={setCompanyTab} />}
@@ -95,8 +114,15 @@ export function App() {
 
       <div className="notices" aria-live="polite">
         {state.notices.map((n) => (
-          <div key={n.id} className={`notice ${n.tone === "info" ? "" : n.tone}`}>
-            <span>{n.text}</span>
+          <div key={n.id} className={`notice ${n.tone === "info" ? "" : n.tone} ${n.title ? "result" : ""} ${n.leaving ? "leaving" : ""}`}>
+            {n.title ? (
+              <span className="notice-words">
+                <span>{n.title}</span>
+                <small>{n.sub}</small>
+              </span>
+            ) : (
+              <span>{n.text}</span>
+            )}
             <button type="button" aria-label="Dismiss" onClick={() => game.dismiss(n.id)}>
               ✕
             </button>
@@ -105,7 +131,9 @@ export function App() {
       </div>
 
       {state.pending && !company.dead && <JobConfirm company={company} job={state.pending} />}
-      {state.progress && <JobProgress key={state.progress.id} progress={state.progress} />}
+      {state.progress && <JobProgress key={`progress-${state.progress.id}`} progress={state.progress} />}
+      {state.moment && !state.progress && <FiringMoment key={`moment-${state.moment.id}`} moment={state.moment} />}
+      {state.milestones[0] && !state.progress && !state.moment && !state.pending && !state.cinema && <MilestoneBanner key={`milestone-${state.milestones[0].id}`} milestone={state.milestones[0]} />}
 
       {company.dead && !state.flight && (
         <div className="overlay" role="dialog" aria-modal="true" aria-label="The run is over">

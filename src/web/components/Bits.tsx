@@ -1,15 +1,37 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 /** Small shared pieces: tabs, a proof bar, a chip, a fact grid. */
 
+/** Tabs whose underline slides to the one picked. */
 export function Tabs<T extends string>({ tabs, value, onChange, label }: { tabs: Array<[T, string]>; value: T; onChange: (v: T) => void; label: string }) {
+  const list = useRef<HTMLDivElement>(null);
+  const [bar, setBar] = useState<{ x: number; w: number } | null>(null);
+  useLayoutEffect(() => {
+    const measure = () => {
+      const on = list.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+      setBar(on ? { x: on.offsetLeft, w: on.offsetWidth } : null);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [value, tabs.length]);
   return (
-    <div role="tablist" aria-label={label} className="tabs">
+    <div role="tablist" aria-label={label} className="tabs" ref={list}>
       {tabs.map(([id, text]) => (
-        <button key={id} type="button" role="tab" aria-selected={value === id} onClick={() => onChange(id)}>
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={value === id}
+          onClick={(e) => {
+            onChange(id);
+            e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+          }}
+        >
           {text}
         </button>
       ))}
+      {bar && <span className="tab-indicator" aria-hidden="true" style={{ width: bar.w, transform: `translateX(${bar.x}px)` }} />}
     </div>
   );
 }
@@ -29,7 +51,7 @@ export function ProofBar({ proven, required, failedAt, label }: { proven: number
   );
 }
 
-export function Chip({ tone, children }: { tone?: "good" | "warn" | "bad" | "muted"; children: ReactNode }) {
+export function Chip({ tone, children }: { tone?: "good" | "warn" | "bad" | "muted" | "action" | "data" | "crew"; children: ReactNode }) {
   return <span className={`chip ${tone ?? ""}`}>{children}</span>;
 }
 

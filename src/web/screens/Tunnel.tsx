@@ -11,6 +11,7 @@ import { game } from "../game.ts";
 import { revisionLetter } from "../../sim/teststand.ts";
 import { fixAeroJob, tunnelJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
+import { COLORS } from "../palette.ts";
 
 /** What each facility can see, in the player's words. */
 const SEES: Record<AeroFacility, Array<[boolean | "partly", string]>> = {
@@ -41,12 +42,12 @@ export function Tunnel({ company }: { company: Company }) {
   const buffetOpen = known?.open.includes("transonic-buffet") ?? false;
 
   const machs = Array.from({ length: 61 }, (_, i) => i * 0.05);
-  const hand: Series = { points: machs.map((m) => [m, dragCoefficient(vehicle.dragCurve, m)]), color: "#93a0ad", dash: "5 4", width: 1.5 };
+  const hand: Series = { points: machs.map((m) => [m, dragCoefficient(vehicle.dragCurve, m)]), color: COLORS.muted, dash: "5 4", width: 1.5 };
   const series: Series[] = [hand];
   if (known?.dragSource && believed) {
     series.push({
       points: machs.map((m) => [m, dragCoefficient(vehicle.dragCurve, m) * dragMultiplier(believed, m)]),
-      color: known.dragSource === "tunnel" ? "#f0a43a" : "#5bb8e3",
+      color: known.dragSource === "tunnel" ? COLORS.action : COLORS.data,
       width: known.dragSource === "tunnel" ? 3 : 2,
       dash: known.dragSource === "cfd" ? "6 4" : undefined,
     });
@@ -83,8 +84,8 @@ export function Tunnel({ company }: { company: Company }) {
                 type="button"
                 aria-pressed={on}
                 onClick={() => setSelected(s.key)}
-                className="card"
-                style={{ textAlign: "left", cursor: "pointer", flexDirection: "row", alignItems: "center", gap: 16, borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
+                className="card pickable"
+                style={{ textAlign: "left", cursor: "pointer", flexDirection: "row", alignItems: "center", gap: 16, color: "var(--text)", font: "inherit" }}
               >
                 <div style={{ transform: "rotate(-90deg)", flex: "0 0 72px", width: 72, height: 72, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <Rocket vehicle={company.designs[s.design]!} scale={Math.min(9, 68 / height(company.designs[s.design]!))} />
@@ -120,7 +121,7 @@ export function Tunnel({ company }: { company: Company }) {
               x={{ min: 0, max: 3, ticks: [0, 0.5, 1, 1.5, 2, 2.5, 3], format: (v) => `M${v}` }}
               y={{ min: 0, max: Math.max(0.8, Math.ceil(peak * 10) / 10), ticks: [0, 0.2, 0.4, 0.6, 0.8, 1.0].filter((t) => t <= Math.max(0.8, Math.ceil(peak * 10) / 10)), format: (v) => v.toFixed(1), title: "Cd" }}
               series={series}
-              bands={buffetOpen ? [{ from: BUFFET_BAND[0], to: BUFFET_BAND[1], color: "#ef6a5e", label: "buffet band" }] : []}
+              bands={buffetOpen ? [{ from: BUFFET_BAND[0], to: BUFFET_BAND[1], color: COLORS.bad, label: "buffet band" }] : []}
             />
           </div>
 

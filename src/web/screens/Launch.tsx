@@ -12,6 +12,7 @@ import { buildJob, launchJob, retuneJob, signedContracts } from "../jobs.ts";
 import { km, money } from "../format.ts";
 import { Sheet } from "../components/Sheet.tsx";
 import type { SimFocus } from "./Simulator.tsx";
+import { glyphKind, Icon, MissionGlyph } from "../components/Icon.tsx";
 
 type Props = { company: Company; version: number; goTo: (screen: "contracts" | "stand" | "tunnel") => void; simulate: (focus: SimFocus) => void };
 
@@ -65,9 +66,10 @@ export function Launch({ company, version, goTo, simulate }: Props) {
                     setSelected(c.id);
                     setSheet(true);
                   }}
-                  className="card"
-                  style={{ textAlign: "left", cursor: "pointer", gap: 6, borderColor: on ? "var(--amber)" : undefined, background: on ? "var(--selected)" : undefined }}
+                  className="card glyph-card pickable"
+                  style={{ textAlign: "left", cursor: "pointer", gap: 6, color: "var(--text)", font: "inherit" }}
                 >
+                  <MissionGlyph kind={glyphKind(c.mission, c.kind)} size={44} />
                   <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
                     <strong style={{ fontSize: 17 }}>{c.title}</strong>
                     <Chip tone={cd.tone}>{cd.text}</Chip>
@@ -172,10 +174,12 @@ function Prep({ company, version, contract, design, setDesign, goTo, simulate }:
               Re-tune for {contract.payloadMass} kg
             </button>
           )}
-          <button type="button" className="btn" onClick={() => simulate({ design, contract: contract.id })}>
+          <button type="button" className="btn quiet" onClick={() => simulate({ design, contract: contract.id })}>
+            <Icon name="simulate" size="sm" />
             Simulate
           </button>
-          <button type="button" className="btn" onClick={() => goTo("stand")}>
+          <button type="button" className="btn quiet" onClick={() => goTo("stand")}>
+            <Icon name="stand" size="sm" />
             Plan tests
           </button>
         </div>

@@ -41,6 +41,8 @@ export type Job<T extends ActionResult = ActionResult> = {
   task?: (company: Company) => TaskSpec;
   /** A quick stand-in for `task` to quote from, when making the real one is slow. */
   quote?: (company: Company) => TaskSpec;
+  /** Run now, this job plays back when it finishes: a firing on the stand. */
+  moment?: { kind: "firing"; engine: string };
 };
 
 /**
@@ -165,6 +167,7 @@ export function fireJob(engine: Engine, seconds: number, facility: Facility, exp
     verb: "Fire",
     days: f.days + (restart ? RESTART_TEST.days : 0),
     cost: firingCost(engine, facility, expectedRun, restart),
+    moment: { kind: "firing", engine: engine.name },
     caveat: `If the engine fails, a new one costs ${money(hardwareLoss(engine).cost)} and ties up the ${f.name} ${hardwareLoss(engine).days} more days while it is built. A firing cut short refunds the seconds it didn't run.`,
   }, () => ({ kind: "fire", engine: engine.name, seconds, facility, restart }));
 }

@@ -1,7 +1,12 @@
 import { useSyncExternalStore } from "react";
 import { newCompany, rename, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import { forgetStandSeparation } from "../sim/teststand.ts";
-import { book, cancelTask, buyUnit, project, quoteTask, TRACKS, upgradeCompany, type Track } from "../sim/schedule.ts";
+import { book, cancelTask, buyUnit, completionNotice, project, quoteTask, TRACKS, upgradeCompany, type TaskDone, type Track } from "../sim/schedule.ts";
+import type { TestReport } from "../sim/teststand.ts";
+import { achievements } from "../sim/achievements.ts";
+import { LICENCE_LABELS, LICENCE_ORDER } from "../sim/licence.ts";
+import type { IconName } from "./components/Icon.tsx";
+import { after } from "./motion.ts";
 import { generateBoard, startingCash } from "../contracts.ts";
 import { DESIGNS } from "./designs.ts";
 import { deadlineRisks, signedContracts, type Job } from "./jobs.ts";
@@ -15,7 +20,14 @@ export { DESIGNS, defaultDesign } from "./designs.ts";
  * saves and tells React to redraw.
  */
 
-export type Notice = { id: number; text: string; tone: "info" | "bad" | "clock" };
+/** A toast. Results carry a title and a small line under it; plain messages just have text. */
+export type Notice = { id: number; text: string; tone: "info" | "good" | "bad" | "clock"; title?: string; sub?: string; leaving?: boolean };
+
+/** A firing that just finished, played back before its report. */
+export type Moment = { id: number; engine: string; report: TestReport };
+
+/** Something worth stopping for: a first orbit, a licence, an achievement. */
+export type Milestone = { id: number; icon: IconName; title: string; text: string };
 
 /** A job on the clock: the progress screen runs from `fromDay` to `toDay`. */
 export type Progress = { id: number; doing: string; fromDay: number; toDay: number; ms: number; crunching: boolean };
@@ -28,6 +40,10 @@ type State = {
   /** A job waiting on the player's go-ahead. */
   pending: Job<any> | null;
   progress: Progress | null;
+  moment: Moment | null;
+  milestones: Milestone[];
+  /** A launch is playing: big news waits for its debrief. */
+  cinema: boolean;
   version: number;
 };
 
@@ -38,7 +54,7 @@ const OLD_SAVE_KEYS = ["rocketx.save.v1", "rocketx.save.v2", "rocketx.save.v3", 
 /** Set when an old save was found and dropped, so the new-game screen can say so. Declared before the first load. */
 export let droppedOldSave = false;
 
-let state: State = { company: load(), flight: null, notices: [], pending: null, progress: null, version: 0 };
+let state: State = { company: load(), flight: null, notices: [], pending: null, progress: null, moment: null, milestones: [], cinema: false, version: 0 };
 const listeners = new Set<() => void>();
 let nextNotice = 1;
 let nextFlight = 1;
@@ -78,11 +94,49 @@ function save(): void {
 
 let nextProgress = 1;
 
-function notify(text: string, tone: Notice["tone"]): void {
+/** How long a toast stays, ms: news clears itself; bad news waits to be read. */
+const NOTICE_MS: Record<Notice["tone"], number | null> = { clock: 9000, info: 8000, good: 8000, bad: null };
+
+function notify(text: string, tone: Notice["tone"], extra: { title?: string; sub?: string } = {}): void {
   const id = nextNotice++;
-  state.notices = [...state.notices, { id, text, tone }].slice(-5);
-  // The calendar notices are a glance, not a record: they clear themselves.
-  if (tone === "clock") setTimeout(() => game.dismiss(id), 9000);
+  state.notices = [...state.notices, { id, text, tone, ...extra }].slice(-6);
+  const ms = NOTICE_MS[tone];
+  if (ms !== null) setTimeout(() => game.dismiss(id), ms);
+}
+
+let nextMilestone = 1;
+/** News held back while something plays: a launch until its debrief, a firing until Done. */
+const held: Array<{ text: string; tone: Notice["tone"]; title?: string; sub?: string }> = [];
+/** Set while a run-now firing runs, so its result waits for the playback. */
+let holding = false;
+
+/** Post what was held, one after another. */
+function release(): void {
+  held.splice(0).forEach((n, i) =>
+    after(i * 140, () => {
+      notify(n.text, n.tone, { title: n.title, sub: n.sub });
+      emit();
+    }),
+  );
+}
+
+/** What a company has achieved, to tell what an action changed. */
+function milestonesOf(company: Company) {
+  return { orbit: company.firstOrbitDay, licence: company.licence, earned: new Set(achievements(company).filter((a) => a.earned).map((a) => a.id)) };
+}
+
+/** The finished jobs an action produced, as toasts, one after another. */
+function toastResults(fresh: TaskDone[]): void {
+  fresh
+    .filter((d) => !d.title.startsWith("New test engine"))
+    .forEach((d, i) => {
+      const toast = { text: d.summary, tone: d.tone ?? "info", title: d.summary, sub: `day ${d.day} · ${TRACKS[d.track].name}` } as const;
+      if (holding) return void held.push(toast);
+      after(i * 140, () => {
+        notify(toast.text, toast.tone, toast);
+        emit();
+      });
+    });
 }
 
 let lastClock: { day: number; id: number } | null = null;
@@ -140,8 +194,19 @@ export const game = {
     const company = state.company;
     if (!company) return null;
     try {
+      const before = new Set(company.done);
+      const was = milestonesOf(company);
       const result = action(company);
-      for (const n of result.notices) notify(n, company.dead ? "bad" : "info");
+      const fresh = company.done.filter((d) => !before.has(d));
+      const said = new Set(fresh.map(completionNotice));
+      // A flight's own news is good or bad by what the customer made of it.
+      const settled = (result as Partial<FlightReport>).settlement?.status;
+      const tone: Notice["tone"] = company.dead || settled === "failed" ? "bad" : settled === "delivered" ? "good" : "info";
+      // A launch's news waits for its debrief, so the replay isn't spoiled.
+      const flight = (result as Partial<FlightReport>).result !== undefined;
+      for (const n of result.notices) if (!said.has(n)) (flight ? held.push({ text: n, tone }) : notify(n, tone));
+      toastResults(fresh);
+      queueMilestones(was, company);
       onDone?.(result);
       return result;
     } catch (error) {
@@ -245,7 +310,15 @@ export const game = {
       state.progress = { ...state.progress!, crunching: true };
       emit();
       setTimeout(() => {
+        // A firing run now plays back once it's done; a planned one only posts its result.
+        const engine = job.moment?.engine;
+        const fired = engine ? (company.campaign.knowledge[engine]?.history.length ?? 0) : 0;
+        holding = engine !== undefined;
         game.act(job.run, job.onDone);
+        holding = false;
+        const history = engine ? state.company?.campaign.knowledge[engine]?.history : undefined;
+        if (engine && history && history.length > fired) state.moment = { id: nextProgress++, engine, report: history.at(-1)! };
+        else if (engine) release();
         state.progress = null;
         if (state.company && !state.company.dead) clockNotice(state.company, "after");
         emit();
@@ -255,19 +328,54 @@ export const game = {
 
   showFlight(report: FlightReport, design: string): void {
     state.flight = { id: nextFlight++, report, design };
+    state.cinema = true;
+    emit();
+  },
+
+  /** The launch has reached its debrief, or was skipped: held news can show. */
+  endCinema(): void {
+    if (!state.cinema) return;
+    state.cinema = false;
+    release();
+    emit();
+  },
+
+  closeMoment(): void {
+    state.moment = null;
+    release();
+    emit();
+  },
+
+  dismissMilestone(id: number): void {
+    state.milestones = state.milestones.filter((m) => m.id !== id);
     emit();
   },
 
   closeFlight(): void {
     state.flight = null;
+    if (state.cinema) return game.endCinema();
     emit();
   },
 
+  /** Let a toast fade out, then remove it. */
   dismiss(id: number): void {
-    state.notices = state.notices.filter((n) => n.id !== id);
+    if (!state.notices.some((n) => n.id === id && !n.leaving)) return;
+    state.notices = state.notices.map((n) => (n.id === id ? { ...n, leaving: true } : n));
     emit();
+    after(200, () => {
+      state.notices = state.notices.filter((n) => n.id !== id);
+      emit();
+    });
   },
 };
+
+/** Queue a banner for each big thing an action achieved. */
+function queueMilestones(was: ReturnType<typeof milestonesOf>, company: Company): void {
+  const add = (icon: IconName, title: string, text: string) => state.milestones.push({ id: nextMilestone++, icon, title, text });
+  if (was.orbit === null && company.firstOrbitDay !== null) add("orbit", "First orbit", `${company.name} reached orbit on day ${company.firstOrbitDay}.`);
+  if (LICENCE_ORDER.indexOf(company.licence) > LICENCE_ORDER.indexOf(was.licence)) add("licence", `${LICENCE_LABELS[company.licence]} licence`, "The regulator has signed it off. New work is open to you.");
+  for (const a of achievements(company)) if (a.earned && !was.earned.has(a.id)) add("reputation", a.title, a.text);
+}
 
 export function useGame(): State {
   return useSyncExternalStore(game.subscribe, game.snapshot);

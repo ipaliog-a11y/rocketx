@@ -11,6 +11,7 @@ import { project } from "../../sim/schedule.ts";
 import { Sheet } from "../components/Sheet.tsx";
 import { useNarrow } from "../narrow.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
+import { glyphKind, MissionGlyph } from "../components/Icon.tsx";
 
 type Props = { company: Company; version: number; goTo: (screen: "launch") => void };
 type View = "table" | "calendar";
@@ -218,7 +219,8 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
         <ul className="contract-cards" aria-label="Contracts">
           {shown.map(({ c, status: st }) => (
             <li key={c.id}>
-              <button type="button" className={`card ${c.id === selected ? "selected" : ""}`} onClick={() => select(c.id)}>
+              <button type="button" className={`card glyph-card pickable ${c.id === selected ? "on" : ""}`} onClick={() => select(c.id)}>
+                <MissionGlyph kind={glyphKind(c.mission, c.kind)} size={44} />
                 <span className="cc-top">
                   <strong>{c.title}</strong>
                   <Chip tone={st.tone}>{st.text}</Chip>
@@ -262,7 +264,10 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
                   </div>
                 </td>
                 <td className="mono soft" style={{ fontSize: 13, whiteSpace: "nowrap" }}>
-                  {regimeOf(c)}
+                  <span className="with-icon" style={{ gap: 8 }}>
+                    <MissionGlyph kind={glyphKind(c.mission, c.kind)} size={28} />
+                    {regimeOf(c)}
+                  </span>
                 </td>
                 <td className="num">{money(c.payout)}</td>
                 <td className="num">{c.deadline}</td>
