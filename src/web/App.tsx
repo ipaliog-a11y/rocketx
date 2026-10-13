@@ -19,6 +19,7 @@ import { FiringMoment } from "./components/FiringMoment.tsx";
 import { MilestoneBanner } from "./components/Milestone.tsx";
 import { useHold } from "./motion.ts";
 import { AdvanceButton } from "./components/AdvanceButton.tsx";
+import { HelpButton, HelpDialog } from "./components/Help.tsx";
 
 /** Each place: its label, a shorter one for the phone's tab bar, and its icon. */
 const PLACES: Array<[Place, string, string, IconName]> = [
@@ -97,6 +98,7 @@ export function App() {
             </dd>
           </div>
         </dl>
+        <HelpButton />
         <AdvanceButton company={company} />
       </header>
       <WorkStrip company={company} open={() => go({ place: "home", tab: "work" })} />
@@ -131,6 +133,7 @@ export function App() {
         ))}
       </div>
 
+      <HelpDialog company={company} />
       {state.pending && !company.dead && <JobConfirm company={company} job={state.pending} />}
       {state.progress && <JobProgress key={`progress-${state.progress.id}`} progress={state.progress} />}
       {state.moment && !state.progress && <FiringMoment key={`moment-${state.moment.id}`} moment={state.moment} />}

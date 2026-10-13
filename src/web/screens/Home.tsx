@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { Company } from "../../sim/company.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { Campus } from "../components/Campus.tsx";
+import { FirstRun } from "../components/FirstRun.tsx";
 import { glyphKind, Icon, MissionGlyph } from "../components/Icon.tsx";
 import { money } from "../format.ts";
 import { useGame } from "../game.ts";
@@ -40,6 +41,7 @@ export function Today({ company }: { company: Company }) {
 
   return (
     <div className="today">
+      <FirstRun company={company} />
       <section className="card today-next" aria-labelledby="next-up">
         <p className="label" id="next-up">
           Next up · {items.length}

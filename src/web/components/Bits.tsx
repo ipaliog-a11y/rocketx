@@ -55,11 +55,11 @@ export function Chip({ tone, children }: { tone?: "good" | "warn" | "bad" | "mut
   return <span className={`chip ${tone ?? ""}`}>{children}</span>;
 }
 
-export function Facts({ items }: { items: Array<[string, ReactNode]> }) {
+export function Facts({ items }: { items: Array<[ReactNode, ReactNode]> }) {
   return (
     <dl className="facts">
-      {items.map(([k, v]) => (
-        <div key={k}>
+      {items.map(([k, v], i) => (
+        <div key={i}>
           <dt>{k}</dt>
           <dd>{v}</dd>
         </div>

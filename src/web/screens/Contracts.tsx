@@ -13,6 +13,7 @@ import { useNarrow } from "../narrow.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
 import { glyphKind, MissionGlyph } from "../components/Icon.tsx";
 import { useGo, type Route } from "../nav.ts";
+import { Info } from "../components/Info.tsx";
 
 type Props = { company: Company; version: number; route?: Route };
 type View = "table" | "calendar";
@@ -69,7 +70,13 @@ export function Contracts({ company, version, route }: Props) {
     <div className="screen">
       <div className="screen-head">
         <div className="stack" style={{ gap: 4 }}>
-          <h1>Contracts</h1>
+          <h1>
+            Contracts
+            <Info label="About contracts">
+              Work posted by customers. Each pays on delivery and charges a penalty if you sign and miss the deadline. Some need a licence or a reputation; some customers won't sign after a
+              failure like the one they fear. Recurring work comes as a series: commit to all of it for a bonus. The calendar shows postings, deadlines and rollouts; pick a future day to advance to it.
+            </Info>
+          </h1>
           <span className="muted">
             Day {company.day} · {shortDate(company.day)} · {rows.filter((r) => r.status.key === "open").length} open, {company.accepted.length} signed
           </span>
@@ -245,7 +252,13 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
           <thead>
             <tr>
               <th scope="col">Contract</th>
-              <th scope="col">Orbit</th>
+              <th scope="col">
+                Orbit
+                <Info label="About orbits">
+                  ↑ km: a sounding flight, judged on apogee. LEO: low orbit, a few hundred km. SSO: nearly polar, launched against the Earth's spin. GTO: up to 35,786 km, with a coast and a relight. Escape: away from
+                  the Earth, judged on C3. The second figure is the orbit's inclination.
+                </Info>
+              </th>
               <th scope="col" className="num">Pays</th>
               <th scope="col" className="num">Fly by</th>
               <th scope="col">Status</th>

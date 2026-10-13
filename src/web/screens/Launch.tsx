@@ -15,9 +15,17 @@ import { useGo, type Route } from "../nav.ts";
 import { Factory } from "./Factory.tsx";
 import { Crew } from "./Crew.tsx";
 import { glyphKind, Icon, MissionGlyph } from "../components/Icon.tsx";
+import { Info } from "../components/Info.tsx";
 
 type Props = { company: Company; version: number; route: Route };
 type Tab = "flights" | "factory" | "crew";
+
+/** What each tab is for, behind the ⓘ beside the title. */
+const LAUNCH_INTROS: Record<Tab, string> = {
+  flights: "Your signed contracts: build the vehicle, re-tune it for the payload, and fly before the deadline. Missing a deadline costs the penalty and reputation.",
+  factory: "Vehicles are built on production lines while the company gets on with everything else. Orders go to the line that frees up first and roll out on their ready day. More lines build more vehicles at once, and each repeat of a design builds faster.",
+  crew: `A ${CAPSULE.mass.toLocaleString("en-US")} kg capsule for ${CAPSULE.crew} crew under a ${CAPSULE.tower.mass} kg abort tower, dropped at T+${CAPSULE.tower.jettisonAt} s. If the rocket fails, the tower pulls the capsule clear and it comes down on parachutes, if the abort system works. Station cargo flies the same capsule without crew or tower.`,
+};
 
 /** Days left on a contract, coloured by whether a launch still fits. */
 function countdown(company: Company, c: Contract): { text: string; tone: "good" | "warn" | "bad" } {
@@ -34,7 +42,10 @@ export function Launch({ company, version, route }: Props) {
   return (
     <div className="screen">
       <div className="screen-head">
-        <h1>Launch</h1>
+        <h1>
+          Launch
+          <Info label="About this page">{LAUNCH_INTROS[tab]}</Info>
+        </h1>
         <Tabs<Tab>
           label="Launch views"
           value={tab}
@@ -64,7 +75,6 @@ function Flights({ company, version, route }: Props) {
 
   return (
     <>
-      <span className="muted">Signed contracts: build the vehicle, re-tune it for the payload, and fly before the deadline.</span>
       {signed.length === 0 || !contract ? (
         <div className="card" style={{ alignItems: "flex-start" }}>
           <h2>Nothing signed</h2>
@@ -191,9 +201,12 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
             Order · {money(b.build.cost)} · {b.build.days} d
           </button>
           {turns && contract.mission.target && (
-            <button type="button" className="btn" onClick={() => game.schedule(retuneJob(company, design, contract))}>
-              Re-tune for {contract.payloadMass} kg
-            </button>
+            <span className="with-icon">
+              <button type="button" className="btn" onClick={() => game.schedule(retuneJob(company, design, contract))}>
+                Re-tune for {contract.payloadMass} kg
+              </button>
+              <Info label="About re-tuning">A re-tune works out the steering against what tests have measured, for this payload and orbit. Do it after the last test, before you launch.</Info>
+            </span>
           )}
           <button type="button" className="btn quiet" onClick={() => go({ place: "rockets", tab: "sim", design, contract: contract.id })}>
             <Icon name="simulate" size="sm" />
@@ -204,11 +217,6 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
             Plan tests
           </button>
         </div>
-        {turns && contract.mission.target && (
-          <span className="muted" style={{ fontSize: 14 }}>
-            A re-tune flies the pitch programme against what tests have measured. Do it after the last test, before you launch.
-          </span>
-        )}
       </div>
     </section>
   );

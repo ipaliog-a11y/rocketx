@@ -75,10 +75,6 @@ export function Work({ company }: { company: Company }) {
   const rows = timeline(company);
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <span className="muted">
-        Each track works one job at a time per unit, and the tracks work side by side. Book work from Testing, the drawing board or the licence card with “Add to plan”,
-        then advance the calendar once. Results land on the day each job finishes. Jobs on the same hardware keep the order they were booked in.
-      </span>
       <div className="tracks">
         {TRACK_ORDER.map((track) => {
           const spec = TRACKS[track];
