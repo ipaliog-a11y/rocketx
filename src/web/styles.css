@@ -531,6 +531,9 @@ table.compact th:last-child, table.compact td:last-child { padding-right: 0; }
 .next-item button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .next-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .next-words .muted { font-size: 14px; }
+.next-alt { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin: 6px 0 2px 16px; color: var(--data); font-weight: 600; font-size: 14px; }
+.next-alt:hover { text-decoration: underline; }
+.next-alt:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .next-go { display: inline-flex; align-items: center; gap: 4px; color: var(--data); font-weight: 600; white-space: nowrap; }
 
 .pipelines { display: flex; flex-direction: column; gap: 10px; }

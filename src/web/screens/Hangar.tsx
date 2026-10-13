@@ -22,7 +22,7 @@ type Tab = "lineup" | "design" | "board" | "sim";
 const ROCKETS_INTROS: Record<Tab, string> = {
   lineup: "Every design to the same scale, with what each has flown. Choose one to open its drawing.",
   design: "One design: its stages and engines, where the mass and the Δv go, what it costs to build, and its test flight. Swap a stage's engine while none of the design are built.",
-  board: "Draw a new design stage by stage, or let the sizing guide suggest three for a job from your engines. A new tank or fairing size needs tooling the first time.",
+  board: "Draw a new design stage by stage, or let the sizing guide at the top suggest three rockets for a job from your engines. Any contract's “Suggest a rocket” opens it on that job. A new tank or fairing size needs tooling the first time.",
   sim: "Fly a design on paper before you build or sign: free, instant, and nothing fails. It uses what tests measured and the drawings for the rest. Known failures are flagged, and the range shows the worst and best of what was never measured.",
 };
 
@@ -66,7 +66,7 @@ export function Rockets({ company, route }: { company: Company; route: Route }) 
       )}
       {tab === "design" && <Design company={company} designKey={company.designs[key] ? key : "meridian"} simulate={(k) => (setSimFocus({ design: k }), setTab("sim"))} />}
       {tab === "sim" && <Simulator key={JSON.stringify(simFocus ?? {})} company={company} focus={simFocus} />}
-      {tab === "board" && <DrawingBoard company={company} drawn={(k) => (setKey(k), setTab("design"))} />}
+      {tab === "board" && <DrawingBoard company={company} job={route.tab === "board" ? route.contract : undefined} drawn={(k) => (setKey(k), setTab("design"))} />}
     </div>
   );
 }

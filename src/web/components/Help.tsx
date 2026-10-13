@@ -86,7 +86,7 @@ export function HelpDialog({ company }: { company: Company }) {
             </span>
             <GuideSteps company={company} after={close} />
             <span className="muted" style={{ fontSize: 14 }}>
-              Home › Today lists what needs you next. Tap an <span className="info static">i</span> beside a title for what a page is for, and an underlined term for what it means.
+              Home › Today lists what needs you next. Not sure what to build? “Suggest a rocket” on any contract opens the sizing guide (Rockets › Drawing board) on that job. Tap an <span className="info static">i</span> beside a title for what a page is for, and an underlined term for what it means.
             </span>
           </div>
         ) : (

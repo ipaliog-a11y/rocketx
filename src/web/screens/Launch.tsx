@@ -212,6 +212,12 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
             <Icon name="simulate" size="sm" />
             Simulate
           </button>
+          {contract.kind !== "crew" && (
+            <button type="button" className="btn quiet" onClick={() => go({ place: "rockets", tab: "board", contract: contract.id })}>
+              <Icon name="rocket" size="sm" />
+              Suggest a rocket
+            </button>
+          )}
           <button type="button" className="btn quiet" onClick={() => go({ place: "testing" })}>
             <Icon name="stand" size="sm" />
             Plan tests

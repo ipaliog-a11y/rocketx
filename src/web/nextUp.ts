@@ -14,7 +14,10 @@ import type { Route } from "./nav.ts";
 
 export type NextTone = "bad" | "caution" | "good" | "data";
 
-export type NextItem = { key: string; tone: NextTone; title: string; text: string; action: { label: string; route: Route } };
+type NextAction = { label: string; route: Route };
+
+/** A thing to do, and where to do it. `alt` is a second way to deal with it. */
+export type NextItem = { key: string; tone: NextTone; title: string; text: string; action: NextAction; alt?: NextAction };
 
 /** One signed flight and where it stands. */
 export type FlightStatus = {
@@ -57,15 +60,17 @@ export function nextUp(company: Company, statuses = flightStatuses(company), lim
   for (const s of statuses) {
     const c = s.contract;
     const v = company.designs[s.design]!;
+    // The sizing guide can suggest a rocket that does the job, except for crew flights, which fly the capsule.
+    const suggest: NextAction | undefined = c.kind === "crew" ? undefined : { label: "Suggest a rocket", route: { place: "rockets", tab: "board", contract: c.id } };
     if (s.ready === null) {
       add(
         s.bid.fitsSchedule
           ? { key: `build:${c.id}`, tone: "caution", title: `No ${v.name} built for “${c.title}”`, text: `One takes ${s.bid.build.days} days; ${s.bid.daysLeft} days left.`, action: { label: "Order", route: { place: "launch", contract: c.id } } }
-          : { key: `build:${c.id}`, tone: "bad", title: `“${c.title}” can't be built in time`, text: `A ${v.name} takes ${s.bid.build.days} days and the pad ${s.bid.daysLeft < s.bid.build.days ? "more" : "a week"}; ${s.bid.daysLeft} days left.`, action: { label: "Launch", route: { place: "launch", contract: c.id } } },
+          : { key: `build:${c.id}`, tone: "bad", title: `“${c.title}” can't be built in time`, text: `A ${v.name} takes ${s.bid.build.days} days and the pad ${s.bid.daysLeft < s.bid.build.days ? "more" : "a week"}; ${s.bid.daysLeft} days left.`, action: { label: "Launch", route: { place: "launch", contract: c.id } }, alt: suggest },
       );
     }
     if (!s.bid.forecast.delivers) {
-      add({ key: `forecast:${c.id}`, tone: "bad", title: `“${c.title}”: forecast misses`, text: `The ${v.name} as known: ${s.bid.forecast.text}`, action: { label: "Simulate", route: { place: "rockets", tab: "sim", design: s.design, contract: c.id } } });
+      add({ key: `forecast:${c.id}`, tone: "bad", title: `“${c.title}”: forecast misses`, text: `The ${v.name} as known: ${s.bid.forecast.text}`, action: { label: "Simulate", route: { place: "rockets", tab: "sim", design: s.design, contract: c.id } }, alt: suggest });
     }
     for (const [engine, unknowns] of s.engines) {
       const fault = unknowns.find((u) => u.text.startsWith("Known "));

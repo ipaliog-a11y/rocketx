@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { assembleVehicle, checkVehicle, designQuote, DIAMETERS, figures, maxEngines, specOf, stageRole, type VehicleSpec } from "../../sim/builder.ts";
 import { posted, type Company } from "../../sim/company.ts";
 import { vehicleCost } from "../../sim/cost.ts";
@@ -12,6 +12,7 @@ import { designJob } from "../jobs.ts";
 import { money } from "../format.ts";
 import { useNarrow } from "../narrow.ts";
 import { Info, Term } from "../components/Info.tsx";
+import { reducedMotion } from "../motion.ts";
 
 /** Orbits the guide can size for without a contract. */
 const CUSTOM_ORBITS = [
@@ -29,7 +30,8 @@ const CUSTOM_ORBITS = [
 
 const fit = (v: ReturnType<typeof assembleVehicle>, px: number) => Math.min(30, px / height(v));
 
-export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key: string) => void }) {
+/** The drawing board. `job` opens the sizing guide on that contract, already sized. */
+export function DrawingBoard({ company, drawn, job }: { company: Company; drawn: (key: string) => void; job?: string }) {
   const [spec, setSpec] = useState<VehicleSpec>(() => ({ ...specOf(company.designs.meridian ?? Object.values(company.designs)[0]!), name: "" }));
   const engines = company.campaign.engines;
   const names = Object.values(company.designs).map((d) => d.name);
@@ -48,7 +50,7 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
 
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <Guide company={company} use={(s) => setSpec({ ...s.spec, name: spec.name })} />
+      <Guide company={company} job={job} use={(s) => setSpec({ ...s.spec, name: spec.name })} />
       <div className="row">
         <section className="grow stack" aria-label="Design" style={{ gap: 16 }}>
           <div className="actions">
@@ -241,9 +243,11 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
 }
 
 /** The guide: say what the rocket is for, and get three sized designs from the engines the company has. */
-function Guide({ company, use }: { company: Company; use: (s: Suggestion) => void }) {
+function Guide({ company, use, job }: { company: Company; use: (s: Suggestion) => void; job?: string }) {
   const work = posted(company).filter((c) => !company.closed[c.id] && company.day <= c.deadline && c.kind !== "crew");
-  const [source, setSource] = useState<string>(work[0]?.id ?? "custom");
+  const asked = job && work.some((c) => c.id === job) ? job : undefined;
+  const [source, setSource] = useState<string>(asked ?? work[0]?.id ?? "custom");
+  const box = useRef<HTMLDetailsElement>(null);
   const [orbit, setOrbit] = useState("300/28.5");
   const [suborbital, setSuborbital] = useState(false);
   const [apogee, setApogee] = useState(120);
@@ -269,10 +273,17 @@ function Guide({ company, use }: { company: Company; use: (s: Suggestion) => voi
     }, 30);
   };
 
+  // Sent here for a contract: open on it, in view, already sized.
+  useEffect(() => {
+    if (!asked) return;
+    box.current?.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" });
+    run();
+  }, [asked]);
+
   return (
-    <details className="card guide" open={!narrow}>
+    <details className="card guide" open={!narrow || asked !== undefined} ref={box}>
       <summary style={{ cursor: "pointer" }}>
-        <span className="label">Guide</span> <span className="soft">Three designs sized for a job from your engines.</span>
+        <span className="label">Sizing guide</span> <span className="soft">Suggests three rockets for a job, from your engines.</span>
       </summary>
       <span className="muted" style={{ fontSize: 13 }}>
         Sized for typical engines: a starting point. Test, re-tune and read the forecast before you sign.

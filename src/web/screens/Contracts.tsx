@@ -11,7 +11,7 @@ import { project } from "../../sim/schedule.ts";
 import { Sheet } from "../components/Sheet.tsx";
 import { useNarrow } from "../narrow.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
-import { glyphKind, MissionGlyph } from "../components/Icon.tsx";
+import { glyphKind, Icon, MissionGlyph } from "../components/Icon.tsx";
 import { useGo, type Route } from "../nav.ts";
 import { Info } from "../components/Info.tsx";
 
@@ -580,6 +580,14 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
           {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
           <Findings b={b} />
           <Forecast b={b} />
+          {contract.kind !== "crew" && (
+            <span className="actions">
+              <button type="button" className="btn quiet" onClick={() => go({ place: "rockets", tab: "board", contract: contract.id })}>
+                <Icon name="rocket" size="sm" />
+                {b.forecast.delivers ? "Suggest a rocket" : "Suggest a rocket for this"}
+              </button>
+            </span>
+          )}
         </>
       )}
       {signed ? (
