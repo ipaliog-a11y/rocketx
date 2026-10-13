@@ -5,21 +5,27 @@ import { CAPSULE, crewRating } from "../../sim/crew.ts";
 import { STATION } from "../../missions.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
-import { Chip, Facts } from "../components/Bits.tsx";
+import { Chip, Facts, Tabs } from "../components/Bits.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
-import { defaultDesign, game } from "../game.ts";
-import { buildJob, launchJob, retuneJob, signedContracts } from "../jobs.ts";
+import { game } from "../game.ts";
+import { buildJob, designFor, launchJob, retuneJob, signedContracts } from "../jobs.ts";
 import { km, money } from "../format.ts";
 import { Sheet } from "../components/Sheet.tsx";
-import type { SimFocus } from "./Simulator.tsx";
+import { useGo, type Route } from "../nav.ts";
+import { Factory } from "./Factory.tsx";
+import { Crew } from "./Crew.tsx";
 import { glyphKind, Icon, MissionGlyph } from "../components/Icon.tsx";
+import { Info } from "../components/Info.tsx";
 
-type Props = { company: Company; version: number; goTo: (screen: "contracts" | "stand" | "tunnel") => void; simulate: (focus: SimFocus) => void };
+type Props = { company: Company; version: number; route: Route };
+type Tab = "flights" | "factory" | "crew";
 
-/** A design with a vehicle on the ground or on the line: what the player most likely means to fly. */
-function readyDesign(company: Company): string | undefined {
-  return Object.keys(company.designs).find((k) => readyDay(company, k) !== null);
-}
+/** What each tab is for, behind the ⓘ beside the title. */
+const LAUNCH_INTROS: Record<Tab, string> = {
+  flights: "Your signed contracts: build the vehicle, re-tune it for the payload, and fly before the deadline. Missing a deadline costs the penalty and reputation.",
+  factory: "Vehicles are built on production lines while the company gets on with everything else. Orders go to the line that frees up first and roll out on their ready day. More lines build more vehicles at once, and each repeat of a design builds faster.",
+  crew: `A ${CAPSULE.mass.toLocaleString("en-US")} kg capsule for ${CAPSULE.crew} crew under a ${CAPSULE.tower.mass} kg abort tower, dropped at T+${CAPSULE.tower.jettisonAt} s. If the rocket fails, the tower pulls the capsule clear and it comes down on parachutes, if the abort system works. Station cargo flies the same capsule without crew or tower.`,
+};
 
 /** Days left on a contract, coloured by whether a launch still fits. */
 function countdown(company: Company, c: Contract): { text: string; tone: "good" | "warn" | "bad" } {
@@ -29,25 +35,51 @@ function countdown(company: Company, c: Contract): { text: string; tone: "good" 
   return { text: `${left} D LEFT`, tone: "good" };
 }
 
-export function Launch({ company, version, goTo, simulate }: Props) {
-  const signed = signedContracts(company);
-  const [selected, setSelected] = useState<string | undefined>(signed[0]?.id);
-  const contract = signed.find((c) => c.id === selected) ?? signed[0];
-  const [choice, setChoice] = useState<Record<string, string>>({});
-  // On a phone the launch preparation opens over the list once a contract is picked. With just one signed, it shows straight away.
-  const [sheet, setSheet] = useState(false);
-
+/** Launch: build it and fly it. The signed flights, the factory, and the crew side. */
+export function Launch({ company, version, route }: Props) {
+  const first = (["flights", "factory", "crew"] as const).find((t) => t === route.tab) ?? "flights";
+  const [tab, setTab] = useState<Tab>(first);
   return (
     <div className="screen">
       <div className="screen-head">
-        <h1>Launch</h1>
-        <span className="muted">Signed contracts: build the vehicle, re-tune it for the payload, and fly before the deadline.</span>
+        <h1>
+          Launch
+          <Info label="About this page">{LAUNCH_INTROS[tab]}</Info>
+        </h1>
+        <Tabs<Tab>
+          label="Launch views"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            ["flights", signedContracts(company).length > 0 ? `Flights · ${signedContracts(company).length}` : "Flights"],
+            ["factory", company.orders.length > 0 ? `Factory · ${company.orders.length}` : "Factory"],
+            ["crew", "Crew"],
+          ]}
+        />
       </div>
+      {tab === "flights" && <Flights company={company} version={version} route={route} />}
+      {tab === "factory" && <Factory company={company} />}
+      {tab === "crew" && <Crew company={company} />}
+    </div>
+  );
+}
+
+function Flights({ company, version, route }: Props) {
+  const go = useGo();
+  const signed = signedContracts(company);
+  const [selected, setSelected] = useState<string | undefined>(route.contract && signed.some((c) => c.id === route.contract) ? route.contract : signed[0]?.id);
+  const contract = signed.find((c) => c.id === selected) ?? signed[0];
+  const [choice, setChoice] = useState<Record<string, string>>(route.contract && route.design ? { [route.contract]: route.design } : {});
+  // On a phone the launch preparation opens over the list once a contract is picked, or straight away when a link sent us to one.
+  const [sheet, setSheet] = useState(route.contract !== undefined);
+
+  return (
+    <>
       {signed.length === 0 || !contract ? (
         <div className="card" style={{ alignItems: "flex-start" }}>
           <h2>Nothing signed</h2>
           <span className="soft">Sign a contract on the Contracts page, then come back here to fly it.</span>
-          <button type="button" className="btn primary" onClick={() => goTo("contracts")}>
+          <button type="button" className="btn primary" onClick={() => go({ place: "contracts" })}>
             Go to Contracts
           </button>
         </div>
@@ -91,10 +123,8 @@ export function Launch({ company, version, goTo, simulate }: Props) {
                 company={company}
                 version={version}
                 contract={contract}
-                design={choice[contract.id] ?? readyDesign(company) ?? defaultDesign(contract)}
+                design={choice[contract.id] ?? designFor(company, contract)}
                 setDesign={(d) => setChoice({ ...choice, [contract.id]: d })}
-                goTo={goTo}
-                simulate={simulate}
               />
             );
             return signed.length === 1 ? (
@@ -107,11 +137,12 @@ export function Launch({ company, version, goTo, simulate }: Props) {
           })()}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
-function Prep({ company, version, contract, design, setDesign, goTo, simulate }: { company: Company; version: number; contract: Contract; design: string; setDesign: (d: string) => void; goTo: Props["goTo"]; simulate: Props["simulate"] }) {
+function Prep({ company, version, contract, design, setDesign }: { company: Company; version: number; contract: Contract; design: string; setDesign: (d: string) => void }) {
+  const go = useGo();
   // Signing is behind us here: drop the blocker that says so.
   const b = useMemo(() => {
     const raw = bid(company, contract.id, design);
@@ -170,24 +201,22 @@ function Prep({ company, version, contract, design, setDesign, goTo, simulate }:
             Order · {money(b.build.cost)} · {b.build.days} d
           </button>
           {turns && contract.mission.target && (
-            <button type="button" className="btn" onClick={() => game.schedule(retuneJob(company, design, contract))}>
-              Re-tune for {contract.payloadMass} kg
-            </button>
+            <span className="with-icon">
+              <button type="button" className="btn" onClick={() => game.schedule(retuneJob(company, design, contract))}>
+                Re-tune for {contract.payloadMass} kg
+              </button>
+              <Info label="About re-tuning">A re-tune works out the steering against what tests have measured, for this payload and orbit. Do it after the last test, before you launch.</Info>
+            </span>
           )}
-          <button type="button" className="btn quiet" onClick={() => simulate({ design, contract: contract.id })}>
+          <button type="button" className="btn quiet" onClick={() => go({ place: "rockets", tab: "sim", design, contract: contract.id })}>
             <Icon name="simulate" size="sm" />
             Simulate
           </button>
-          <button type="button" className="btn quiet" onClick={() => goTo("stand")}>
+          <button type="button" className="btn quiet" onClick={() => go({ place: "testing" })}>
             <Icon name="stand" size="sm" />
             Plan tests
           </button>
         </div>
-        {turns && contract.mission.target && (
-          <span className="muted" style={{ fontSize: 14 }}>
-            A re-tune flies the pitch programme against what tests have measured. Do it after the last test, before you launch.
-          </span>
-        )}
       </div>
     </section>
   );
@@ -195,7 +224,7 @@ function Prep({ company, version, contract, design, setDesign, goTo, simulate }:
 
 /** What flying the capsule means for this launch: crew aboard and whether the rocket may carry them, or cargo. */
 function StationNote({ company, design, crew }: { company: Company; design: string; crew: boolean }) {
-  if (!company.capsule) return <span className="bad">This flight needs the company's capsule. Develop it from Hangar → Crew.</span>;
+  if (!company.capsule) return <span className="bad">This flight needs the company's capsule. Develop it from Launch › Crew.</span>;
   if (!crew) return <span className="soft">The capsule flies with cargo and no crew, without its abort tower.</span>;
   const rating = crewRating(company, design, STATION);
   return (

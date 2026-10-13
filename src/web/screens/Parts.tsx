@@ -10,6 +10,7 @@ import { refineJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
 import { flownUpper, ispRange, partNeed, planPartTest, plannedBurn, refineWorth } from "../partTest.ts";
 import type { Focus } from "./TestStand.tsx";
+import { Term } from "../components/Info.tsx";
 
 const SLOT_TITLES: Record<Slot, string> = {
   cycle: "Feed cycles · start sequence",
@@ -105,7 +106,6 @@ export function Parts({ company, test }: { company: Company; test: (focus: Focus
   const shown = keys.filter((k) => filter === "all" || (filter === "needs" ? partNeed(company, k) !== null : parsePartKey(k).slot === filter));
   return (
     <div className="stack" style={{ gap: 16 }}>
-      <span className="muted">What tests learn lands on the parts, and every engine built with a part shares it. Tap a part for its record.</span>
       <div className="filter-chips" role="group" aria-label="Show parts">
         {FILTERS.map(([id, label]) => (
           <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)}>
@@ -263,7 +263,9 @@ function RefinePanel({ company, partKey }: { company: Company; partKey: string }
   return (
     <div className="stack refine" style={{ gap: 6 }}>
       <span style={{ fontSize: 14 }}>
-        <span className="muted">Delivered Isp:</span>{" "}
+        <span className="muted">
+          Delivered <Term id="isp">Isp</Term>:
+        </span>{" "}
         {measured.length > 0 ? (
           <>
             {measured.map((e) => `${e.name} ${pct(measuredOf(e.name)! - 1)}`).join(" · ")}

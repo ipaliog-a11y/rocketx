@@ -147,9 +147,6 @@ export function EngineShop({ company, done, show }: { company: Company; done: ()
   return (
     <div className="row">
       <section className="grow stack" aria-label="Choose parts" style={{ gap: 18 }}>
-        <p className="muted" style={{ margin: 0 }}>
-          Four parts at one chamber size. Parts in production are free and keep what tests learned; new ones cost development and start unproven.
-        </p>
         <div className="slot">
           <span className="label">Chamber size</span>
           <div className="filter-chips" role="group" aria-label="Chamber size">

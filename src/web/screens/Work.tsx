@@ -8,7 +8,7 @@ import { waitJob } from "../jobs.ts";
 import { money } from "../format.ts";
 
 /** When every booked job starts and ends, if the calendar runs on. */
-function timeline(company: Company) {
+export function timeline(company: Company) {
   const p = project(company).tasks;
   return company.tasks.map((t) => ({ task: t, start: t.startDay ?? p.get(t.id)?.start, end: t.endDay ?? p.get(t.id)?.end }));
 }
@@ -54,12 +54,8 @@ export function WorkStrip({ company, open }: { company: Company; open: () => voi
       </span>
       )}
       <span className="actions" style={{ gap: 8 }}>
-        {Number.isFinite(next) && (
-          <button type="button" className="btn primary" onClick={() => advanceTo(company, next, "Working to the next finish")}>
-            Advance to day {next}
-          </button>
-        )}
-        {!folded && Number.isFinite(last) && last > next && (
+        {/* The top bar's Advance goes to the next finish; this runs the whole plan. */}
+        {Number.isFinite(last) && last > next && (
           <button type="button" className="btn" onClick={() => advanceTo(company, last, "Working through the plan")}>
             All done · day {last}
           </button>
@@ -79,10 +75,6 @@ export function Work({ company }: { company: Company }) {
   const rows = timeline(company);
   return (
     <div className="stack" style={{ gap: 20 }}>
-      <span className="muted">
-        Each track works one job at a time per unit, and the tracks work side by side. Book work from the stand, the tunnel, the drawing board or the licence page with “Add to plan”,
-        then advance the calendar once. Results land on the day each job finishes. Jobs on the same hardware keep the order they were booked in.
-      </span>
       <div className="tracks">
         {TRACK_ORDER.map((track) => {
           const spec = TRACKS[track];

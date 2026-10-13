@@ -12,6 +12,7 @@ import { revisionLetter } from "../../sim/teststand.ts";
 import { fixAeroJob, tunnelJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
 import { COLORS } from "../palette.ts";
+import { Term } from "../components/Info.tsx";
 
 /** What each facility can see, in the player's words. */
 const SEES: Record<AeroFacility, Array<[boolean | "partly", string]>> = {
@@ -32,9 +33,11 @@ function shapes(company: Company): Array<{ key: string; label: string; design: s
   return [...out.values()];
 }
 
-export function Tunnel({ company }: { company: Company }) {
+/** The wind tunnel: a tab of Testing. `design` opens on that design's shape. */
+export function Tunnel({ company, design }: { company: Company; design?: string }) {
   const all = shapes(company);
-  const [selected, setSelected] = useState(all[all.length - 1]!.key);
+  const wanted = design && company.designs[design] ? aeroShape(company.designs[design]!).key : undefined;
+  const [selected, setSelected] = useState(wanted ?? all[all.length - 1]!.key);
   const shape = all.find((s) => s.key === selected) ?? all[0]!;
   const vehicle = company.designs[shape.design]!;
   const known = company.campaign.aeroKnowledge[shape.key];
@@ -55,11 +58,7 @@ export function Tunnel({ company }: { company: Company }) {
   const peak = Math.max(...series.flatMap((s) => s.points.map((p) => p[1])));
 
   return (
-    <div className="screen">
-      <div className="screen-head">
-        <h1>Wind tunnel</h1>
-        <span className="muted">One shape per outer mould line. Designs that share a shape share what the tunnel learns.</span>
-      </div>
+    <>
       <div className="row">
         <section className="side stack" aria-label="Shapes" style={{ flexBasis: 360 }}>
           {all.map((s) => {
@@ -134,12 +133,12 @@ export function Tunnel({ company }: { company: Company }) {
                 {known?.dragFactor != null ? pct(known.dragFactor - 1) : "unknown"}
               </span>
               <span className="muted" style={{ fontSize: 13 }}>
-                {known?.dragSource === "cfd" ? "CFD estimate" : known?.dragSource === "tunnel" ? "tunnel measurement" : "never measured"}
+                {known?.dragSource === "cfd" ? <><Term id="cfd">CFD</Term> estimate</> : known?.dragSource === "tunnel" ? "tunnel measurement" : "never measured"}
               </span>
             </div>
             <div className="card" style={{ flex: "1 1 180px" }}>
               <span className="muted" style={{ fontSize: 13 }}>
-                Transonic rise
+                <Term id="transonic">Transonic</Term> rise
               </span>
               <span className="mono" style={{ fontSize: 22, fontWeight: 600 }}>
                 {known?.transonicRise != null ? `×${known.transonicRise.toFixed(2)}` : "unknown"}
@@ -147,7 +146,7 @@ export function Tunnel({ company }: { company: Company }) {
             </div>
             <div className={`card ${buffetOpen ? "alert" : ""}`} style={{ flex: "1 1 180px" }}>
               <span className="muted" style={{ fontSize: 13 }}>
-                Buffet
+                <Term id="buffet">Buffet</Term>
               </span>
               <span className="mono" style={{ fontSize: 22, fontWeight: 600 }}>
                 {known?.buffet == null ? "unknown" : known.buffet > 0 ? `${known.buffet.toFixed(2)}× q` : "none"}
@@ -216,6 +215,6 @@ export function Tunnel({ company }: { company: Company }) {
           )}
         </section>
       </div>
-    </div>
+    </>
   );
 }

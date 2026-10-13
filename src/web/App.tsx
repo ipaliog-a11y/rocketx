@@ -1,57 +1,59 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { reputation, summary } from "../sim/company.ts";
 import { LICENCE_LABELS } from "../sim/licence.ts";
 import { JobConfirm, JobProgress } from "./components/JobDialogs.tsx";
 import { game, useGame } from "./game.ts";
 import { money, signed } from "./format.ts";
-import { Company, type CompanyTab } from "./screens/Company.tsx";
+import { Home } from "./screens/Company.tsx";
 import { Contracts } from "./screens/Contracts.tsx";
 import { Flight } from "./screens/Flight.tsx";
-import { Hangar } from "./screens/Hangar.tsx";
-import type { SimFocus } from "./screens/Simulator.tsx";
+import { Rockets } from "./screens/Hangar.tsx";
+import { NavContext, type Place, type Route } from "./nav.ts";
 import { Launch } from "./screens/Launch.tsx";
 import { NewGame } from "./screens/NewGame.tsx";
 import { TestStand } from "./screens/TestStand.tsx";
-import { Tunnel } from "./screens/Tunnel.tsx";
 import { WorkStrip } from "./screens/Work.tsx";
 import { Icon, type IconName } from "./components/Icon.tsx";
 import { Ticker } from "./components/Ticker.tsx";
 import { FiringMoment } from "./components/FiringMoment.tsx";
 import { MilestoneBanner } from "./components/Milestone.tsx";
 import { useHold } from "./motion.ts";
+import { AdvanceButton } from "./components/AdvanceButton.tsx";
+import { HelpButton, HelpDialog } from "./components/Help.tsx";
 
-type Screen = "company" | "contracts" | "launch" | "hangar" | "stand" | "tunnel";
-
-/** Each screen: its label, a shorter one for the phone's tab bar, and its icon. */
-const SCREENS: Array<[Screen, string, string, IconName]> = [
-  ["company", "Company", "Company", "company"],
+/** Each place: its label, a shorter one for the phone's tab bar, and its icon. */
+const PLACES: Array<[Place, string, string, IconName]> = [
+  ["home", "Home", "Home", "home"],
   ["contracts", "Contracts", "Contracts", "contract"],
-  ["launch", "Launch", "Launch", "launch"],
-  ["hangar", "Hangar", "Hangar", "hangar"],
-  ["stand", "Test stand", "Stand", "stand"],
-  ["tunnel", "Tunnel", "Tunnel", "tunnel"],
+  ["rockets", "Rockets", "Rockets", "rocket"],
+  ["testing", "Testing", "Testing", "stand"],
+  ["launch", "Launch", "Launch", "pad"],
 ];
 
 export function App() {
   const state = useGame();
-  const [screen, setScreen] = useState<Screen>("company");
-  const [companyTab, setCompanyTab] = useState<CompanyTab>("overview");
-  const [simFocus, setSimFocus] = useState<SimFocus | undefined>();
-  const simulate = (focus: SimFocus) => (setSimFocus({ ...focus }), setScreen("hangar"), window.scrollTo(0, 0));
+  const [route, setRoute] = useState<Route>({ place: "home" });
+  const go = useCallback((to: Route) => {
+    game.closeFlight();
+    setRoute({ ...to });
+    window.scrollTo(0, 0);
+  }, []);
+  const routeKey = JSON.stringify(route);
   const company = state.company;
   // While a launch plays, the top bar keeps its money and reputation back for the debrief.
   const cash = useHold(company?.cash ?? 0, state.cinema);
   const shownRep = useHold(company ? reputation(company) : 0, state.cinema);
   if (!company) return <NewGame />;
   return (
+    <NavContext.Provider value={go}>
     <div className="app">
       <header className="topbar">
-        <button type="button" className="brand" onClick={() => (game.closeFlight(), setScreen("company"))}>
+        <button type="button" className="brand" onClick={() => go({ place: "home" })}>
           {company.name}
         </button>
         <nav className="nav" aria-label="Sections">
-          {SCREENS.map(([id, label, short, icon]) => (
-            <button key={id} type="button" aria-label={label} aria-current={!state.flight && screen === id ? "page" : undefined} onClick={() => (game.closeFlight(), setSimFocus(undefined), setScreen(id), window.scrollTo(0, 0))}>
+          {PLACES.map(([id, label, short, icon]) => (
+            <button key={id} type="button" aria-label={label} aria-current={!state.flight && route.place === id ? "page" : undefined} onClick={() => go({ place: id })}>
               <Icon name={icon} className="nav-icon" />
               <span className="nav-long">{label}</span>
               <span className="nav-short" aria-hidden="true">
@@ -96,19 +98,20 @@ export function App() {
             </dd>
           </div>
         </dl>
+        <HelpButton />
+        <AdvanceButton company={company} />
       </header>
-      <WorkStrip company={company} open={() => (game.closeFlight(), setCompanyTab("work"), setScreen("company"))} />
+      <WorkStrip company={company} open={() => go({ place: "home", tab: "work" })} />
 
       {state.flight ? (
         <Flight key={`flight-${state.flight.id}`} report={state.flight.report} design={state.flight.design} />
       ) : (
         <>
-          {screen === "company" && <Company company={company} tab={companyTab} setTab={setCompanyTab} />}
-          {screen === "contracts" && <Contracts company={company} version={state.version} goTo={setScreen} />}
-          {screen === "launch" && <Launch company={company} version={state.version} goTo={setScreen} simulate={simulate} />}
-          {screen === "hangar" && <Hangar key={JSON.stringify(simFocus ?? {})} company={company} focus={simFocus} />}
-          {screen === "stand" && <TestStand company={company} />}
-          {screen === "tunnel" && <Tunnel company={company} />}
+          {route.place === "home" && <Home key={routeKey} company={company} route={route} />}
+          {route.place === "contracts" && <Contracts key={routeKey} company={company} version={state.version} route={route} />}
+          {route.place === "rockets" && <Rockets key={routeKey} company={company} route={route} />}
+          {route.place === "testing" && <TestStand key={routeKey} company={company} route={route} />}
+          {route.place === "launch" && <Launch key={routeKey} company={company} version={state.version} route={route} />}
         </>
       )}
 
@@ -130,6 +133,7 @@ export function App() {
         ))}
       </div>
 
+      <HelpDialog company={company} />
       {state.pending && !company.dead && <JobConfirm company={company} job={state.pending} />}
       {state.progress && <JobProgress key={`progress-${state.progress.id}`} progress={state.progress} />}
       {state.moment && !state.progress && <FiringMoment key={`moment-${state.moment.id}`} moment={state.moment} />}
@@ -151,5 +155,6 @@ export function App() {
         </div>
       )}
     </div>
+    </NavContext.Provider>
   );
 }

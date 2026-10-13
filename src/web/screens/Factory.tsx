@@ -11,10 +11,6 @@ export function Factory({ company }: { company: Company }) {
   return (
     <div className="row">
       <section className="grow stack" aria-label="Production lines">
-        <span className="muted">
-          Vehicles are built on production lines while the company gets on with everything else. Orders go to the line that frees up first and roll out on their ready
-          day. More lines build more vehicles at once.
-        </span>
         {company.lines.map((free, i) => {
           const orders = company.orders.filter((o) => o.line === i).sort((a, b) => a.startDay - b.startDay);
           const current = orders.find((o) => o.startDay <= company.day);
@@ -66,7 +62,7 @@ export function Factory({ company }: { company: Company }) {
                     ))}
                 </ul>
               )}
-              {orders.length === 0 && !settingUp && <span className="muted">Waiting for an order. Order vehicles from the Hangar or the Launch page.</span>}
+              {orders.length === 0 && !settingUp && <span className="muted">Waiting for an order. Order vehicles from Rockets › Design or a signed flight.</span>}
             </div>
           );
         })}

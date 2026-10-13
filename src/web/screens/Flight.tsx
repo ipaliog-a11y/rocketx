@@ -12,6 +12,7 @@ import { niceMax, Plot, ticks, type Marker } from "../components/Plot.tsx";
 import { game } from "../game.ts";
 import { km, kPa, money } from "../format.ts";
 import { COLORS } from "../palette.ts";
+import { Term } from "../components/Info.tsx";
 
 /** The watched launch: a replay of the flight the sim just flew, then the debrief. */
 
@@ -257,7 +258,9 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
             </figure>
           )}
           <figure className="card" style={{ margin: 0 }}>
-            <figcaption className="label">Dynamic pressure against the load budget</figcaption>
+            <figcaption className="label">
+              <Term id="maxq">Dynamic pressure</Term> against the load budget
+            </figcaption>
             <Plot
               height={220}
               label="Dynamic pressure over time"
@@ -277,8 +280,8 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
             items={[
               ["Altitude", km(now.altitude)],
               ["Speed", `${Math.round(now.velocity)} m/s`],
-              ["Mach", now.altitude < 150_000 ? now.mach.toFixed(2) : "—"],
-              ["q", kPa(now.dynamicPressure)],
+              [<Term id="transonic">Mach</Term>, now.altitude < 150_000 ? now.mach.toFixed(2) : "—"],
+              [<Term id="maxq">q</Term>, kPa(now.dynamicPressure)],
               ["Pitch", `${now.pitch.toFixed(1)}°`],
               ["Stage", ["Booster", "Upper", "Kick stage"][now.stage] ?? `Stage ${now.stage + 1}`],
             ]}
@@ -354,7 +357,9 @@ function Debrief({ report }: { report: FlightReport }) {
         <div className="grow stack">
           {ideal > 0 && r.outcome !== "failure" && (
             <div className="card">
-              <p className="label">Where the engines' Δv went</p>
+              <p className="label">
+                Where the engines' <Term id="dv">Δv</Term> went
+              </p>
               <div style={{ display: "flex", height: 22, borderRadius: 3, overflow: "hidden" }} role="img" aria-label="Δv budget">
                 <div style={{ flex: `${s.burnoutGroundSpeed} 1 0`, background: COLORS.text }} />
                 {losses.map(([name, v, c]) => (

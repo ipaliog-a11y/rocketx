@@ -13,6 +13,7 @@ import { retuneJob, retuneTestJob, signedContracts } from "../jobs.ts";
 import { km } from "../format.ts";
 import { headline, Replay } from "./Flight.tsx";
 import { COLORS } from "../palette.ts";
+import { Info } from "../components/Info.tsx";
 
 /** What a straight-up test flight has to reach to count as space, m. */
 const SPACE = 100_000;
@@ -87,11 +88,6 @@ export function Simulator({ company, focus }: { company: Company; focus?: SimFoc
 
   return (
     <section className="stack" aria-label="Launch simulator" style={{ gap: 16 }}>
-      <span className="muted">
-        Fly a design on paper before you build or sign: free, instant, and nothing fails. It uses what tests measured and the drawings for the rest. Known failures are flagged,
-        and the range shows the worst and best of what was never measured.
-      </span>
-
       <div className="card sim-controls">
         <DesignSelect label="Design" value={key} onChange={setKey} designs={company.designs} inventory={company.inventory} />
         <label className="stack" style={{ gap: 6 }}>
@@ -201,9 +197,7 @@ function Results({ company, sim, designKey, contract, steering, canTune }: { com
             >
               Re-tune the {sim.vehicle.name} to fly this
             </button>
-            <span className="muted" style={{ fontSize: 13 }}>
-              The simulator only shows it: the rocket flies its own steering until the office re-tunes it.
-            </span>
+            <Info label="About the best steering">The simulator only shows it: the rocket flies its own steering until the office re-tunes it.</Info>
           </div>
         )}
       </div>

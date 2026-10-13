@@ -6,6 +6,7 @@ import { Chip } from "../components/Bits.tsx";
 import { game } from "../game.ts";
 import { abortTestJob, capsuleJob, fixAbortJob, padAbortJob } from "../jobs.ts";
 import { money } from "../format.ts";
+import { Info } from "../components/Info.tsx";
 
 /**
  * The road to flying people: the capsule, its abort system and the two
@@ -19,11 +20,6 @@ export function Crew({ company }: { company: Company }) {
 
   return (
     <div className="stack" style={{ gap: 18 }}>
-      <span className="muted">
-        A {CAPSULE.mass.toLocaleString("en-US")} kg capsule for {CAPSULE.crew} crew under a {CAPSULE.tower.mass} kg abort tower, dropped at T+{CAPSULE.tower.jettisonAt} s. If the rocket fails, the tower pulls
-        the capsule clear and it comes down on parachutes, if the abort system works. Station cargo flies the same capsule without crew or tower.
-      </span>
-
       <section className="card" aria-label="Capsule">
         <p className="label">Capsule</p>
         {capsule ? (
@@ -89,11 +85,13 @@ export function Crew({ company }: { company: Company }) {
       )}
 
       <section className="card" aria-label="Crew-rated rockets">
-        <p className="label">Crew-rated rockets</p>
-        <span className="muted" style={{ fontSize: 14 }}>
-          A rocket may carry people once its engines are proven for their full burns, it has flown {CLEAN_FLIGHTS_FOR_CREW} clean orbital flights in a row, and both abort tests have passed on the current abort
-          system. Station cargo flights count.
-        </span>
+        <p className="label">
+          Crew-rated rockets
+          <Info label="About crew rating">
+            A rocket may carry people once its engines are proven for their full burns, it has flown {CLEAN_FLIGHTS_FOR_CREW} clean orbital flights in a row, and both abort tests have passed on the current abort
+            system. Station cargo flights count.
+          </Info>
+        </p>
         <ul className="list" style={{ gap: 10 }}>
           {Object.entries(company.designs)
             .filter(([, d]) => d.pitchProgram?.kind === "gravity-turn")
@@ -188,7 +186,7 @@ function Licence({ company }: { company: Company }) {
   }
   return (
     <section className="card" aria-label="Crewed-flight licence">
-      <p className="label">Crewed-flight licence · apply on the Company page</p>
+      <p className="label">Crewed-flight licence · apply from Home › Company</p>
       <ul className="list" style={{ gap: 4 }}>
         {application.requirements.map((r) => (
           <li key={r.text}>

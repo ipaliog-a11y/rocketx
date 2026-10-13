@@ -10,8 +10,19 @@ import { LABELS, LedgerTab } from "./LedgerTab.tsx";
 import { Work } from "./Work.tsx";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { CATEGORY } from "../palette.ts";
+import type { Route } from "../nav.ts";
+import { Today } from "./Home.tsx";
+import { Info } from "../components/Info.tsx";
 
-export type CompanyTab = "overview" | "work" | "achievements" | "ledger";
+type HomeTab = "today" | "company" | "work" | "ledger";
+
+/** What each tab is for, behind the ⓘ beside the company's name. */
+const HOME_INTROS: Record<HomeTab, string> = {
+  today: "What needs you, most pressing first: each line links to where it's dealt with. Below it, each signed flight's road to the pad, and Port Avery: every facility shows what it's doing and opens where it's run.",
+  company: "Where the company stands: its numbers, the licence ladder and what the next licence wants, where the money went, the fleet and achievements.",
+  work: "Each track works one job at a time per unit, and the tracks work side by side. Book work with “Add to plan”, then advance the calendar once: results land on the day each job finishes. Jobs on the same hardware keep the order they were booked in.",
+  ledger: "Every payment in and out, and every flight and its outcome.",
+};
 
 /** Spend categories, in the order and colours the money bar uses. */
 const SPEND: Array<[Category, string]> = [
@@ -27,35 +38,40 @@ const SPEND: Array<[Category, string]> = [
   ["penalty", CATEGORY[9]],
 ];
 
-export function Company({ company, tab, setTab }: { company: CompanyState; tab: CompanyTab; setTab: (t: CompanyTab) => void }) {
+/**
+ * Home: what needs the player, and what's running. Today's list and the
+ * campus; the company's standing; the work on its tracks; the ledger.
+ */
+export function Home({ company, route }: { company: CompanyState; route: Route }) {
+  const first = (["today", "company", "work", "ledger"] as const).find((t) => t === route.tab) ?? "today";
+  const [tab, setTab] = useState<HomeTab>(first);
   const list = achievements(company);
-  const earned = list.filter((a) => a.earned).length;
 
   return (
     <div className="screen">
       <div className="screen-head">
-        <NameEditor company={company} />
-        <Tabs<CompanyTab>
-          label="Company views"
+        <NameEditor company={company} info={HOME_INTROS[tab]} />
+        <Tabs<HomeTab>
+          label="Home views"
           value={tab}
           onChange={setTab}
           tabs={[
-            ["overview", "Overview"],
+            ["today", "Today"],
+            ["company", "Company"],
             ["work", company.tasks.length > 0 ? `Work · ${company.tasks.length}` : "Work"],
-            ["achievements", `Achievements ${earned}/${list.length}`],
             ["ledger", "Ledger"],
           ]}
         />
       </div>
-      {tab === "overview" && <Overview company={company} list={list} openAchievements={() => setTab("achievements")} />}
+      {tab === "today" && <Today company={company} />}
+      {tab === "company" && <Overview company={company} list={list} />}
       {tab === "work" && <Work company={company} />}
-      {tab === "achievements" && <Achievements list={list} />}
       {tab === "ledger" && <LedgerTab company={company} />}
     </div>
   );
 }
 
-function NameEditor({ company }: { company: CompanyState }) {
+function NameEditor({ company, info }: { company: CompanyState; info: string }) {
   const [editing, setEditing] = useState(false);
   const [quitting, setQuitting] = useState(false);
   const [draft, setDraft] = useState(company.name);
@@ -84,7 +100,10 @@ function NameEditor({ company }: { company: CompanyState }) {
   return (
     <div className="stack" style={{ gap: 4 }}>
       <div className="actions" style={{ gap: 12 }}>
-        <h1>{company.name}</h1>
+        <h1>
+          {company.name}
+          <Info label="About this page">{info}</Info>
+        </h1>
         <button type="button" className="btn quiet" style={{ minHeight: 36 }} onClick={() => (setDraft(company.name), setEditing(true))}>
           Rename
         </button>
@@ -111,7 +130,8 @@ function NameEditor({ company }: { company: CompanyState }) {
   );
 }
 
-function Overview({ company, list, openAchievements }: { company: CompanyState; list: Achievement[]; openAchievements: () => void }) {
+function Overview({ company, list }: { company: CompanyState; list: Achievement[] }) {
+  const [allAchievements, setAllAchievements] = useState(false);
   const rep = reputation(company);
   const built = Object.values(company.built).reduce((a, b) => a + b, 0);
   const owned = Object.values(company.inventory).reduce((a, b) => a + b, 0);
@@ -142,8 +162,8 @@ function Overview({ company, list, openAchievements }: { company: CompanyState; 
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
               <p className="label">Achievements</p>
-              <button type="button" className="link" onClick={openAchievements}>
-                See all
+              <button type="button" className="link" onClick={() => setAllAchievements(!allAchievements)}>
+                {allAchievements ? "Show fewer" : `See all ${list.filter((a) => a.earned).length}/${list.length}`}
               </button>
             </div>
             {latest.length === 0 && <span className="muted">None yet. Fire an engine to get started.</span>}
@@ -167,6 +187,7 @@ function Overview({ company, list, openAchievements }: { company: CompanyState; 
           </div>
         </div>
       </div>
+      {allAchievements && <Achievements list={list} />}
     </>
   );
 }

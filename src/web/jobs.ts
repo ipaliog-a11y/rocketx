@@ -12,6 +12,7 @@ import type { Mission } from "../sim/mission.ts";
 import { FACILITIES, FIXES, firingCost, fixQuote, hardwareLoss, RESTART_TEST, type Facility } from "../sim/teststand.ts";
 import { AERO_FACILITIES, BUFFET_FIX, type AeroFacility } from "../sim/tunnel.ts";
 import { RETUNE_COST } from "../sim/tuning.ts";
+import { defaultDesign } from "./designs.ts";
 import { money } from "./format.ts";
 
 /**
@@ -63,6 +64,16 @@ function trackJob(base: Omit<Job, "run" | "task">, task: (company: Company) => T
 }
 
 export type Risk = { contract: Contract; text: string };
+
+/** A design with a vehicle on the ground or on the line: what the player most likely means to fly. */
+export function readyDesign(company: Company): string | undefined {
+  return Object.keys(company.designs).find((k) => readyDay(company, k) !== null);
+}
+
+/** The design a signed contract will fly on, unless the player picks another: one that's built, else the usual one for the job. */
+export function designFor(company: Company, contract: Contract): string {
+  return readyDesign(company) ?? defaultDesign(contract);
+}
 
 /** Signed contracts, soonest deadline first. */
 export function signedContracts(company: Company): Contract[] {

@@ -11,6 +11,7 @@ import { game } from "../game.ts";
 import { designJob } from "../jobs.ts";
 import { money } from "../format.ts";
 import { useNarrow } from "../narrow.ts";
+import { Info, Term } from "../components/Info.tsx";
 
 /** Orbits the guide can size for without a contract. */
 const CUSTOM_ORBITS = [
@@ -194,15 +195,20 @@ export function DrawingBoard({ company, drawn }: { company: Company; drawn: (key
               <Facts
                 items={[
                   ["Liftoff mass", `${Math.round(f.liftoffMass).toLocaleString("en-US")} kg`],
-                  ["Liftoff T/W", <span className={f.liftoffTW < 1.2 ? "bad" : undefined}>{f.liftoffTW.toFixed(2)}</span>],
-                  ["Δv", `${(f.totalDeltaV / 1000).toFixed(2)} km/s`],
+                  [<>Liftoff <Term id="tw">T/W</Term></>, <span className={f.liftoffTW < 1.2 ? "bad" : undefined}>{f.liftoffTW.toFixed(2)}</span>],
+                  [
+                    <>
+                      <Term id="dv">Δv</Term>
+                      <Info label="How much Δv a job needs">Δv needed, losses included: 100 km up ≈ 2.2 · LEO 300 ≈ 9.5 · GTO ≈ 11.5 · escape ≈ 12.5 km/s.</Info>
+                    </>,
+                    `${(f.totalDeltaV / 1000).toFixed(2)} km/s`,
+                  ],
                   ...(f.deltaV.length > 1 ? [["Per stage", f.deltaV.map((d) => (d / 1000).toFixed(2)).join(" + ")] as [string, string]] : []),
                   ["Build", `${money(build.cost)} · ${build.days} d`],
                 ]}
               />
             )}
           </div>
-          <span className="muted" style={{ fontSize: 13 }}>Δv needed: 100 km up ≈ 2.2 · LEO 300 ≈ 9.5 · GTO ≈ 11.5 · escape ≈ 12.5 km/s.</span>
           {check.problems.map((p) => (
             <span key={p} className="bad">
               {p}
@@ -268,6 +274,9 @@ function Guide({ company, use }: { company: Company; use: (s: Suggestion) => voi
       <summary style={{ cursor: "pointer" }}>
         <span className="label">Guide</span> <span className="soft">Three designs sized for a job from your engines.</span>
       </summary>
+      <span className="muted" style={{ fontSize: 13 }}>
+        Sized for typical engines: a starting point. Test, re-tune and read the forecast before you sign.
+      </span>
       <div className="actions" style={{ alignItems: "flex-end" }}>
         <label className="stack" style={{ gap: 4, flex: "2 1 260px" }}>
           <span className="soft">Job</span>
@@ -360,9 +369,6 @@ function Guide({ company, use }: { company: Company; use: (s: Suggestion) => voi
           ))}
         </div>
       )}
-      <span className="muted" style={{ fontSize: 13 }}>
-        Sized for typical engines: a starting point. Test, re-tune and read the forecast before you sign.
-      </span>
     </details>
   );
 }
