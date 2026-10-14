@@ -15,7 +15,7 @@ export function timeline(company: Company) {
 
 const advanceTo = (company: Company, day: number, why: string) => {
   const n = day - company.day;
-  game.schedule(waitJob(n, why, `Advance ${n} day${n === 1 ? "" : "s"} to day ${day}?`, "Advance"));
+  game.schedule(waitJob(n, why, `Advance ${n} day${n === 1 ? "" : "s"} to day ${day}?`, "Advance", true));
 };
 
 /** The plan at a glance, under the top bar on every screen: what each track is doing, and a way to let it run. */

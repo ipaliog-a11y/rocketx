@@ -12,6 +12,7 @@ import { Sheet } from "../components/Sheet.tsx";
 import { useNarrow } from "../narrow.ts";
 import { dateOf, dayOf, km, money, monthName, shortDate } from "../format.ts";
 import { glyphKind, Icon, MissionGlyph } from "../components/Icon.tsx";
+import { LOW_CASH } from "../cashRisk.ts";
 import { useGo, type Route } from "../nav.ts";
 import { Info } from "../components/Info.tsx";
 
@@ -606,6 +607,17 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
             <span className="muted" style={{ fontSize: 14 }}>
               Signing commits you to day {contract.deadline}. Missing it costs {money(contract.penalty)}.
             </span>
+            {contract.penalty > company.cash ? (
+              <span className="bad" style={{ fontSize: 14 }}>
+                If this flight fails or runs late, its {money(contract.penalty)} penalty is more than the company's {money(company.cash)}: it would end the run.
+              </span>
+            ) : (
+              company.cash - contract.penalty < LOW_CASH && (
+                <span className="warn" style={{ fontSize: 14 }}>
+                  If this flight fails or runs late, its penalty leaves {money(company.cash - contract.penalty)}: close to the edge.
+                </span>
+              )
+            )}
           </div>
         )
       )}

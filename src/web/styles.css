@@ -37,6 +37,7 @@
   --crew-bg: color-mix(in srgb, var(--crew) 14%, var(--ground));
   --good-line: color-mix(in srgb, var(--good) 40%, var(--line));
   --bad-line: color-mix(in srgb, var(--bad) 40%, var(--line));
+  --caution-line: color-mix(in srgb, var(--caution) 45%, var(--line));
   --data-line: color-mix(in srgb, var(--data) 40%, var(--line));
   --action-line: color-mix(in srgb, var(--action) 45%, var(--line));
 
@@ -107,6 +108,14 @@ h2 { margin: 0; font-size: 22px; font-weight: 700; }
 
 .card { padding: 18px 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
 .card.alert { border-color: var(--red-line); background: var(--red-ground); }
+.card.caution { border-color: var(--caution-line); }
+/* Money warnings in a go-ahead: the job would end the company (bad) or leave it close to the edge (caution). */
+.warn-banner { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-left: 4px solid; border-radius: 4px; font-size: 15px; }
+.warn-banner strong { letter-spacing: 0.02em; }
+.warn-banner.bad { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--ground)); color: var(--text); }
+.warn-banner.bad strong { color: var(--bad-text); }
+.warn-banner.caution { border-color: var(--caution); background: var(--caution-bg); color: var(--text); }
+.warn-banner.caution strong { color: var(--caution); }
 .card.blueprint {
   background-color: var(--blueprint);
   background-image: linear-gradient(var(--hover) 1px, transparent 1px), linear-gradient(90deg, var(--hover) 1px, transparent 1px);
@@ -136,6 +145,9 @@ h2 { margin: 0; font-size: 22px; font-weight: 700; }
 .btn:active:not(:disabled) { transform: scale(0.97); }
 .btn.primary { border: 1px solid var(--action); background: var(--action); color: var(--ground); font-weight: 700; }
 .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--action) 88%, white); border-color: color-mix(in srgb, var(--action) 88%, white); }
+/* Going ahead with something that ends the run: never the easy, focused choice. */
+.btn.danger { border-color: var(--bad-line); color: var(--bad-text); background: transparent; }
+.btn.danger:hover:not(:disabled) { border-color: var(--bad); background: var(--bad-bg); }
 .btn.quiet { border-color: transparent; color: var(--data); padding: 0 10px; }
 .btn.quiet:hover:not(:disabled) { background: var(--data-bg); border-color: transparent; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }

@@ -1,5 +1,5 @@
 import { build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
-import { designSpec, runTask, type TaskSpec } from "../sim/schedule.ts";
+import { buyUnit, cancelTask, designSpec, runTask, TRACKS, type Task, type TaskSpec, type Track } from "../sim/schedule.ts";
 import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, PAD_ABORT, type AbortFlaw } from "../sim/crew.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { COSTS, vehicleCost } from "../sim/cost.ts";
@@ -36,6 +36,12 @@ export type Job<T extends ActionResult = ActionResult> = {
   caveat?: string;
   /** A contract this job is for: it isn't at risk from its own launch. */
   forContract?: string;
+  /** What else it could cost if it goes wrong: a lost engine, a failed flight's penalty. */
+  exposure?: Array<{ cost: number; text: string }>;
+  /** Money that comes back instead of going out: calling off a queued job. */
+  refund?: number;
+  /** The design this job orders: once ordered, the company has a rocket coming. */
+  orders?: string;
   run: (company: Company) => T;
   onDone?: (result: T) => void;
   /** Work on a track: it can go on the plan instead of running now. Making it may be slow (a re-tune works the trajectory out). */
@@ -115,6 +121,7 @@ export function buildJob(company: Company, key: string): Job {
     days: 0,
     cost,
     alwaysAsk: true,
+    orders: key,
     caveat: `Built on line ${slot.line + 1} in ${days} days: ready on day ${slot.readyDay}.${queued}${learned} The company keeps working meanwhile.`,
     run: (c) => build(c, key),
   };
@@ -179,6 +186,7 @@ export function fireJob(engine: Engine, seconds: number, facility: Facility, exp
     days: f.days + (restart ? RESTART_TEST.days : 0),
     cost: firingCost(engine, facility, expectedRun, restart),
     moment: { kind: "firing", engine: engine.name },
+    exposure: [{ cost: hardwareLoss(engine).cost, text: `If the engine fails, a new one costs ${money(hardwareLoss(engine).cost)}.` }],
     caveat: `If the engine fails, a new one costs ${money(hardwareLoss(engine).cost)} and ties up the ${f.name} ${hardwareLoss(engine).days} more days while it is built. A firing cut short refunds the seconds it didn't run.`,
   }, () => ({ kind: "fire", engine: engine.name, seconds, facility, restart }));
 }
@@ -237,6 +245,7 @@ export function launchJob(company: Company, key: string, contract: Contract, onD
     days: waitForRollout(company, key) + COSTS.padDays,
     cost: COSTS.launchFee,
     forContract: contract.id,
+    exposure: contract.penalty > 0 ? [{ cost: contract.penalty, text: `If the flight fails, ${contract.customer} charges a ${money(contract.penalty)} penalty.` }] : undefined,
     run: (c) => fly(c, key, { contract: contract.id }),
     onDone,
   };
@@ -255,8 +264,39 @@ export function testFlightJob(company: Company, key: string, mission: Mission, o
   };
 }
 
-export function waitJob(days: number, why: string, title = `Wait ${days} days?`, verb = "Wait"): Job {
-  return { title, doing: why, verb, days, cost: 0, run: (c) => wait(c, days) };
+export function waitJob(days: number, why: string, title = `Wait ${days} days?`, verb = "Wait", alwaysAsk = false): Job {
+  return { title, doing: why, verb, days, cost: 0, alwaysAsk, run: (c) => wait(c, days) };
+}
+
+/** Another unit for a track: another stand, cell or engineering team. */
+export function unitJob(company: Company, track: Track): Job | null {
+  const next = TRACKS[track].extra[company.units[track].length - 1];
+  if (!next) return null;
+  return {
+    title: `Add ${next.name}?`,
+    doing: `Adding ${next.name}`,
+    verb: "Buy",
+    days: 0,
+    cost: next.cost,
+    alwaysAsk: true,
+    caveat: `It takes work from day ${company.day + next.days}, after ${next.days} days of setting up. Two units on a track run two jobs side by side.`,
+    run: (c) => buyUnit(c, track),
+  };
+}
+
+/** Call off a job that hasn't started: its money comes back and its place on the plan is lost. */
+export function cancelJob(task: Task): Job {
+  return {
+    title: `Cancel “${task.title}”?`,
+    doing: `Cancelling ${task.title}`,
+    verb: "Cancel the job",
+    days: 0,
+    cost: 0,
+    refund: task.cost,
+    alwaysAsk: true,
+    caveat: `It hasn't started, so all ${money(task.cost)} comes back. Booking it again later puts it at the back of the queue.`,
+    run: (c) => cancelTask(c, task.id),
+  };
 }
 
 export function licenceJob(application: Application): Job {

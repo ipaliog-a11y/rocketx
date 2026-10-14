@@ -231,14 +231,23 @@ function tick(company: Company): string[] {
  * can't buy and launch the cheapest orbital design.
  */
 function stranded(company: Company): boolean {
-  if (company.firstOrbitDay !== null) return false;
+  return strandedWith(company, company.cash) !== null;
+}
+
+/**
+ * Whether the company would be stranded with `cash` in hand: what another
+ * orbital try would cost, or null when it isn't stranded. `ordering` is a
+ * design about to be ordered, `lost` contracts that would lapse first.
+ */
+export function strandedWith(company: Company, cash: number, { ordering, lost = [] }: { ordering?: string; lost?: string[] } = {}): { needed: number } | null {
+  if (company.firstOrbitDay !== null) return null;
   const orbital = Object.entries(company.designs).filter(([, d]) => d.pitchProgram?.kind === "gravity-turn");
-  if (orbital.length === 0) return false;
-  if (orbital.some(([key]) => (company.inventory[key] ?? 0) > 0 || company.orders.some((o) => o.design === key))) return false;
+  if (orbital.length === 0) return null;
+  if (orbital.some(([key]) => key === ordering || (company.inventory[key] ?? 0) > 0 || company.orders.some((o) => o.design === key))) return null;
   const licence = holds(company, "orbital") ? 0 : LICENCE_COSTS.orbital.fee;
   const cheapest = Math.min(...orbital.map(([, d]) => vehicleCost(d).cost + COSTS.launchFee)) + licence;
-  const owed = company.accepted.reduce((sum, id) => sum + contractOf(company, id).payout, 0);
-  return company.cash + owed < cheapest;
+  const owed = company.accepted.filter((id) => !lost.includes(id)).reduce((sum, id) => sum + contractOf(company, id).payout, 0);
+  return cash + owed < cheapest ? { needed: cheapest - owed } : null;
 }
 
 function contractOf(company: Company, id: string): Contract {
