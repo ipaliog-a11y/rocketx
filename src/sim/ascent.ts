@@ -220,6 +220,8 @@ export type AscentOptions = {
   gnc?: Record<string, GncFlight>;
   /** Seed for a recovered booster's landing scatter and sea state; left out, a calm nominal landing. */
   landingSeed?: number;
+  /** A worn booster's engines failing, seconds into its burn: on top of whatever the engine's own truth holds. */
+  boosterFailure?: { t: number; mode: FailureMode };
 };
 
 /** [x, y, vx, vy, mass, gravity, drag, back-pressure, steering, ideal Δv] */
@@ -460,7 +462,11 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     ...design,
     stages: design.stages.map((stage) => ({ ...stage, engine: asBuilt(stage.engine, truthOf(stage)) })),
   };
-  const failureOf = (index: number) => firstFailure(truthOf(design.stages[index]!));
+  const failureOf = (index: number) => {
+    const own = firstFailure(truthOf(design.stages[index]!));
+    const worn = index === 0 ? options.boosterFailure : undefined;
+    return worn && (!own || worn.t < own.t) ? worn : own;
+  };
 
   const dt = options.dt ?? 0.05;
   const sampleInterval = options.sampleInterval ?? 1;
