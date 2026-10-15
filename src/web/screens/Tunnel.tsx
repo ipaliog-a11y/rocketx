@@ -47,13 +47,17 @@ export function Tunnel({ company, design }: { company: Company; design?: string 
   const machs = Array.from({ length: 61 }, (_, i) => i * 0.05);
   const hand: Series = { points: machs.map((m) => [m, dragCoefficient(vehicle.dragCurve, m)]), color: COLORS.muted, dash: "5 4", width: 1.5 };
   const series: Series[] = [hand];
+  // A shape drawn with a geometry has a supersonic part no tunnel here
+  // reaches: past Mach 1.2 the curve stays the model until a flight past
+  // Mach 1.5 measures it, so that stretch is drawn dashed.
+  const geometric = believed?.supersonicFactor !== undefined;
+  const supersonicMeasured = known?.supersonicSource === "flight";
   if (known?.dragSource && believed) {
-    series.push({
-      points: machs.map((m) => [m, dragCoefficient(vehicle.dragCurve, m) * dragMultiplier(believed, m)]),
-      color: known.dragSource === "tunnel" ? COLORS.action : COLORS.data,
-      width: known.dragSource === "tunnel" ? 3 : 2,
-      dash: known.dragSource === "cfd" ? "6 4" : undefined,
-    });
+    const at = (m: number): [number, number] => [m, dragCoefficient(vehicle.dragCurve, m) * dragMultiplier(believed, m)];
+    const style = { color: known.dragSource === "tunnel" ? COLORS.action : COLORS.data, width: known.dragSource === "tunnel" ? 3 : 2 };
+    const split = geometric && !supersonicMeasured ? BUFFET_BAND[1] : Infinity;
+    series.push({ points: machs.filter((m) => m <= split + 1e-9).map(at), ...style, dash: known.dragSource === "cfd" ? "6 4" : undefined });
+    if (split < Infinity) series.push({ points: machs.filter((m) => m >= split - 1e-9).map(at), ...style, width: 1.5, dash: "2 4" });
   }
   const peak = Math.max(...series.flatMap((s) => s.points.map((p) => p[1])));
 
@@ -113,6 +117,7 @@ export function Tunnel({ company, design }: { company: Company; design?: string 
               <span className="soft" style={{ fontSize: 14 }}>
                 Dashed grey: the hand curve.{" "}
                 {known?.dragSource === "tunnel" ? "Amber: measured in a tunnel." : known?.dragSource === "cfd" ? "Dashed cyan: CFD's estimate." : "Nothing measured yet."}
+                {geometric && (supersonicMeasured ? " Supersonic drag measured in flight." : " Past Mach 1.2, dotted: the model; only a flight past Mach 1.5 measures it.")}
               </span>
             </div>
             <Plot
@@ -120,7 +125,10 @@ export function Tunnel({ company, design }: { company: Company; design?: string 
               x={{ min: 0, max: 3, ticks: [0, 0.5, 1, 1.5, 2, 2.5, 3], format: (v) => `M${v}` }}
               y={{ min: 0, max: Math.max(0.8, Math.ceil(peak * 10) / 10), ticks: [0, 0.2, 0.4, 0.6, 0.8, 1.0].filter((t) => t <= Math.max(0.8, Math.ceil(peak * 10) / 10)), format: (v) => v.toFixed(1), title: "Cd" }}
               series={series}
-              bands={buffetOpen ? [{ from: BUFFET_BAND[0], to: BUFFET_BAND[1], color: COLORS.bad, label: "buffet band" }] : []}
+              bands={[
+                ...(buffetOpen ? [{ from: BUFFET_BAND[0], to: BUFFET_BAND[1], color: COLORS.bad, label: "buffet band" }] : []),
+                ...(geometric && !supersonicMeasured ? [{ from: 1.5, to: 3, color: COLORS.faint, label: "MODEL · FLIGHT ONLY" }] : []),
+              ]}
             />
           </div>
 

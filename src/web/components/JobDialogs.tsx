@@ -5,6 +5,22 @@ import { game, type Progress } from "../game.ts";
 import { deadlineRisks, type Job } from "../jobs.ts";
 import { quoteTask, TRACKS } from "../../sim/schedule.ts";
 import { money } from "../format.ts";
+import { cashRisk, type CashRisk } from "../cashRisk.ts";
+
+/** Above a dialog's facts: the job would end the company, or leave it close to the edge. */
+function CashBanner({ risk, note }: { risk: CashRisk; note?: string }) {
+  if (risk.level === "ok") return null;
+  const ends = risk.level === "ends";
+  return (
+    <div className={`warn-banner ${ends ? "bad" : "caution"}`} role="alert">
+      <strong>{ends ? "This ends the company" : "Cash runs low"}</strong>
+      {risk.reasons.map((r) => (
+        <span key={r}>{r}</span>
+      ))}
+      {note && <span className="soft">{note}</span>}
+    </div>
+  );
+}
 
 /**
  * The go-ahead for a job: what it costs in money and days, what payroll
@@ -20,55 +36,72 @@ export function JobConfirm({ company, job }: { company: Company; job: Job }) {
 
   const payroll = job.days * COSTS.overheadPerDay;
   const total = job.cost + payroll;
-  const after = company.cash - total;
+  const risk = cashRisk(company, job);
+  const ends = risk.level === "ends";
   const risks = deadlineRisks(company, job.days, job.forContract);
+  const tone = ends ? "bad" : risk.level === "low" ? "warn" : undefined;
+  const go = ends ? `${job.verb} and end the run` : risks.length > 0 || risk.level === "low" ? `${job.verb} anyway` : job.verb;
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="job-title" onClick={(e) => e.target === e.currentTarget && game.cancel()}>
-      <div className={`card ${risks.length > 0 ? "alert" : ""}`} style={{ maxWidth: 520 }}>
+      <div className={`card ${ends || risks.length > 0 ? "alert" : risk.level === "low" ? "caution" : ""}`} style={{ maxWidth: 520 }}>
         {risks.length > 0 && <p className="label bad">Deadline warning</p>}
         <h2 id="job-title">{job.title}</h2>
-        <dl className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
-          <div>
-            <dt>Cost</dt>
-            <dd>{money(job.cost)}</dd>
-          </div>
-          <div>
-            <dt>Time</dt>
-            <dd>
-              {job.days} day{job.days === 1 ? "" : "s"}
-            </dd>
-          </div>
-          <div>
-            <dt>Payroll meanwhile</dt>
-            <dd>{money(payroll)}</dd>
-          </div>
-          <div>
-            <dt>Total</dt>
-            <dd>{money(total)}</dd>
-          </div>
-          <div>
-            <dt>Done on</dt>
-            <dd>day {company.day + job.days}</dd>
-          </div>
-          <div>
-            <dt>Cash after</dt>
-            <dd className={after < 0 ? "bad" : undefined}>{money(after)}</dd>
-          </div>
-        </dl>
+        <CashBanner risk={risk} />
+        {job.refund !== undefined ? (
+          <dl className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            <div>
+              <dt>Comes back</dt>
+              <dd className="good">{money(job.refund)}</dd>
+            </div>
+            <div>
+              <dt>Cash after</dt>
+              <dd>{money(risk.after)}</dd>
+            </div>
+          </dl>
+        ) : (
+          <dl className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            <div>
+              <dt>Cost</dt>
+              <dd>{money(job.cost)}</dd>
+            </div>
+            <div>
+              <dt>Time</dt>
+              <dd>
+                {job.days} day{job.days === 1 ? "" : "s"}
+              </dd>
+            </div>
+            <div>
+              <dt>Payroll meanwhile</dt>
+              <dd>{money(payroll)}</dd>
+            </div>
+            <div>
+              <dt>Total</dt>
+              <dd>{money(total)}</dd>
+            </div>
+            <div>
+              <dt>Done on</dt>
+              <dd>day {company.day + job.days}</dd>
+            </div>
+            <div>
+              <dt>Cash after</dt>
+              <dd className={tone}>{money(risk.after)}</dd>
+            </div>
+          </dl>
+        )}
         {risks.map((r) => (
           <span key={r.contract.id} className="bad">
             {r.text}
           </span>
         ))}
         {job.caveat && <span className="muted">{job.caveat}</span>}
-        {after < 0 && <span className="bad">That's more cash than the company has. Doing it ends the run.</span>}
         <div className="actions">
-          <button type="button" className="btn primary" autoFocus onClick={() => game.confirm()}>
-            {risks.length > 0 ? `${job.verb} anyway` : job.verb} · {money(job.cost)} · {job.days} d
+          <button type="button" className={`btn ${ends ? "danger" : "primary"}`} autoFocus={!ends} onClick={() => game.confirm()}>
+            {go}
+            {job.refund !== undefined ? ` · ${money(job.refund)} back` : `${job.cost > 0 ? ` · ${money(job.cost)}` : ""}${job.days > 0 ? ` · ${job.days} d` : ""}`}
           </button>
-          <button type="button" className="btn" onClick={() => game.cancel()}>
-            {risks.length > 0 ? "Abort" : "Cancel"}
+          <button type="button" className={`btn ${ends ? "primary" : ""}`} autoFocus={ends} onClick={() => game.cancel()}>
+            {job.refund !== undefined ? "Keep it" : risks.length > 0 ? "Abort" : "Cancel"}
           </button>
         </div>
       </div>
@@ -135,12 +168,18 @@ function TrackConfirm({ company, job }: { company: Company; job: Job }) {
   const payroll = now * COSTS.overheadPerDay;
   const risks = deadlineRisks(company, now, job.forContract);
   const waits = q.start > company.day;
+  // Planned, it is paid now and the payroll runs as the plan does: by day q.end the cash is the same either way.
+  const risk = cashRisk(company, job, now, q.cost);
+  const ends = risk.level === "ends";
+  const tone = ends ? "bad" : risk.level === "low" ? "warn" : undefined;
+  const anyway = risks.length > 0 || risk.level === "low";
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="job-title" onClick={(e) => e.target === e.currentTarget && game.cancel()}>
-      <div className={`card ${risks.length > 0 ? "alert" : ""}`} style={{ maxWidth: 560 }}>
+      <div className={`card ${ends || risks.length > 0 ? "alert" : risk.level === "low" ? "caution" : ""}`} style={{ maxWidth: 560 }}>
         <p className="label">{TRACKS[q.track].name}</p>
         <h2 id="job-title">{job.title}</h2>
+        <CashBanner risk={risk} note={risk.level !== "ok" ? `Started now or added to the plan, the cash is the same by day ${q.end}.` : undefined} />
         <dl className="facts" style={{ gridTemplateColumns: "1fr 1fr" }}>
           <div>
             <dt>Cost</dt>
@@ -159,6 +198,10 @@ function TrackConfirm({ company, job }: { company: Company; job: Job }) {
           <div>
             <dt>Done on</dt>
             <dd>day {q.end}</dd>
+          </div>
+          <div>
+            <dt>Cash after, day {q.end}</dt>
+            <dd className={tone}>{money(risk.after)}</dd>
           </div>
         </dl>
         {waits && q.after.length > 0 && <span className="soft">Waits for: {q.after.join(" · ")}.</span>}
@@ -182,15 +225,14 @@ function TrackConfirm({ company, job }: { company: Company; job: Job }) {
             </span>
           </div>
         </div>
-        {company.cash - q.cost < 0 && <span className="bad">That's more cash than the company has. Doing it ends the run.</span>}
         <div className="actions">
-          <button type="button" className={`btn ${risks.length > 0 ? "" : "primary"}`} autoFocus={risks.length === 0} onClick={() => game.startNow()}>
-            {risks.length > 0 ? "Start now anyway" : "Start now"} · {now} d
+          <button type="button" className={`btn ${ends ? "danger" : risks.length > 0 ? "" : "primary"}`} autoFocus={!ends && risks.length === 0} onClick={() => game.startNow()}>
+            {ends ? "Start now and end the run" : anyway ? "Start now anyway" : "Start now"} · {now} d
           </button>
-          <button type="button" className={`btn ${risks.length > 0 ? "primary" : ""}`} autoFocus={risks.length > 0} onClick={() => game.plan()}>
-            Add to plan · {money(q.cost)}
+          <button type="button" className={`btn ${ends ? "danger" : risks.length > 0 ? "primary" : ""}`} autoFocus={!ends && risks.length > 0} onClick={() => game.plan()}>
+            {ends ? "Add to plan anyway" : "Add to plan"} · {money(q.cost)}
           </button>
-          <button type="button" className="btn" onClick={() => game.cancel()}>
+          <button type="button" className={`btn ${ends ? "primary" : ""}`} autoFocus={ends} onClick={() => game.cancel()}>
             Cancel
           </button>
         </div>

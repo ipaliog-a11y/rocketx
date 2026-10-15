@@ -37,6 +37,7 @@
   --crew-bg: color-mix(in srgb, var(--crew) 14%, var(--ground));
   --good-line: color-mix(in srgb, var(--good) 40%, var(--line));
   --bad-line: color-mix(in srgb, var(--bad) 40%, var(--line));
+  --caution-line: color-mix(in srgb, var(--caution) 45%, var(--line));
   --data-line: color-mix(in srgb, var(--data) 40%, var(--line));
   --action-line: color-mix(in srgb, var(--action) 45%, var(--line));
 
@@ -107,6 +108,14 @@ h2 { margin: 0; font-size: 22px; font-weight: 700; }
 
 .card { padding: 18px 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
 .card.alert { border-color: var(--red-line); background: var(--red-ground); }
+.card.caution { border-color: var(--caution-line); }
+/* Money warnings in a go-ahead: the job would end the company (bad) or leave it close to the edge (caution). */
+.warn-banner { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-left: 4px solid; border-radius: 4px; font-size: 15px; }
+.warn-banner strong { letter-spacing: 0.02em; }
+.warn-banner.bad { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--ground)); color: var(--text); }
+.warn-banner.bad strong { color: var(--bad-text); }
+.warn-banner.caution { border-color: var(--caution); background: var(--caution-bg); color: var(--text); }
+.warn-banner.caution strong { color: var(--caution); }
 .card.blueprint {
   background-color: var(--blueprint);
   background-image: linear-gradient(var(--hover) 1px, transparent 1px), linear-gradient(90deg, var(--hover) 1px, transparent 1px);
@@ -136,6 +145,9 @@ h2 { margin: 0; font-size: 22px; font-weight: 700; }
 .btn:active:not(:disabled) { transform: scale(0.97); }
 .btn.primary { border: 1px solid var(--action); background: var(--action); color: var(--ground); font-weight: 700; }
 .btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--action) 88%, white); border-color: color-mix(in srgb, var(--action) 88%, white); }
+/* Going ahead with something that ends the run: never the easy, focused choice. */
+.btn.danger { border-color: var(--bad-line); color: var(--bad-text); background: transparent; }
+.btn.danger:hover:not(:disabled) { border-color: var(--bad); background: var(--bad-bg); }
 .btn.quiet { border-color: transparent; color: var(--data); padding: 0 10px; }
 .btn.quiet:hover:not(:disabled) { background: var(--data-bg); border-color: transparent; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -531,6 +543,9 @@ table.compact th:last-child, table.compact td:last-child { padding-right: 0; }
 .next-item button:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .next-words { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .next-words .muted { font-size: 14px; }
+.next-alt { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin: 6px 0 2px 16px; color: var(--data); font-weight: 600; font-size: 14px; }
+.next-alt:hover { text-decoration: underline; }
+.next-alt:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
 .next-go { display: inline-flex; align-items: center; gap: 4px; color: var(--data); font-weight: 600; white-space: nowrap; }
 
 .pipelines { display: flex; flex-direction: column; gap: 10px; }
@@ -604,3 +619,46 @@ h1 .info, h2 .info { vertical-align: 4px; }
   .guide-steps li { grid-template-columns: 30px minmax(0, 1fr); }
   .guide-steps li .btn { grid-column: 2; justify-self: start; }
 }
+
+/* ── Title screen: the pad at dusk, filmed; the form sits over it ── */
+.title-screen { position: fixed; inset: 0; overflow: hidden; background: #0b1630; color: #f3f1ec; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto 1fr auto; padding: 32px 40px; gap: 16px; }
+.pad-stage { position: absolute; inset: 0; z-index: 0; background: linear-gradient(to bottom, #0a1430 0%, #2b2a57 48%, #d77a45 78%, #2a2a2a 79%, #1d2219 100%); }
+.pad-stage.flat::after { content: ""; position: absolute; left: 50%; bottom: 21%; width: 26px; height: 46%; transform: translateX(-50%); background: linear-gradient(#eceef0, #d6dde6); clip-path: polygon(50% 0, 100% 14%, 100% 100%, 0 100%, 0 14%); }
+.pad-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.pad-fade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+.pad-shade { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(90deg, rgba(5, 8, 20, 0.72) 0%, rgba(5, 8, 20, 0.25) 42%, rgba(5, 8, 20, 0) 65%), linear-gradient(0deg, rgba(5, 8, 20, 0.55) 0%, rgba(5, 8, 20, 0) 35%); }
+.title-screen > :not(.pad-stage):not(.pad-shade) { position: relative; z-index: 2; }
+.title-head { grid-column: 1; grid-row: 1; max-width: 640px; }
+.title-kicker { margin: 0 0 6px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; color: #e8a33a; }
+.title-name { margin: 0; font-size: clamp(40px, 7vw, 84px); line-height: 0.95; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase; text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5); overflow-wrap: anywhere; }
+.title-tag { margin: 12px 0 0; font-size: 20px; color: #d9dbe4; text-shadow: 0 1px 12px rgba(0, 0, 0, 0.6); }
+.title-cams { grid-column: 2; grid-row: 1; justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+.cam-live { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 3px; background: rgba(5, 8, 20, 0.55); }
+.rec { width: 8px; height: 8px; border-radius: 50%; background: #ff3b30; animation: rec 1.4s steps(2, jump-none) infinite; }
+@keyframes rec { 50% { opacity: 0.2; } }
+.cam-dots { display: flex; gap: 2px; }
+.cam-dots button { all: unset; width: 26px; height: 26px; display: grid; place-items: center; cursor: pointer; }
+.cam-dots button::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: rgba(243, 241, 236, 0.4); transition: background 0.2s, transform 0.2s; }
+.cam-dots button[aria-pressed="true"]::after { background: #e8a33a; transform: scale(1.3); }
+.cam-dots button:focus-visible { outline: 2px solid #e8a33a; border-radius: 50%; }
+.title-form { grid-column: 1; grid-row: 3; align-self: end; width: min(400px, 100%); display: flex; flex-direction: column; gap: 14px; padding: 20px; border: 1px solid rgba(243, 241, 236, 0.16); border-radius: 8px; background: rgba(10, 13, 24, 0.62); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.title-form .name-input { background: rgba(5, 8, 20, 0.6); border-color: rgba(243, 241, 236, 0.28); color: #f3f1ec; width: 100%; box-sizing: border-box; }
+.title-field { font-size: 14px; color: #c9cbd6; }
+.title-steps { list-style: none; margin: 0; padding: 0; display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 14px; color: #c9cbd6; }
+.title-steps li { display: inline-flex; align-items: center; gap: 6px; }
+.title-steps .icon { width: 18px; height: 18px; color: #5bb8e3; }
+.btn.title-go { min-height: 52px; font-size: 19px; justify-content: center; gap: 10px; }
+.btn.title-go .icon { width: 22px; height: 22px; }
+.title-seed { font-size: 13px; color: #a9abb8; }
+.title-seed summary { cursor: pointer; font-family: var(--mono); }
+.title-seed .actions input { background: rgba(5, 8, 20, 0.6); color: #f3f1ec; border: 1px solid rgba(243, 241, 236, 0.28); border-radius: 4px; min-height: 40px; padding: 0 10px; }
+.title-seed .btn { border-color: rgba(243, 241, 236, 0.28); color: #f3f1ec; }
+@media (max-width: 700px) {
+  .title-screen { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 1fr auto; padding: 20px 16px calc(16px + env(safe-area-inset-bottom)); gap: 10px; }
+  .title-cams { grid-column: 1; grid-row: 2; justify-self: start; align-items: flex-start; flex-direction: row-reverse; flex-wrap: wrap; }
+  .cam-dots button { width: 22px; height: 26px; }
+  .title-form { grid-row: 4; width: 100%; box-sizing: border-box; padding: 16px; }
+  .title-tag { font-size: 17px; }
+  .pad-shade { background: linear-gradient(0deg, rgba(5, 8, 20, 0.7) 0%, rgba(5, 8, 20, 0) 45%), linear-gradient(180deg, rgba(5, 8, 20, 0.6) 0%, rgba(5, 8, 20, 0) 30%); }
+}
+@media (prefers-reduced-motion: reduce) { .rec { animation: none; } }

@@ -29,7 +29,10 @@ export type FailureMode =
   | "burn-through"
   | "flow-separation"
   | "transonic-buffet"
-  | "relight-failure";
+  | "relight-failure"
+  | "structural-buckling"
+  | "loss-of-control"
+  | "control-structure-coupling";
 
 export const FAILURE_LABELS: Record<FailureMode, string> = {
   "hard-start": "hard start",
@@ -38,6 +41,9 @@ export const FAILURE_LABELS: Record<FailureMode, string> = {
   "flow-separation": "flow separation",
   "transonic-buffet": "transonic buffet",
   "relight-failure": "relight failure",
+  "structural-buckling": "structural buckling",
+  "loss-of-control": "loss of control",
+  "control-structure-coupling": "control-structure coupling",
 };
 
 /** Odds and ranges the seed draws from. Tuned so most designs have at least one surprise. */
@@ -101,8 +107,12 @@ export function rollPartTruths(engines: Iterable<Engine>, seed: number, table: P
   return table;
 }
 
-/** An engine's truth is its parts' truths put together. */
-export function combineTruth(engine: Engine, parts: PartTruthTable): EngineTruth {
+/**
+ * An engine's truth is its parts' truths put together. A soft feed (low pump
+ * margin) makes an injector that is stable on its own go unstable more
+ * often: one extra roll per engine, seeded, covers the added chance.
+ */
+export function combineTruth(engine: Engine, parts: PartTruthTable, seed = 0): EngineTruth {
   const keys = partKeys(engine.parts!);
   const p = (k: string) => parts[k] ?? NEUTRAL;
   const [cycle, injector, cooling, nozzle] = [p(keys.cycle), p(keys.injector), p(keys.cooling), p(keys.nozzle)];
@@ -110,14 +120,25 @@ export function combineTruth(engine: Engine, parts: PartTruthTable): EngineTruth
     ispFactor: cycle.ispFactor * injector.ispFactor * cooling.ispFactor * nozzle.ispFactor,
     hardStart: cycle.hardStart,
     relightFails: cycle.relightFails ?? false,
-    instabilityOnset: injector.instabilityOnset,
+    instabilityOnset: injector.instabilityOnset ?? feedInstability(engine, seed),
     thermalLife: (engine.ratedLife ?? DEFAULT_RATED_LIFE) * cooling.lifeFactor,
   };
 }
 
+/** The instability a soft feed adds on top of the injector's own, or null. */
+function feedInstability(engine: Engine, seed: number): number | null {
+  const base = engine.parts ? INJECTORS[engine.parts.injector].instability : 0;
+  const total = engine.instability ?? base;
+  if (total <= base) return null;
+  const random = rng(hashSeed(`${seed}:engine:${engine.name}:feed`));
+  if (random() >= (total - base) / (1 - base)) return null;
+  const [lo, hi] = INSTABILITY_ONSET;
+  return lo + (hi - lo) * random();
+}
+
 /** The hidden truth for one engine design in one run. Engines built from parts take their parts' truths. */
 export function rollEngineTruth(engine: Engine, seed: number): EngineTruth {
-  if (engine.parts) return combineTruth(engine, rollPartTruths([engine], seed));
+  if (engine.parts) return combineTruth(engine, rollPartTruths([engine], seed), seed);
   const random = rng(hashSeed(`${seed}:${engine.name}`));
   const between = ([lo, hi]: [number, number]) => lo + (hi - lo) * random();
   const ispFactor = between(ISP_FACTOR);

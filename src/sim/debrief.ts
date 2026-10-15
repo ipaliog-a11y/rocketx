@@ -5,6 +5,7 @@ import { FAILURE_LABELS, type FailureMode } from "./hardware.ts";
 import { EARTH_ROTATION, type Mission } from "./mission.ts";
 import type { Campaign } from "./teststand.ts";
 import { ATMOSPHERE_TOP } from "./atmosphere.ts";
+import { CAUSE_LABELS } from "./control.ts";
 import { SHORT_LIVED_PERIAPSIS } from "./orbit.ts";
 import type { Vehicle } from "./vehicle.ts";
 
@@ -35,6 +36,9 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     "flow-separation": `Nozzle flow separating at ${kPa(e.value ?? 0)} ambient`,
     "pitch-kick": `Pitch kick, ${Number((e.value ?? 0).toFixed(1))}°`,
     "tower-jettison": `Abort tower jettisoned, ${Math.round(e.value ?? 0)} kg`,
+    "fairing-jettison": `Fairing jettisoned, heating ${Math.round(e.value ?? 0)} W/m²`,
+    "attitude-oscillation": `Attitude oscillation ${(e.value ?? 0).toFixed(1)}°${e.cause ? `: ${CAUSE_LABELS[e.cause]}` : ""}`,
+    "loss-of-control": `Loss of control: ${e.cause ? CAUSE_LABELS[e.cause] : e.mode ? FAILURE_LABELS[e.mode] : ""}`,
     abort: `Abort: the capsule pulls clear${e.value ? ` at ${kPa(e.value)}` : ""}`,
     "mach-1": "Mach 1",
     "max-q": `Max-q ${kPa(e.value ?? 0)}`,
@@ -278,7 +282,7 @@ function insertionLines(result: FlightResult, vehicle: Vehicle, mission: Mission
   }
 }
 
-const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buffet">, (engine: string, after: string) => string> = {
+const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buffet" | "structural-buckling" | "loss-of-control" | "control-structure-coupling">, (engine: string, after: string) => string> = {
   "hard-start": (engine) => `hard start. The ${engine} chamber cracked as it lit.`,
   "combustion-instability": (engine, after) =>
     `combustion instability ${after} into the ${engine} burn. The pressure oscillation shook the stage apart.`,
@@ -290,12 +294,29 @@ const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buff
 
 function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
   const structural = result.events.find((x) => x.kind === "structural-failure");
+  if (structural?.mode === "structural-buckling") {
+    bucklingLines(structural, vehicle, campaign, lines);
+    return;
+  }
   if (structural) {
     buffetLines(structural, vehicle, campaign, lines);
     return;
   }
+  const lost = result.events.find((x) => x.kind === "loss-of-control");
+  if (lost) {
+    controlLines(lost, result, vehicle, campaign, lines);
+    return;
+  }
+  const wobble = result.events.find((x) => x.kind === "attitude-oscillation");
+  if (wobble && vehicle.control) {
+    lines.push(`The attitude loop rang at ${(wobble.value ?? 0).toFixed(1)}° near Mach ${wobble.mach.toFixed(2)} (${wobble.cause ? CAUSE_LABELS[wobble.cause] : "unknown"}) and settled. Telemetry has it now.`);
+  }
+  const jettison = result.events.find((x) => x.kind === "fairing-jettison");
+  if (jettison && (jettison.value ?? 0) > PAYLOAD_HEATING) {
+    lines.push(`The fairing came off at ${km(jettison.altitude)} into ${Math.round(jettison.value!)} W/m² of heating: more than the ${PAYLOAD_HEATING} W/m² a payload is usually qualified for. Jettison higher.`);
+  }
   const e = result.events.find((x) => x.kind === "engine-failure");
-  if (!e?.mode || e.mode === "flow-separation" || e.mode === "transonic-buffet") return;
+  if (!e?.mode || e.mode === "flow-separation" || e.mode === "transonic-buffet" || e.mode === "structural-buckling" || e.mode === "loss-of-control" || e.mode === "control-structure-coupling") return;
   const stage = vehicle.stages[e.stage]!;
   const engine = stage.engine.name;
   const ignition = result.events.filter((x) => x.kind === "ignition" && x.stage === e.stage)[0];
@@ -324,6 +345,66 @@ function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign
     lines.push(
       `  The longest clean firing of the current ${engine} hardware was ${known.provenDuration.toFixed(1)} s. The flight needed it to run past ${after}.`,
     );
+  }
+}
+
+/** Free-molecular heat flux a payload is usually qualified for at fairing jettison, W/m². */
+const PAYLOAD_HEATING = 1135;
+
+function bucklingLines(e: FlightEvent, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
+  const stage = vehicle.stages[e.stage];
+  const bending = (e.value ?? 0) > 50;
+  lines.push(
+    bending
+      ? `Vehicle lost at ${tPlus(e.t)}, ${km(e.altitude)}, Mach ${e.mach.toFixed(2)}: the ${stage?.name ?? "stack"}'s tank wall buckled in bending at q·α ${kPaDeg(e.value ?? 0)}, under the ${kPaDeg(vehicle.limits.maxQAlpha ?? 0)} it was drawn for. The real shell carried less than its drawing.`
+      : `Vehicle lost at ${tPlus(e.t)}, ${km(e.altitude)}: the ${stage?.name ?? "stack"}'s tank wall buckled under the stack above it at ${(e.value ?? 0).toFixed(1)} g. The real shell carried less than its drawing.`,
+  );
+  if (!campaign || !vehicle.structure) return;
+  const key = vehicle.structure.stages[e.stage]?.key;
+  const known = key ? campaign.structureKnowledge?.[key] : undefined;
+  if (!known) lines.push(`  That shell was never proof-tested. A proof test would have shown its real knock-down.`);
+  else lines.push(`  The proof test had shown this shell at ${Math.round(known.knockdown * 100)}% of its drawing. It flew at loads its drawing allowed, not the ones it could take.`);
+}
+
+/** A guided vehicle lost to its attitude loop: what drove it, and which test would have caught it. */
+function controlLines(e: FlightEvent, result: FlightResult, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
+  const model = vehicle.control;
+  if (!model) return;
+  const d = model.design;
+  const stage = vehicle.stages[e.stage];
+  const at = `Vehicle lost at ${tPlus(e.t)}, ${km(e.altitude)}, Mach ${e.mach.toFixed(2)}`;
+  const gust = result.summary.control?.maxGust ?? 0;
+  const known = campaign?.gncKnowledge?.[vehicle.name];
+  const truth = campaign?.gncTruth?.[vehicle.name];
+  switch (e.cause) {
+    case "authority":
+      lines.push(`${at}: out of gimbal. Holding attitude against the air took more than the ${d.gimbal}° the engines swing${gust > 0 ? `, in gusts up to ${gust.toFixed(0)} m/s` : ""}. More gimbal range, more fins, or a less unstable shape.`);
+      break;
+    case "divergence":
+      lines.push(`${at}: the airframe diverged. Its centre of pressure sat ahead of its centre of mass and it tipped faster than a ${d.bandwidth.toFixed(1)} Hz loop could catch. A faster loop, fins, or mass moved forward.`);
+      break;
+    case "rate":
+      lines.push(`${at}: the actuators ran at their ${d.actuatorRate}°/s limit, fell behind the loop and the oscillation grew. Faster actuators, or a slower loop.`);
+      break;
+    case "slosh": {
+      lines.push(`${at}: propellant slosh in the ${stage?.name ?? "stage"} tanks rose to the ${d.bandwidth.toFixed(1)} Hz of the attitude loop and fed it. Baffles damp slosh.`);
+      if (campaign) lines.push(known?.slosh ? `  The modal survey had measured slosh gain ${known.slosh[e.stage]?.toFixed(2)} on that stage. It flew without baffles.` : "  No modal survey was run: it measures the slosh.");
+      break;
+    }
+    case "bending": {
+      const real = truth ? model.bendingFrequency * truth.bending : null;
+      lines.push(`${at}: control-structure coupling. The first bending mode${real ? ` at ${real.toFixed(2)} Hz` : ""} (drawn at ${model.bendingFrequency.toFixed(2)} Hz) got into the ${d.bandwidth.toFixed(1)} Hz loop and the stack flexed itself apart.`);
+      if (campaign) lines.push(known?.bending ? "  The modal survey had measured the mode; the loop is too fast for it. Slow the loop or fit the notch." : d.notch ? "  The notch filter sat at the drawn frequency, not the real one. A modal survey retunes it." : "  No notch filter, and no modal survey. Both would have helped.");
+      break;
+    }
+    case "software": {
+      const flaw = truth?.flaw;
+      lines.push(`${at}: the flight software's gain schedule was wrong${flaw ? ` between Mach ${flaw.from.toFixed(1)} and ${flaw.to.toFixed(1)}` : ""}; the loop rang up and lost the vehicle.`);
+      if (campaign) lines.push(known?.hitl ? "  The hardware-in-the-loop runs had flagged it. It flew unfixed." : "  The software was never run hardware-in-the-loop. A HITL campaign would have found it.");
+      break;
+    }
+    default:
+      lines.push(`${at}: loss of control.`);
   }
 }
 

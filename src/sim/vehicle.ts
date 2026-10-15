@@ -1,7 +1,11 @@
 import type { DragCurve } from "./aero.ts";
+import type { ControlModel } from "./control.ts";
 import { G0 } from "./constants.ts";
 import { massFlow, type Engine } from "./engine.ts";
+import type { VehicleGeometry } from "./geometry.ts";
 import type { PitchProgram } from "./guidance.ts";
+import type { Stability } from "./stability.ts";
+import type { StructureModel } from "./structures.ts";
 
 export type Stage = {
   name: string;
@@ -13,6 +17,8 @@ export type Stage = {
   engineCount: number;
   /** Outer diameter, m. The widest stage still attached sets frontal area. */
   diameter: number;
+  /** Tank length, m, for a stage drawn with a geometry. */
+  tankLength?: number;
 };
 
 export type Vehicle = {
@@ -30,6 +36,16 @@ export type Vehicle = {
   escapeTower?: { mass: number; jettisonAt: number };
   /** How the vehicle steers on the way up. Vertical when left out. */
   pitchProgram?: PitchProgram;
+  /** The shape and build it was drawn with. Vehicles without fly their hand-drawn curve and limits. */
+  geometry?: VehicleGeometry;
+  /** A payload fairing that comes off at an altitude: counted with the payload until then. */
+  fairing?: { mass: number; jettisonAltitude: number };
+  /** Static margin over the boost, from the shape and the mass stack. */
+  stability?: Stability;
+  /** What each stage's shell carries, for checking flight loads against the real knock-down. */
+  structure?: StructureModel;
+  /** Guidance and control as drawn, for a guided vehicle drawn with a geometry. */
+  control?: ControlModel;
   limits: {
     /** Structural load budget for dynamic pressure, Pa. */
     maxDynamicPressure: number;
@@ -45,7 +61,7 @@ export type Vehicle = {
 
 /** Mass of the stack from stage `index` upward, with that stage fully fuelled. */
 export function stackMass(vehicle: Vehicle, index: number): number {
-  let mass = vehicle.payloadMass;
+  let mass = vehicle.payloadMass + (vehicle.fairing?.mass ?? 0);
   for (let i = index; i < vehicle.stages.length; i++) {
     const stage = vehicle.stages[i]!;
     mass += stage.dryMass + stage.propellantMass;

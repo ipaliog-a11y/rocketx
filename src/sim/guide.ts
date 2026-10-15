@@ -1,11 +1,13 @@
 import { simulateAscent } from "./ascent.ts";
-import { assembleVehicle, designQuote, DIAMETERS, figures, MAX_SLENDERNESS, maxEngines, type DesignQuote, type Figures, type VehicleSpec } from "./builder.ts";
+import { assembleVehicle, designQuote, fitControl, DIAMETERS, figures, MAX_SLENDERNESS, maxEngines, type DesignQuote, type Figures, type VehicleSpec } from "./builder.ts";
 import { P_SEA_LEVEL } from "./constants.ts";
 import { vehicleCost } from "./cost.ts";
 import { flowSeparates, type Engine } from "./engine.ts";
 import type { HardwareTruth } from "./hardware.ts";
 import { MU_EARTH, R_EARTH } from "./constants.ts";
 import { missionPlan, type Mission } from "./mission.ts";
+import { defaultFins, defaultGeometry } from "./geometry.ts";
+import { unguidedProblems } from "./stability.ts";
 import { burnTime, type Vehicle } from "./vehicle.ts";
 
 /**
@@ -107,16 +109,44 @@ function enoughEngines(spec: VehicleSpec, stage: number, tw: number, engines: Re
 
 type Candidate = { spec: VehicleSpec; vehicle: Vehicle; figures: Figures; margin: number; firstCost: number };
 
+/**
+ * A candidate drawn as it will be built: the default shape and build, and on
+ * an unguided single-stage rocket fins big enough for a calibre of margin.
+ * The search runs on the quick model; the picks are re-drawn on the real
+ * one, their margin scaled by what that does to Δv.
+ */
+export function asBuilt(c: Candidate, engines: Record<string, Engine>): Candidate {
+  const geometry = defaultGeometry(c.spec.stages.length);
+  let spec: VehicleSpec = { ...c.spec, geometry };
+  let vehicle = assembleVehicle(spec, engines);
+  if (spec.stages.length === 1) {
+    const d = spec.stages[0]!.diameter;
+    for (const k of [0.6, 0.8, 1.0, 1.2, 1.5]) {
+      spec = { ...c.spec, geometry: { ...geometry, fins: { ...defaultFins(d), span: k * d, rootChord: Math.max(1, k) * d } } };
+      vehicle = assembleVehicle(spec, engines);
+      if (unguidedProblems(vehicle.stability!).length === 0) break;
+    }
+  }
+  if (vehicle.control) {
+    spec = fitControl(spec, engines);
+    vehicle = assembleVehicle(spec, engines);
+  }
+  const f = figures(vehicle);
+  const margin = (1 + c.margin) * (f.totalDeltaV / c.figures.totalDeltaV) - 1;
+  return { spec, vehicle, figures: f, margin, firstCost: c.firstCost };
+}
+
 /** Three picks from the candidates that clear the bar: cheapest, a comfortable margin, and the most margin for the money. */
-function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, note: (c: Candidate) => string): Suggestion[] {
+function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, note: (c: Candidate) => string, fit: (c: Candidate) => Candidate = (c) => c): Suggestion[] {
   const ok = candidates.filter((c) => c.margin >= minMargin).sort((a, b) => a.firstCost - b.firstCost);
   if (ok.length === 0) return [];
   const cheapest = ok[0]!;
   const balanced = ok.find((c) => c.margin >= minMargin * 2 && c !== cheapest);
   const most = ok.filter((c) => c.firstCost <= cheapest.firstCost * 1.5 && c !== cheapest && c !== balanced).sort((a, b) => b.margin - a.margin)[0];
   const out: Suggestion[] = [];
-  const add = (label: Suggestion["label"], c: Candidate | undefined) => {
-    if (!c) return;
+  const add = (label: Suggestion["label"], picked: Candidate | undefined) => {
+    if (!picked) return;
+    const c = fit(picked);
     out.push({ label, spec: c.spec, vehicle: c.vehicle, figures: c.figures, margin: c.margin, build: vehicleCost(c.vehicle), design: designQuote(c.spec, existing), note: note(c) });
   };
   add("Cheapest", cheapest);
@@ -158,8 +188,10 @@ export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, exist
       .sort((a, b) => a.firstCost - b.firstCost)
       .slice(0, 24)
       .map((c) => {
-        const r = simulateAscent(c.vehicle, goal.mission, { hardware: typicalHardware(all) });
-        return { ...c, margin: r.outcome === "apogee" ? r.summary.apogee / apogee - 1 : -1 };
+        // Fly it as it will be built: its real shape, with fins.
+        const built = asBuilt(c, engines);
+        const r = simulateAscent(built.vehicle, goal.mission, { hardware: typicalHardware(all) });
+        return { ...built, margin: r.outcome === "apogee" ? r.summary.apogee / apogee - 1 : -1 };
       });
     return pick(flown, existing, 0.05, (c) => `Flies to about ${Math.round((apogee * (1 + c.margin)) / 1000)} km with typical engines. Prove the ${c.vehicle.stages[0]!.engine.name} for the full ${burnTime(c.vehicle.stages[0]!).toFixed(0)} s burn first.`);
   }
@@ -236,9 +268,36 @@ export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, exist
   }
   // Coasts, relights and long low-thrust upper burns cost more than the fit
   // for direct ascents knows about: ask for more margin when they're involved.
-  return pick(pool, existing, relights ? 0.08 : 0.04, (c) => {
+  // Re-draw the most promising on the real shape and build before picking.
+  const shortlist = [...new Set([...[...pool].sort((a, b) => a.firstCost - b.firstCost).slice(0, 40), ...[...pool].sort((a, b) => b.margin - a.margin).slice(0, 20)])].map((c) => asBuilt(c, engines));
+  return pick(shortlist, existing, relights ? 0.08 : 0.04, (c) => {
     const engines = [...new Set(c.vehicle.stages.map((st) => st.engine.name))];
     const restart = relights ? ` Restart-test the ${c.vehicle.stages.at(-1)!.engine.name} in the altitude cell: this mission relights it after a coast.` : "";
     return `${(c.figures.totalDeltaV / 1000).toFixed(2)} km/s on paper against about ${(needed / 1000).toFixed(2)} needed. Test the ${engines.join(", ")}, run the shape in the tunnel, and re-tune before trusting a forecast.${restart}`;
-  });
+  }, (c) => flightFit(c, goal.mission, engines));
+}
+
+/**
+ * Fly a guided pick once in calm air on its job and speed up its attitude
+ * loop if the airframe diverges anywhere along the way (staging in thick
+ * air is where the paper checks can't see), so what the guide suggests
+ * holds attitude as drawn.
+ */
+function flightFit(c: Candidate, mission: Mission, engines: Record<string, Engine>): Candidate {
+  let spec = c.spec;
+  let vehicle = c.vehicle;
+  for (let i = 0; i < 3 && vehicle.control && spec.geometry; i++) {
+    const r = simulateAscent(vehicle, mission, { structuralFailures: false });
+    const div = r.summary.control?.maxDivergence ?? 0;
+    const bw = vehicle.control.design.bandwidth;
+    if (div <= 0.3 || bw >= 3) break;
+    // No faster than keeps the bending mode clear: the loop gain there under a fifth, notch or not.
+    const fb = vehicle.control.bendingFrequency;
+    const ceiling = Math.floor(fb * Math.sqrt(0.2 / (vehicle.control.design.notch ? 0.1 : 1)) * 10) / 10;
+    const next = Math.min(3, ceiling, Math.ceil(((bw * div) / 0.28) * 10) / 10);
+    if (next <= bw) break;
+    spec = { ...spec, geometry: { ...spec.geometry, control: { ...vehicle.control.design, bandwidth: next } } };
+    vehicle = { ...assembleVehicle(spec, engines), pitchProgram: vehicle.pitchProgram };
+  }
+  return spec === c.spec ? c : { ...c, spec, vehicle, figures: figures(vehicle) };
 }

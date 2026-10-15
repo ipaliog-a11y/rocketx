@@ -12,7 +12,7 @@ import { COLORS } from "../palette.ts";
 const PROPELLANT_DENSITY = 1030;
 
 type Part =
-  | { kind: "fairing"; d: number; len: number }
+  | { kind: "fairing"; d: number; len: number; cone: boolean }
   | { kind: "tank"; d: number; len: number; label: string }
   | { kind: "bay"; d: number; len: number }
   | { kind: "taper"; top: number; bottom: number; len: number }
@@ -31,11 +31,13 @@ export function profile(vehicle: Vehicle): Part[] {
   const parts: Part[] = [];
   const stages = [...vehicle.stages].reverse();
   const top = stages[0]!;
-  parts.push({ kind: "fairing", d: vehicle.fairingDiameter, len: vehicle.fairingDiameter * 2 });
+  // Drawn with a geometry: the nose by its own fineness and shape.
+  const nose = vehicle.geometry?.nose;
+  parts.push({ kind: "fairing", d: vehicle.fairingDiameter, len: vehicle.fairingDiameter * (nose?.fineness ?? 2), cone: nose?.shape === "cone" });
   if (vehicle.fairingDiameter !== top.diameter) parts.push({ kind: "taper", top: vehicle.fairingDiameter, bottom: top.diameter, len: 0.5 });
   stages.forEach((stage, i) => {
     const area = (Math.PI * stage.diameter ** 2) / 4;
-    parts.push({ kind: "tank", d: stage.diameter, len: stage.propellantMass / PROPELLANT_DENSITY / area, label: stage.name });
+    parts.push({ kind: "tank", d: stage.diameter, len: stage.tankLength ?? stage.propellantMass / PROPELLANT_DENSITY / area, label: stage.name });
     const below = stages[i + 1];
     if (below) {
       if (below.diameter === stage.diameter) parts.push({ kind: "bay", d: stage.diameter, len: 0.6 });
@@ -60,7 +62,8 @@ export function height(vehicle: Vehicle): number {
 }
 
 export function width(vehicle: Vehicle): number {
-  return Math.max(vehicle.fairingDiameter, ...vehicle.stages.map((s) => s.diameter));
+  const fins = vehicle.geometry?.fins;
+  return Math.max(vehicle.fairingDiameter, ...vehicle.stages.map((s) => s.diameter + 2 * (s === vehicle.stages[0] && fins ? fins.span : 0)));
 }
 
 type Props = { vehicle: Vehicle; scale: number; labels?: boolean };
@@ -82,7 +85,8 @@ export function Rocket({ vehicle, scale, labels = false }: Props) {
     switch (p.kind) {
       case "fairing": {
         const half = (p.d * scale) / 2;
-        return <path key={i} d={`M${cx - half} ${top + len} Q${cx - half} ${top} ${cx} ${top} Q${cx + half} ${top} ${cx + half} ${top + len} Z`} fill="#222c36" {...stroke} />;
+        const d = p.cone ? `M${cx - half} ${top + len} L${cx} ${top} L${cx + half} ${top + len} Z` : `M${cx - half} ${top + len} Q${cx - half} ${top} ${cx} ${top} Q${cx + half} ${top} ${cx + half} ${top + len} Z`;
+        return <path key={i} d={d} fill="#222c36" {...stroke} />;
       }
       case "tank": {
         const half = (p.d * scale) / 2;
@@ -130,6 +134,21 @@ export function Rocket({ vehicle, scale, labels = false }: Props) {
       }
     }
   });
+  // Fins at the tail of the booster, either side, from the base up.
+  const finSet = vehicle.geometry?.fins;
+  const tailY = pad + parts.filter((p) => p.kind !== "bells").reduce((t, p) => t + p.len, 0) * scale;
+  const half = (vehicle.stages[0]!.diameter * scale) / 2;
+  const fins =
+    finSet &&
+    ([1, -1] as const).map((side) => {
+      const root = finSet.rootChord * scale;
+      const tip = finSet.tipChord * scale;
+      const span = finSet.span * scale;
+      const lead = span * Math.tan((finSet.sweep * Math.PI) / 180);
+      const x0 = cx + side * half;
+      const x1 = x0 + side * span;
+      return <polygon key={side} points={`${x0},${tailY - root} ${x1},${tailY - root + lead} ${x1},${tailY - root + lead + tip} ${x0},${tailY}`} fill="#222c36" stroke={COLORS.data} strokeWidth={1.2} />;
+    });
   return (
     <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" style={{ display: "block" }}>
       <defs>
@@ -139,6 +158,7 @@ export function Rocket({ vehicle, scale, labels = false }: Props) {
         </pattern>
       </defs>
       {shapes}
+      {fins}
     </svg>
   );
 }

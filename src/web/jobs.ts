@@ -1,5 +1,8 @@
 import { build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
-import { designSpec, runTask, type TaskSpec } from "../sim/schedule.ts";
+import type { EngineDesign } from "../sim/enginePhysics.ts";
+import { proofQuote } from "../sim/structures.ts";
+import { GNC_TEST_LABELS, gncTestQuote, HITL_RUNS, type GncTest } from "../sim/gncTests.ts";
+import { buyUnit, cancelTask, designSpec, runTask, TRACKS, type Task, type TaskSpec, type Track } from "../sim/schedule.ts";
 import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, PAD_ABORT, type AbortFlaw } from "../sim/crew.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { COSTS, vehicleCost } from "../sim/cost.ts";
@@ -36,6 +39,12 @@ export type Job<T extends ActionResult = ActionResult> = {
   caveat?: string;
   /** A contract this job is for: it isn't at risk from its own launch. */
   forContract?: string;
+  /** What else it could cost if it goes wrong: a lost engine, a failed flight's penalty. */
+  exposure?: Array<{ cost: number; text: string }>;
+  /** Money that comes back instead of going out: calling off a queued job. */
+  refund?: number;
+  /** The design this job orders: once ordered, the company has a rocket coming. */
+  orders?: string;
   run: (company: Company) => T;
   onDone?: (result: T) => void;
   /** Work on a track: it can go on the plan instead of running now. Making it may be slow (a re-tune works the trajectory out). */
@@ -115,6 +124,7 @@ export function buildJob(company: Company, key: string): Job {
     days: 0,
     cost,
     alwaysAsk: true,
+    orders: key,
     caveat: `Built on line ${slot.line + 1} in ${days} days: ready on day ${slot.readyDay}.${queued}${learned} The company keeps working meanwhile.`,
     run: (c) => build(c, key),
   };
@@ -133,6 +143,39 @@ export function lineJob(company: Company): Job | null {
     caveat: `It takes orders from day ${company.day + next.days}, after ${next.days} days of setting up.`,
     run: (c) => buyLine(c),
   };
+}
+
+/** Proof-test a design's shells: a test article loaded until it buckles shows the real knock-down. */
+export function proofJob(company: Company, key: string): Job {
+  const v = company.designs[key]!;
+  const untested = [...new Set(v.structure?.stages.map((s) => s.key) ?? [])].filter((k) => !company.campaign.structureKnowledge?.[k]).length;
+  const q = proofQuote(Math.max(...v.stages.map((s) => s.diameter)));
+  return trackJob(
+    {
+      title: `Proof-test the ${v.name}'s shells?`,
+      doing: `Proof test: loading a ${v.name} test article until it buckles`,
+      verb: "Test",
+      days: q.days,
+      cost: q.cost * Math.max(1, untested),
+      caveat: "One test article per untested shell, loaded to failure on the stand. It shows how much of the drawn q·α budget is real.",
+    },
+    () => ({ kind: "proof", design: key }),
+  );
+}
+
+/** A GNC test on a guided design: modal survey on the stand, IMU calibration or HITL in the lab. */
+export function gncJob(company: Company, key: string, test: GncTest): Job {
+  const v = company.designs[key]!;
+  const q = gncTestQuote(test, v);
+  const what: Record<GncTest, string> = {
+    modal: "The stack hung soft and shaken: its first bending mode (the notch retunes to it) and how hard its propellant sloshes.",
+    "imu-cal": "The inertial unit on a rate table: its drift, which the flight software then takes out.",
+    hitl: `The flight computer and actuators fly ${HITL_RUNS} ascents against a simulation of the real vehicle in seeded winds. A gain-schedule error it finds is corrected.`,
+  };
+  return trackJob(
+    { title: `${GNC_TEST_LABELS[test]} of the ${v.name}?`, doing: `${GNC_TEST_LABELS[test]}: ${v.name}`, verb: "Test", days: q.days, cost: q.cost, caveat: what[test] },
+    () => ({ kind: "gnc", design: key, test }),
+  );
 }
 
 export function designJob(spec: VehicleSpec, quote: DesignQuote, onDone?: (key: string) => void): Job {
@@ -179,6 +222,7 @@ export function fireJob(engine: Engine, seconds: number, facility: Facility, exp
     days: f.days + (restart ? RESTART_TEST.days : 0),
     cost: firingCost(engine, facility, expectedRun, restart),
     moment: { kind: "firing", engine: engine.name },
+    exposure: [{ cost: hardwareLoss(engine).cost, text: `If the engine fails, a new one costs ${money(hardwareLoss(engine).cost)}.` }],
     caveat: `If the engine fails, a new one costs ${money(hardwareLoss(engine).cost)} and ties up the ${f.name} ${hardwareLoss(engine).days} more days while it is built. A firing cut short refunds the seconds it didn't run.`,
   }, () => ({ kind: "fire", engine: engine.name, seconds, facility, restart }));
 }
@@ -237,6 +281,7 @@ export function launchJob(company: Company, key: string, contract: Contract, onD
     days: waitForRollout(company, key) + COSTS.padDays,
     cost: COSTS.launchFee,
     forContract: contract.id,
+    exposure: contract.penalty > 0 ? [{ cost: contract.penalty, text: `If the flight fails, ${contract.customer} charges a ${money(contract.penalty)} penalty.` }] : undefined,
     run: (c) => fly(c, key, { contract: contract.id }),
     onDone,
   };
@@ -255,8 +300,39 @@ export function testFlightJob(company: Company, key: string, mission: Mission, o
   };
 }
 
-export function waitJob(days: number, why: string, title = `Wait ${days} days?`, verb = "Wait"): Job {
-  return { title, doing: why, verb, days, cost: 0, run: (c) => wait(c, days) };
+export function waitJob(days: number, why: string, title = `Wait ${days} days?`, verb = "Wait", alwaysAsk = false): Job {
+  return { title, doing: why, verb, days, cost: 0, alwaysAsk, run: (c) => wait(c, days) };
+}
+
+/** Another unit for a track: another stand, cell or engineering team. */
+export function unitJob(company: Company, track: Track): Job | null {
+  const next = TRACKS[track].extra[company.units[track].length - 1];
+  if (!next) return null;
+  return {
+    title: `Add ${next.name}?`,
+    doing: `Adding ${next.name}`,
+    verb: "Buy",
+    days: 0,
+    cost: next.cost,
+    alwaysAsk: true,
+    caveat: `It takes work from day ${company.day + next.days}, after ${next.days} days of setting up. Two units on a track run two jobs side by side.`,
+    run: (c) => buyUnit(c, track),
+  };
+}
+
+/** Call off a job that hasn't started: its money comes back and its place on the plan is lost. */
+export function cancelJob(task: Task): Job {
+  return {
+    title: `Cancel “${task.title}”?`,
+    doing: `Cancelling ${task.title}`,
+    verb: "Cancel the job",
+    days: 0,
+    cost: 0,
+    refund: task.cost,
+    alwaysAsk: true,
+    caveat: `It hasn't started, so all ${money(task.cost)} comes back. Booking it again later puts it at the back of the queue.`,
+    run: (c) => cancelTask(c, task.id),
+  };
 }
 
 export function licenceJob(application: Application): Job {
@@ -271,7 +347,11 @@ export function licenceJob(application: Application): Job {
   }, (c) => licenceSpec(c));
 }
 
-export function developJob(parts: EngineParts, name: string, quote: { cost: number; days: number; newParts: string[] }): Job {
+/** Develop an engine: a new one from parts, or a new revision of a programme at a new design point. */
+export function developJob(
+  { parts, name, design, family, rev }: { parts: EngineParts; name: string; design?: EngineDesign; family?: string; rev?: number },
+  quote: { cost: number; days: number; newParts: string[] },
+): Job {
   return trackJob({
     title: `Develop the ${name}?`,
     doing: `Developing the ${name}${quote.newParts.length > 0 ? `: ${quote.newParts.length} new part${quote.newParts.length === 1 ? "" : "s"}` : ""}`,
@@ -283,7 +363,7 @@ export function developJob(parts: EngineParts, name: string, quote: { cost: numb
       quote.newParts.length > 0
         ? `New parts bring new unknowns: ${quote.newParts.map(partLabel).join(", ")}. Nothing about them is proven until they fire.`
         : "Every part is already in production, with what tests have learned about it.",
-  }, () => ({ kind: "develop", name, parts }));
+  }, () => ({ kind: "develop", name, parts, design, family, rev }));
 }
 
 export function refineJob(key: string): Job {

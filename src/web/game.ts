@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { newCompany, rename, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import { forgetStandSeparation } from "../sim/teststand.ts";
-import { book, cancelTask, buyUnit, completionNotice, project, quoteTask, TRACKS, upgradeCompany, type TaskDone, type Track } from "../sim/schedule.ts";
+import { book, completionNotice, project, quoteTask, TRACKS, upgradeCompany, type TaskDone, type Track } from "../sim/schedule.ts";
 import type { TestReport } from "../sim/teststand.ts";
 import { achievements } from "../sim/achievements.ts";
 import { LICENCE_LABELS, LICENCE_ORDER } from "../sim/licence.ts";
@@ -9,7 +9,8 @@ import type { IconName } from "./components/Icon.tsx";
 import { after } from "./motion.ts";
 import { generateBoard, startingCash } from "../contracts.ts";
 import { DESIGNS } from "./designs.ts";
-import { deadlineRisks, signedContracts, type Job } from "./jobs.ts";
+import { cancelJob, deadlineRisks, signedContracts, unitJob, type Job } from "./jobs.ts";
+import { cashRisk } from "./cashRisk.ts";
 
 export { DESIGNS, defaultDesign } from "./designs.ts";
 
@@ -226,8 +227,9 @@ export const game = {
   schedule<T extends ActionResult>(job: Job<T>): void {
     const company = state.company;
     if (!company || state.progress) return;
-    // Work on a track always asks: run it now, or put it on the plan.
-    if (job.task || job.alwaysAsk || deadlineRisks(company, job.days, job.forContract).length > 0) {
+    // Work on a track always asks: run it now, or put it on the plan. So does
+    // anything big, or anything that would leave the company short of cash.
+    if (job.task || job.alwaysAsk || deadlineRisks(company, job.days, job.forContract).length > 0 || cashRisk(company, job).asks) {
       state.pending = job;
       emit();
     } else game.proceed(job);
@@ -284,12 +286,16 @@ export const game = {
     }, 40);
   },
 
+  /** Call off a queued job, after asking. */
   cancelTask(id: number): void {
-    game.act((c) => cancelTask(c, id));
+    const task = state.company?.tasks.find((t) => t.id === id);
+    if (task) game.schedule(cancelJob(task));
   },
 
+  /** Another unit for a track, after asking. */
   buyUnit(track: Track): void {
-    game.act((c) => buyUnit(c, track));
+    const job = state.company && unitJob(state.company, track);
+    if (job) game.schedule(job);
   },
 
   proceed<T extends ActionResult>(job: Job<T>): void {

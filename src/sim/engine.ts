@@ -1,4 +1,5 @@
 import { G0 } from "./constants.ts";
+import type { EngineDesign } from "./enginePhysics.ts";
 import type { EngineParts } from "./parts.ts";
 
 export type Engine = {
@@ -20,6 +21,15 @@ export type Engine = {
   parts?: EngineParts;
   /** Price of one engine, $k. Left out: the cost model's thrust formula. */
   unitCost?: number;
+  /** The design point it was drawn to (chamber pressure, ε, turbine, pumps). Engines from before the model have none. */
+  design?: EngineDesign;
+  /** Dry mass from the model, kg. Left out: the builder's fixed thrust-to-weight. */
+  mass?: number;
+  /** On-paper chance of combustion instability, when the feed design moves it off the injector's own. */
+  instability?: number;
+  /** The engine programme it belongs to, and its revision in it (0 = Rev A). */
+  family?: string;
+  rev?: number;
 };
 
 /** Rated life assumed when a design doesn't state one, s. */

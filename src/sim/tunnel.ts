@@ -41,6 +41,9 @@ export type AeroKnowledge = {
   transonicRise: number | null;
   /** Buffet severity seen in the transonic tunnel; 0 if it looked and saw none. */
   buffet: number | null;
+  /** Believed supersonic drag over the model, on a shape drawn with a geometry: CFD's half-right figure, or a flight's. */
+  supersonicFactor?: number | null;
+  supersonicSource?: "cfd" | "flight" | null;
   open: FailureMode[];
   fixed: FailureMode[];
   history: TunnelReport[];
@@ -99,6 +102,11 @@ export function tunnelRun(campaign: Campaign, vehicle: Vehicle, facility: AeroFa
       known.dragSource = "cfd";
     }
     lines.push(`  Drag ${signedPct(dragFactor - 1)} against the hand curve across the Mach range.`);
+    if (truth.supersonicFactor !== undefined && known.supersonicSource !== "flight") {
+      known.supersonicFactor = 1 + (truth.supersonicFactor - 1) * CFD_FIDELITY;
+      known.supersonicSource = "cfd";
+      lines.push(`  Above Mach 1.3: ${signedPct(known.supersonicFactor - 1)}, half right at best. No tunnel here reaches it; a flight past Mach 1.5 measures it.`);
+    }
     lines.push(
       "  CFD's steady turbulence model averages over moving shocks: it smooths the transonic rise and can't show buffet.",
     );
@@ -175,6 +183,8 @@ export function believedAero(campaign: Campaign): AeroTruthTable {
       dragFactor: known?.dragFactor ?? IDEAL_AERO.dragFactor,
       transonicRise: known?.transonicRise ?? IDEAL_AERO.transonicRise,
       buffet: known?.open.includes("transonic-buffet") ? (known.buffet ?? 0) : 0,
+      // A shape drawn with a geometry has a supersonic part of its own: the model until something measures it.
+      ...(campaign.aeroTruth[key]!.supersonicFactor !== undefined ? { supersonicFactor: known?.supersonicFactor ?? 1 } : {}),
     };
   }
   return believed;
@@ -186,7 +196,7 @@ export function aeroUnknowns(vehicle: Vehicle, campaign: Campaign): Unknown[] {
   const known = campaign.aeroKnowledge[shape.key];
   const add = (text: string): Unknown => ({ subject: "Airframe", text });
   if (!known || known.runs === 0) {
-    return [add(`Aerodynamics on paper. Drag, the transonic drag rise and buffet on the ${shape.label} are hand estimates.`)];
+    return [add(`Aerodynamics on paper. Drag, the transonic drag rise and buffet on the ${shape.label} are ${vehicle.geometry ? "the build-up model's" : "hand"} estimates.`)];
   }
   const unknowns: Unknown[] = [];
   if (known.open.includes("transonic-buffet")) {
@@ -196,6 +206,9 @@ export function aeroUnknowns(vehicle: Vehicle, campaign: Campaign): Unknown[] {
   if (known.dragSource === null) unknowns.push(add("Drag never measured on the current shape."));
   if (known.transonicRise === null) {
     unknowns.push(add("Transonic band never in a tunnel. Buffet and the real drag rise near Mach 1 are unknown."));
+  }
+  if (campaign.aeroTruth[shape.key]?.supersonicFactor !== undefined && known.supersonicSource !== "flight") {
+    unknowns.push(add("Supersonic drag is on the model: no flight past Mach 1.5 yet, and no tunnel here reaches it."));
   }
   return unknowns;
 }

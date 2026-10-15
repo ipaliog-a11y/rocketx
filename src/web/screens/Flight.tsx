@@ -1,3 +1,4 @@
+import { CAUSE_LABELS } from "../../sim/control.ts";
 import { useEffect, useRef, useState } from "react";
 import type { Vehicle } from "../../sim/vehicle.ts";
 import { height, Rocket } from "../components/Rocket.tsx";
@@ -40,10 +41,12 @@ const EVENT_LABELS: Partial<Record<FlightEvent["kind"], string>> = {
   "no-liftoff": "Held on the pad",
   "tower-jettison": "Abort tower jettisoned",
   abort: "Abort: capsule pulls clear",
+  "fairing-jettison": "Fairing jettisoned",
+  "attitude-oscillation": "Attitude oscillation",
 };
 
 function eventLabel(e: FlightEvent): string {
-  if ((e.kind === "engine-failure" || e.kind === "structural-failure") && e.mode) return `Lost: ${FAILURE_LABELS[e.mode]}`;
+  if ((e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control") && e.mode) return `Lost: ${e.cause ? CAUSE_LABELS[e.cause] : FAILURE_LABELS[e.mode]}`;
   return EVENT_LABELS[e.kind] ?? e.kind;
 }
 
@@ -188,10 +191,10 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
   const shown = r.events.filter((e) => EVENT_LABELS[e.kind] !== undefined || e.mode !== undefined);
   const passed = shown.filter((e) => e.t <= t);
   const markers: Marker[] = r.events
-    .filter((e) => e.t <= t && ["max-q", "staging", "orbit", "apogee", "engine-failure", "structural-failure"].includes(e.kind))
+    .filter((e) => e.t <= t && ["max-q", "staging", "orbit", "apogee", "engine-failure", "structural-failure", "loss-of-control"].includes(e.kind))
     .map((e) => {
       const s = at(samples, e.t);
-      const lost = e.kind === "engine-failure" || e.kind === "structural-failure";
+      const lost = e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control";
       return { x: xOf(s), y: s.altitude / 1000, color: lost ? COLORS.bad : COLORS.text, hollow: !lost, label: eventLabel(e) };
     });
   markers.push({ x: xOf(now), y: now.altitude / 1000, color: COLORS.action });
@@ -291,7 +294,7 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
             <ol className="list mono" style={{ fontSize: 13 }}>
               {shown.map((e, i) => {
                   const done = e.t <= t;
-                  const lost = e.kind === "engine-failure" || e.kind === "structural-failure";
+                  const lost = e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control";
                   return (
                     <li key={i} style={{ color: done ? (lost ? "var(--red-text)" : "var(--text)") : "var(--muted)" }}>
                       <span style={{ flex: "0 0 72px" }}>T+{e.t.toFixed(1)}</span>
@@ -317,7 +320,7 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
 
 export function headline(r: FlightResult): { text: string; tone: "good" | "warn" | "bad" } {
   const s = r.summary;
-  const lost = r.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+  const lost = r.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
   const abort = r.events.find((e) => e.kind === "abort");
   if (r.outcome === "abort" && abort) return { text: `In-flight abort test at T+${abort.t.toFixed(1)} s: the booster is spent`, tone: "warn" };
   if (lost?.mode) return { text: `Vehicle lost at T+${lost.t.toFixed(1)} s: ${FAILURE_LABELS[lost.mode]}${abort ? ": the abort fired" : ""}`, tone: "bad" };

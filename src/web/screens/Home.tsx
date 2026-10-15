@@ -59,6 +59,12 @@ export function Today({ company }: { company: Company }) {
                   <Icon name="next" size="sm" />
                 </span>
               </button>
+              {item.alt && (
+                <button type="button" className="next-alt" onClick={() => go(item.alt!.route)}>
+                  <Icon name="rocket" size="sm" />
+                  {item.alt.label}
+                </button>
+              )}
             </li>
           ))}
         </ul>

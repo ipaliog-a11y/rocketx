@@ -1,3 +1,5 @@
+import { IMU } from "./control.ts";
+import { MATERIALS } from "./geometry.ts";
 import { engineUnitCost } from "./parts.ts";
 import type { Engine } from "./engine.ts";
 import type { Vehicle } from "./vehicle.ts";
@@ -32,10 +34,17 @@ export function enginePrice(e: Engine): number {
 export function vehicleCost(vehicle: Vehicle): { cost: number; days: number } {
   let cost = 0;
   let engines = 0;
-  for (const stage of vehicle.stages) {
-    cost += enginePrice(stage.engine) * stage.engineCount + COSTS.structurePerKilogram * stage.dryMass;
+  vehicle.stages.forEach((stage, i) => {
+    // A vehicle drawn with a geometry pays for its tank material; one without is aluminium.
+    const material = vehicle.geometry ? MATERIALS[vehicle.geometry.stages[i]?.material ?? "al-2219"].cost : 1;
+    cost += enginePrice(stage.engine) * stage.engineCount + COSTS.structurePerKilogram * stage.dryMass * material;
     engines += stage.engineCount;
-  }
+  });
+  if (vehicle.fairing) cost += COSTS.structurePerKilogram * vehicle.fairing.mass;
+  // Avionics on a guided vehicle: the structure rate already pays for a default loop (navigation IMU,
+  // 5° at 15°/s); a better or cheaper unit and bigger or smaller actuators change the price.
+  const c = vehicle.control?.design;
+  if (c) cost += IMU[c.imu].cost - IMU.navigation.cost + engines * 4 * ((c.gimbal / 5) * Math.sqrt(c.actuatorRate / 15) - 1);
   const days = COSTS.buildDays + COSTS.buildDaysPerStage * vehicle.stages.length + COSTS.buildDaysPerEngine * engines;
   return { cost: Math.round(cost), days };
 }

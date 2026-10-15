@@ -16,6 +16,8 @@ import { believedHardware, flightUnknowns, newCampaign, type Campaign, type Faci
 import { retuneFromTests } from "./tuning.ts";
 import { believedAero, type AeroFacility } from "./tunnel.ts";
 import type { Vehicle } from "./vehicle.ts";
+import { believedGnc, flownGnc } from "./control.ts";
+import { flightWindSeed, rollWind } from "./wind.ts";
 
 /**
  * The company: the pressure around the engineering. Cash, a calendar,
@@ -231,14 +233,23 @@ function tick(company: Company): string[] {
  * can't buy and launch the cheapest orbital design.
  */
 function stranded(company: Company): boolean {
-  if (company.firstOrbitDay !== null) return false;
+  return strandedWith(company, company.cash) !== null;
+}
+
+/**
+ * Whether the company would be stranded with `cash` in hand: what another
+ * orbital try would cost, or null when it isn't stranded. `ordering` is a
+ * design about to be ordered, `lost` contracts that would lapse first.
+ */
+export function strandedWith(company: Company, cash: number, { ordering, lost = [] }: { ordering?: string; lost?: string[] } = {}): { needed: number } | null {
+  if (company.firstOrbitDay !== null) return null;
   const orbital = Object.entries(company.designs).filter(([, d]) => d.pitchProgram?.kind === "gravity-turn");
-  if (orbital.length === 0) return false;
-  if (orbital.some(([key]) => (company.inventory[key] ?? 0) > 0 || company.orders.some((o) => o.design === key))) return false;
+  if (orbital.length === 0) return null;
+  if (orbital.some(([key]) => key === ordering || (company.inventory[key] ?? 0) > 0 || company.orders.some((o) => o.design === key))) return null;
   const licence = holds(company, "orbital") ? 0 : LICENCE_COSTS.orbital.fee;
   const cheapest = Math.min(...orbital.map(([, d]) => vehicleCost(d).cost + COSTS.launchFee)) + licence;
-  const owed = company.accepted.reduce((sum, id) => sum + contractOf(company, id).payout, 0);
-  return company.cash + owed < cheapest;
+  const owed = company.accepted.filter((id) => !lost.includes(id)).reduce((sum, id) => sum + contractOf(company, id).payout, 0);
+  return cash + owed < cheapest ? { needed: cheapest - owed } : null;
 }
 
 function contractOf(company: Company, id: string): Contract {
@@ -596,19 +607,31 @@ export function fly(company: Company, key: string, target: { contract: string } 
 
   const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`)];
   company.inventory[key]! -= 1;
-  let result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth });
+  // The day's wind, and the attitude loop as built and as testing has corrected it.
+  const gncTruth = vehicle.control ? company.campaign.gncTruth?.[vehicle.name] : undefined;
+  let result = simulateAscent(vehicle, mission, {
+    hardware: company.campaign.truth,
+    aero: company.campaign.aeroTruth,
+    structure: company.campaign.structureTruth,
+    ...(vehicle.control
+      ? {
+          wind: rollWind(flightWindSeed(company.seed, company.flights.length)),
+          gnc: { [vehicle.name]: gncTruth ? flownGnc(vehicle.control, gncTruth, company.campaign.gncKnowledge?.[vehicle.name]) : believedGnc(vehicle.control, undefined) },
+        }
+      : {}),
+  });
   // The abort: on purpose at max-q in a test, or because the rocket is failing under a crew.
   let abortText: string | null = null;
   let crewLost = false;
   if (abortTest) {
-    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
     // At max-q, or earlier if the booster fails first: then the abort fires on a real failure.
     const at = failure && failure.t <= result.summary.maxQ.t + 1 ? failure.t : result.summary.maxQ.t;
     const q = qAt(result, at);
     result = abortAt(result, at, q);
     abortText = inflightAbort(company.capsule!, company.day, q);
   } else if (crewed) {
-    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
     if (failure) {
       const q = qAt(result, failure.t);
       const outcome = abortOutcome(company.capsule!.truth, failure.t, q);
@@ -650,7 +673,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
     if (completed.length > 0) lines.push("", ...completed);
     if (crewLost) lines.push("", ...lossOfCrew(company, contract));
   } else {
-    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
     // A test flight risks only the company's own vehicle: the record keeps it, reputation doesn't move.
     if (failure?.mode) company.record.push({ day: company.day, tag: failure.mode, reputation: 0, note: `${design.name} test flight`, test: true });
     // A design's first orbit is flight heritage customers will pay for.
@@ -751,6 +774,9 @@ export function bid(company: Company, contractId: string, key: string): Bid {
   const forecast = simulateAscent(vehicle, mission, {
     hardware: believedHardware(company.campaign),
     aero: believedAero(company.campaign),
+    // Shells the proof stand has measured fly as measured; the rest as drawn.
+    structure: Object.fromEntries(Object.entries(company.campaign.structureKnowledge ?? {}).map(([k, v]) => [k, v.knockdown])),
+    ...(vehicle.control ? { gnc: { [vehicle.name]: believedGnc(vehicle.control, company.campaign.gncKnowledge?.[vehicle.name]) } } : {}),
   });
   const delivers =
     contract.minApogee !== undefined
@@ -794,7 +820,7 @@ export function brief(company: Company, contractId: string, key: string): string
 }
 
 function describeForecast(contract: Contract, forecast: FlightResult): string {
-  const failure = forecast.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+  const failure = forecast.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
   if (failure?.mode) return `lost to a known ${FAILURE_LABELS[failure.mode]} at T+${failure.t.toFixed(1)} s.`;
   if (contract.minApogee !== undefined) {
     const apogee = forecast.summary.apogee;

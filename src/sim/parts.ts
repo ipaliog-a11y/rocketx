@@ -295,7 +295,7 @@ export function engineRanges(engine: Engine): EngineRanges | null {
   return {
     isp: [engine.ispVac * injector.isp[0] * nozzle.ispRange[0], engine.ispVac * injector.isp[1] * nozzle.ispRange[1]],
     hardStart: CYCLES[parts.cycle].hardStart,
-    instability: injector.instability,
+    instability: engine.instability ?? injector.instability,
     life: [rated * cooling.lifeRange[0], rated * cooling.lifeRange[1]],
   };
 }
