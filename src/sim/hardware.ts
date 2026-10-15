@@ -29,7 +29,8 @@ export type FailureMode =
   | "burn-through"
   | "flow-separation"
   | "transonic-buffet"
-  | "relight-failure";
+  | "relight-failure"
+  | "structural-buckling";
 
 export const FAILURE_LABELS: Record<FailureMode, string> = {
   "hard-start": "hard start",
@@ -38,6 +39,7 @@ export const FAILURE_LABELS: Record<FailureMode, string> = {
   "flow-separation": "flow separation",
   "transonic-buffet": "transonic buffet",
   "relight-failure": "relight failure",
+  "structural-buckling": "structural buckling",
 };
 
 /** Odds and ranges the seed draws from. Tuned so most designs have at least one surprise. */

@@ -6,6 +6,7 @@ import { combineTruth, FAILURE_LABELS, rollPartTruths, type FailureMode } from "
 import { holds, LICENCE_LABELS, nextLicence, type Licence } from "./licence.ts";
 import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, fixAbortFlaw, newCapsule, PAD_ABORT, padAbort, type AbortFlaw } from "./crew.ts";
 import { designEngine, sameDesign, type EngineDesign } from "./enginePhysics.ts";
+import { proofQuote, rollStructureTruths } from "./structures.ts";
 import { assembleEngine, developmentCost, INJECTORS, NOZZLES, OWNER, parsePartKey, partKeys, partLabel, partsProblems, type EngineParts, type InjectorOption, type NozzleOption } from "./parts.ts";
 import {
   applyFix,
@@ -79,6 +80,7 @@ export type TaskSpec =
   | { kind: "licence"; tier: Licence }
   | { kind: "capsule" }
   | { kind: "pad-abort" }
+  | { kind: "proof"; design: string }
   | { kind: "fix-abort"; flaw: AbortFlaw };
 
 export type Task = {
@@ -236,6 +238,16 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       if (!holds(company, "orbital")) throw new Error("A capsule programme needs the orbital licence first: the regulator won't look at people before orbit.");
       return { track: "office", title: "Develop the crew capsule", cost: CAPSULE.develop.cost, days: CAPSULE.develop.days, reads: [], writes: ["capsule"] };
     }
+    case "proof": {
+      const design = designOf(company, spec.design);
+      if (!design.structure) throw new Error(`The ${design.name} was drawn before the structures model: there is no shell to proof-test.`);
+      const keys = [...new Set(design.structure.stages.map((s) => s.key))];
+      const untested = keys.filter((k) => !company.campaign.structureKnowledge?.[k]);
+      if (untested.length === 0) throw new Error(`Every shell on the ${design.name} has been proof-tested.`);
+      const widest = Math.max(...design.stages.map((s) => s.diameter));
+      const q = proofQuote(widest);
+      return { track: "stand", title: `Proof test · ${design.name}`, cost: q.cost * untested.length, days: q.days, reads: untested.map((k) => `struct:${k}`), writes: untested.map((k) => `struct:${k}`) };
+    }
     case "pad-abort": {
       if (!company.capsule) throw new Error("There is no capsule to test yet.");
       return { track: "range", title: "Pad abort test", cost: PAD_ABORT.cost, days: PAD_ABORT.days, reads: ["capsule"], writes: [] };
@@ -346,6 +358,7 @@ function categoryOf(spec: TaskSpec): Category {
     case "replace":
     case "tunnel":
     case "pad-abort":
+    case "proof":
       return "test";
     case "fix-engine":
     case "fix-aero":
@@ -499,6 +512,7 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
       const shape = aeroShape(spec.vehicle);
       const newShape = !campaign.aeroTruth[shape.key];
       campaign.aeroTruth[shape.key] ??= rollAeroTruth(spec.vehicle, company.seed);
+      if (spec.vehicle.structure) rollStructureTruths(spec.vehicle, company.seed, (campaign.structureTruth ??= {}));
       const text = `${spec.vehicle.name} drawn up.${spec.tooling.length > 0 ? ` New: ${spec.tooling.join(", ")}.` : ""}${newShape ? ` Its ${shape.label} is a shape the tunnel has never seen.` : ""}`;
       return { summary: `${spec.vehicle.name} drawn up: ready to build.`, text, key, tone: "info" };
     }
@@ -517,6 +531,18 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
         tone: "good",
         text: `The crew capsule is ready: ${CAPSULE.mass.toLocaleString("en-US")} kg with ${CAPSULE.crew} crew, under a ${CAPSULE.tower.mass} kg abort tower dropped at T+${CAPSULE.tower.jettisonAt} s. Whether its abort system would save a crew is unknown until the pad and in-flight abort tests.`,
       };
+    case "proof": {
+      const design = designOf(company, spec.design);
+      const lines: string[] = [];
+      for (const st of design.structure?.stages ?? []) {
+        const known = (campaign.structureKnowledge ??= {});
+        if (known[st.key]) continue;
+        const kd = (campaign.structureTruth ??= {})[st.key] ?? 1;
+        known[st.key] = { knockdown: kd, tests: 1 };
+        lines.push(`${st.key.replace("@", " shell at ")} m: buckled at ${Math.round(kd * 100)}% of its drawing${kd < 0.95 ? ". Weaker than drawn: fly it under its drawn q·α or thicken the wall" : kd > 1.02 ? ". Stronger than drawn" : ". As drawn"}.`);
+      }
+      return { summary: `${design.name}: proof test done.`, text: `Proof test, ${design.name}. ${lines.join(" ")}`, tone: lines.some((l) => l.includes("Weaker")) ? "bad" : "good" };
+    }
     case "pad-abort": {
       const text = padAbort(company.capsule!, company.day);
       const passed = company.capsule!.known.padAbortPassed;

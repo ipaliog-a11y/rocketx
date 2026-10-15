@@ -7,6 +7,7 @@ import { commandedPitch, kickDue, VERTICAL } from "./guidance.ts";
 import { asBuilt, firstFailure, IDEAL_TRUTH, type FailureMode, type HardwareTruth } from "./hardware.ts";
 import { launchGeometry, missionPlan, scoreInsertion, targetSemiMajorAxis, type InsertionReport, type Mission, type OrbitBurn } from "./mission.ts";
 import { isOrbit, orbitFrom, type OrbitElements } from "./orbit.ts";
+import { trueAxial, trueQAlpha } from "./structures.ts";
 import { burnTime, stackMass, type Stage, type Vehicle } from "./vehicle.ts";
 
 /**
@@ -42,6 +43,7 @@ export type EventKind =
   | "circularize"
   | "escape"
   | "tower-jettison"
+  | "fairing-jettison"
   | "abort"
   | "apogee"
   | "impact"
@@ -173,6 +175,12 @@ export type AscentOptions = {
    * analysis can see how far over the budget a trajectory goes.
    */
   structuralFailures?: boolean;
+  /**
+   * The real buckling knock-down of each structure (material at a diameter),
+   * keyed by structure key. Left out, shells carry what their drawings say
+   * and a load over the budget is only recorded.
+   */
+  structure?: Record<string, number>;
 };
 
 /** [x, y, vx, vy, mass, gravity, drag, back-pressure, steering, ideal Δv] */
@@ -405,6 +413,13 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
 
   let liftedOff = false;
   let towerGone = false;
+  let fairingGone = false;
+  const structuralFailures = options.structuralFailures ?? true;
+  // What each stage's shell really carries, from the hidden knock-down; none when the structures aren't in play.
+  const shells =
+    design.structure && options.structure
+      ? design.structure.stages.map((st) => ({ qAlpha: trueQAlpha(st, options.structure![st.key] ?? 1), axial: trueAxial(st, options.structure![st.key] ?? 1) }))
+      : null;
   let passedMach1 = false;
   let qLimitHit = false;
   let qAlphaLimitHit = false;
@@ -459,7 +474,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
   };
 
   const fail = (k: Snapshot, mode: FailureMode, value?: number) => {
-    const kind = mode === "transonic-buffet" ? "structural-failure" : "engine-failure";
+    const kind = mode === "transonic-buffet" || mode === "structural-buckling" ? "structural-failure" : "engine-failure";
     events.push({ kind, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, mode, value });
     outcome = "failure";
     record(k);
@@ -530,6 +545,13 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     }
 
     // The abort tower goes once the vehicle is clear of the thick air: its mass stops counting.
+    // The fairing comes off once the air is thin enough not to heat the payload; q·v is the free-molecular heat flux.
+    if (vehicle.fairing && !fairingGone && k.altitude >= vehicle.fairing.jettisonAltitude) {
+      fairingGone = true;
+      s[M] -= vehicle.fairing.mass;
+      k = snapshot(ctx, phase, t, s);
+      event("fairing-jettison", k, k.q * k.speed);
+    }
     if (vehicle.escapeTower && !towerGone && t >= vehicle.escapeTower.jettisonAt) {
       towerGone = true;
       s[M] -= vehicle.escapeTower.mass;
@@ -571,6 +593,16 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       event("q-alpha-limit-exceeded", k, qAlpha);
     }
     const axialG = (k.thrust - k.drag) / s[M] / G0;
+    // A shell the real knock-down leaves short of the load buckles: bending from q·α, or the stack's weight under thrust.
+    if (shells && structuralFailures && phase.burning) {
+      const own = shells[stageIndex];
+      const bendCap = Math.min(...shells.slice(stageIndex).map((c) => c.qAlpha));
+      const above = s[M] - phase.stage.dryMass - propellant;
+      if (qAlpha > bendCap || (own && above * G0 * axialG > own.axial)) {
+        fail(k, "structural-buckling", qAlpha > bendCap ? qAlpha : axialG);
+        break;
+      }
+    }
     if (!accelLimitHit && axialG > vehicle.limits.maxAcceleration) {
       accelLimitHit = true;
       event("accel-limit-exceeded", k, axialG);

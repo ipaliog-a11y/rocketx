@@ -1,5 +1,5 @@
 import { simulateAscent, type FlightResult } from "./ascent.ts";
-import { aeroShape, DRAG_FACTOR, IDEAL_AERO, TRANSONIC_RISE, type AeroTruth, type AeroTruthTable } from "./airframe.ts";
+import { aeroShape, DRAG_FACTOR, IDEAL_AERO, SUPERSONIC_FACTOR, TRANSONIC_RISE, type AeroTruth, type AeroTruthTable } from "./airframe.ts";
 import { G0 } from "./constants.ts";
 import type { Engine } from "./engine.ts";
 import { FAILURE_LABELS, IDEAL_TRUTH, ISP_FACTOR, type HardwareTruth } from "./hardware.ts";
@@ -99,14 +99,21 @@ export function dragKnowledge(campaign: Campaign, vehicle: Vehicle): DragKnowled
   }
   const riseMeasured = known?.transonicRise != null;
   const rise: [number, number] = riseMeasured ? [model.transonicRise, model.transonicRise] : [...TRANSONIC_RISE];
-  return {
-    shape: shape.label,
-    model,
-    lo: { ...model, dragFactor: Math.min(drag[0], model.dragFactor), transonicRise: Math.min(rise[0], model.transonicRise) },
-    hi: { ...model, dragFactor: Math.max(drag[1], model.dragFactor), transonicRise: Math.max(rise[1], model.transonicRise) },
-    source,
-    riseMeasured,
-  };
+  const lo: AeroTruth = { ...model, dragFactor: Math.min(drag[0], model.dragFactor), transonicRise: Math.min(rise[0], model.transonicRise) };
+  const hi: AeroTruth = { ...model, dragFactor: Math.max(drag[1], model.dragFactor), transonicRise: Math.max(rise[1], model.transonicRise) };
+  // Above Mach 1.3 a shape drawn with a geometry flies on the model until a flight measures it; CFD gets it half right.
+  if (model.supersonicFactor !== undefined) {
+    const m = model.supersonicFactor;
+    let sup: [number, number] = [...SUPERSONIC_FACTOR];
+    if (known?.supersonicSource === "flight") sup = [m, m];
+    else if (known?.supersonicSource === "cfd") {
+      const far = 1 + 2 * (m - 1);
+      sup = [Math.max(SUPERSONIC_FACTOR[0], Math.min(m, far)), Math.min(SUPERSONIC_FACTOR[1], Math.max(m, far))];
+    }
+    lo.supersonicFactor = Math.min(sup[0], m);
+    hi.supersonicFactor = Math.max(sup[1], m);
+  }
+  return { shape: shape.label, model, lo, hi, source, riseMeasured };
 }
 
 /** Every engine flies, whatever tests found: only Isp is left of the hardware. */

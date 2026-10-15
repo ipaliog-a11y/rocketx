@@ -13,6 +13,10 @@ const STEADY_STATE = 5;
  * the vehicle is through it. Expensive data, but real.
  */
 export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: FlightResult): void {
+  // A shell that buckled has shown what it really carries.
+  const buckled = result.events.find((e) => e.kind === "structural-failure" && e.mode === "structural-buckling");
+  const key = buckled ? vehicle.structure?.stages[buckled.stage]?.key : undefined;
+  if (key && !campaign.structureKnowledge?.[key]) (campaign.structureKnowledge ??= {})[key] = { knockdown: campaign.structureTruth?.[key] ?? 1, tests: 0 };
   vehicle.stages.forEach((stage, index) => {
     const ignition = result.events.find((e) => e.kind === "ignition" && e.stage === index);
     if (!ignition) return;
@@ -93,4 +97,9 @@ export function learnFromFlight(campaign: Campaign, vehicle: Vehicle, result: Fl
   known.transonicRise = aero.transonicRise;
   known.buffet = aero.buffet;
   if (aero.buffet > 0 && !known.open.includes("transonic-buffet")) known.open.push("transonic-buffet");
+  // Past Mach 1.5 the recorder has the supersonic drag too: the part no tunnel here reaches.
+  if (aero.supersonicFactor !== undefined && result.samples.some((s) => s.mach > 1.5)) {
+    known.supersonicFactor = aero.supersonicFactor;
+    known.supersonicSource = "flight";
+  }
 }

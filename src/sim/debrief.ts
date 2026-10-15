@@ -35,6 +35,7 @@ function eventLine(e: FlightEvent, vehicle: Vehicle): string {
     "flow-separation": `Nozzle flow separating at ${kPa(e.value ?? 0)} ambient`,
     "pitch-kick": `Pitch kick, ${Number((e.value ?? 0).toFixed(1))}°`,
     "tower-jettison": `Abort tower jettisoned, ${Math.round(e.value ?? 0)} kg`,
+    "fairing-jettison": `Fairing jettisoned, heating ${Math.round(e.value ?? 0)} W/m²`,
     abort: `Abort: the capsule pulls clear${e.value ? ` at ${kPa(e.value)}` : ""}`,
     "mach-1": "Mach 1",
     "max-q": `Max-q ${kPa(e.value ?? 0)}`,
@@ -278,7 +279,7 @@ function insertionLines(result: FlightResult, vehicle: Vehicle, mission: Mission
   }
 }
 
-const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buffet">, (engine: string, after: string) => string> = {
+const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buffet" | "structural-buckling">, (engine: string, after: string) => string> = {
   "hard-start": (engine) => `hard start. The ${engine} chamber cracked as it lit.`,
   "combustion-instability": (engine, after) =>
     `combustion instability ${after} into the ${engine} burn. The pressure oscillation shook the stage apart.`,
@@ -290,12 +291,20 @@ const IN_FLIGHT: Record<Exclude<FailureMode, "flow-separation" | "transonic-buff
 
 function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
   const structural = result.events.find((x) => x.kind === "structural-failure");
+  if (structural?.mode === "structural-buckling") {
+    bucklingLines(structural, vehicle, campaign, lines);
+    return;
+  }
   if (structural) {
     buffetLines(structural, vehicle, campaign, lines);
     return;
   }
+  const jettison = result.events.find((x) => x.kind === "fairing-jettison");
+  if (jettison && (jettison.value ?? 0) > PAYLOAD_HEATING) {
+    lines.push(`The fairing came off at ${km(jettison.altitude)} into ${Math.round(jettison.value!)} W/m² of heating: more than the ${PAYLOAD_HEATING} W/m² a payload is usually qualified for. Jettison higher.`);
+  }
   const e = result.events.find((x) => x.kind === "engine-failure");
-  if (!e?.mode || e.mode === "flow-separation" || e.mode === "transonic-buffet") return;
+  if (!e?.mode || e.mode === "flow-separation" || e.mode === "transonic-buffet" || e.mode === "structural-buckling") return;
   const stage = vehicle.stages[e.stage]!;
   const engine = stage.engine.name;
   const ignition = result.events.filter((x) => x.kind === "ignition" && x.stage === e.stage)[0];
@@ -325,6 +334,24 @@ function failureLines(result: FlightResult, vehicle: Vehicle, campaign: Campaign
       `  The longest clean firing of the current ${engine} hardware was ${known.provenDuration.toFixed(1)} s. The flight needed it to run past ${after}.`,
     );
   }
+}
+
+/** Free-molecular heat flux a payload is usually qualified for at fairing jettison, W/m². */
+const PAYLOAD_HEATING = 1135;
+
+function bucklingLines(e: FlightEvent, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {
+  const stage = vehicle.stages[e.stage];
+  const bending = (e.value ?? 0) > 50;
+  lines.push(
+    bending
+      ? `Vehicle lost at ${tPlus(e.t)}, ${km(e.altitude)}, Mach ${e.mach.toFixed(2)}: the ${stage?.name ?? "stack"}'s tank wall buckled in bending at q·α ${kPaDeg(e.value ?? 0)}, under the ${kPaDeg(vehicle.limits.maxQAlpha ?? 0)} it was drawn for. The real shell carried less than its drawing.`
+      : `Vehicle lost at ${tPlus(e.t)}, ${km(e.altitude)}: the ${stage?.name ?? "stack"}'s tank wall buckled under the stack above it at ${(e.value ?? 0).toFixed(1)} g. The real shell carried less than its drawing.`,
+  );
+  if (!campaign || !vehicle.structure) return;
+  const key = vehicle.structure.stages[e.stage]?.key;
+  const known = key ? campaign.structureKnowledge?.[key] : undefined;
+  if (!known) lines.push(`  That shell was never proof-tested. A proof test would have shown its real knock-down.`);
+  else lines.push(`  The proof test had shown this shell at ${Math.round(known.knockdown * 100)}% of its drawing. It flew at loads its drawing allowed, not the ones it could take.`);
 }
 
 function buffetLines(e: FlightEvent, vehicle: Vehicle, campaign: Campaign | undefined, lines: string[]): void {

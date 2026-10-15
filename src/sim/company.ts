@@ -605,7 +605,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
 
   const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`)];
   company.inventory[key]! -= 1;
-  let result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth });
+  let result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth, structure: company.campaign.structureTruth });
   // The abort: on purpose at max-q in a test, or because the rocket is failing under a crew.
   let abortText: string | null = null;
   let crewLost = false;
@@ -760,6 +760,8 @@ export function bid(company: Company, contractId: string, key: string): Bid {
   const forecast = simulateAscent(vehicle, mission, {
     hardware: believedHardware(company.campaign),
     aero: believedAero(company.campaign),
+    // Shells the proof stand has measured fly as measured; the rest as drawn.
+    structure: Object.fromEntries(Object.entries(company.campaign.structureKnowledge ?? {}).map(([k, v]) => [k, v.knockdown])),
   });
   const delivers =
     contract.minApogee !== undefined

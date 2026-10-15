@@ -169,6 +169,10 @@ export type Campaign = {
   /** Hidden aero truth per outer shape. */
   aeroTruth: AeroTruthTable;
   aeroKnowledge: Record<string, AeroKnowledge>;
+  /** Hidden real buckling knock-down of each structure (material at a diameter), against its drawing. */
+  structureTruth?: Record<string, number>;
+  /** What proof tests and flights have shown of each structure. */
+  structureKnowledge?: Record<string, { knockdown: number; tests: number }>;
   /** $k spent on firings, lost hardware and fixes. */
   spent: number;
   /** Calendar days used by firings, rebuilds and fixes. */
@@ -646,6 +650,12 @@ export function flightUnknowns(vehicle: Vehicle, campaign: Campaign, mission?: M
     }
   }
   if (campaign.aeroTruth[aeroShape(vehicle).key]) unknowns.push(...aeroUnknowns(vehicle, campaign));
+  // Shells drawn on the new structures model: their real knock-down is unknown until a proof test.
+  for (const st of vehicle.structure?.stages ?? []) {
+    if (campaign.structureKnowledge?.[st.key]) continue;
+    if (unknowns.some((u) => u.subject === st.key)) continue;
+    unknowns.push({ subject: st.key, text: `Never proof-tested: the ${st.key.replace("@", " shell at ")} m carries what its drawing says, until a test article shows otherwise.` });
+  }
   return unknowns;
 }
 
