@@ -9,6 +9,7 @@ import { believedHardware, FIXES, flightUnknowns, seenAt, type Campaign, type Un
 import { believedAero } from "./tunnel.ts";
 import { retunePitch } from "./tuning.ts";
 import { burnTime, idealDeltaV, type Vehicle } from "./vehicle.ts";
+import { believedGnc, CAUSE_LABELS } from "./control.ts";
 
 /**
  * The launch simulator. It flies a design on paper, free and instantly,
@@ -179,6 +180,12 @@ function warningsFor(campaign: Campaign, vehicle: Vehicle, mission: Mission, res
   if (limits.maxQAlpha !== undefined && s.maxQAlpha.value > limits.maxQAlpha) out.push("The side load at max-q is over the airframe's budget: the steering turns too hard in thick air.");
   if (s.maxBuffetLoad.value > limits.maxDynamicPressure) out.push(`Known transonic buffet peaks at ${(s.maxBuffetLoad.value / 1000).toFixed(1)} kPa, over the ${(limits.maxDynamicPressure / 1000).toFixed(0)} kPa budget: the real flight breaks up near Mach ${s.maxBuffetLoad.mach.toFixed(1)}.`);
   if (result.events.some((e) => e.kind === "flow-separation")) out.push("A nozzle separates in thick air on this flight.");
+  const c = s.control;
+  if (c) {
+    if (c.maxEffort.value > 0.8) out.push(`The engines swing ${Math.round(c.maxEffort.value * 100)}% of their gimbal range near Mach ${c.maxEffort.mach.toFixed(1)} in calm air: little left for gusts.`);
+    if (c.maxDivergence > 0.35) out.push(`The airframe diverges at ${Math.round(c.maxDivergence * 100)}% of the loop's speed: a gust could get ahead of it.`);
+    if (c.maxOscillation.value > 0.5) out.push(`The attitude loop rings up to ${c.maxOscillation.value.toFixed(1)}° (${c.maxOscillation.cause ? CAUSE_LABELS[c.maxOscillation.cause] : "unknown"}).`);
+  }
   return out;
 }
 
@@ -199,7 +206,8 @@ export function simulate(campaign: Campaign, vehicle: Vehicle, mission: Mission,
   const fly = (scenario: Scenario): SimFlight => {
     const pick = (k: IspKnowledge) => (scenario === "worst" ? k.lo : scenario === "best" ? k.hi : k.model);
     const aero: AeroTruthTable = { [shape]: scenario === "worst" ? drag.hi : scenario === "best" ? drag.lo : drag.model };
-    const result = simulateAscent(vehicle, mission, { hardware: cleanHardware(isp, pick), aero, structuralFailures: false });
+    const gnc = vehicle.control ? { [vehicle.name]: believedGnc(vehicle.control, campaign.gncKnowledge?.[vehicle.name]) } : undefined;
+    const result = simulateAscent(vehicle, mission, { hardware: cleanHardware(isp, pick), aero, structuralFailures: false, ...(gnc ? { gnc } : {}) });
     const ok = delivers(result, options.minApogee);
     const lastIsp = isp.find((k) => k.engine === lastEngine)!;
     return { scenario, result, delivers: ok, spare: ok && options.minApogee === undefined ? sparePayload(vehicle, result, pick(lastIsp)) : null };

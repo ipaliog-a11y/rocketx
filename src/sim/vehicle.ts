@@ -1,4 +1,5 @@
 import type { DragCurve } from "./aero.ts";
+import type { ControlModel } from "./control.ts";
 import { G0 } from "./constants.ts";
 import { massFlow, type Engine } from "./engine.ts";
 import type { VehicleGeometry } from "./geometry.ts";
@@ -43,6 +44,8 @@ export type Vehicle = {
   stability?: Stability;
   /** What each stage's shell carries, for checking flight loads against the real knock-down. */
   structure?: StructureModel;
+  /** Guidance and control as drawn, for a guided vehicle drawn with a geometry. */
+  control?: ControlModel;
   limits: {
     /** Structural load budget for dynamic pressure, Pa. */
     maxDynamicPressure: number;

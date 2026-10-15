@@ -17,6 +17,8 @@ import { aeroShape, type AeroTruthTable } from "./airframe.ts";
 import { aeroUnknowns, type AeroKnowledge } from "./tunnel.ts";
 import { missionPlan, type Mission } from "./mission.ts";
 import { burnTime, type Vehicle } from "./vehicle.ts";
+import type { GncKnowledge, GncTruth } from "./control.ts";
+import { gncUnknowns } from "./gncTests.ts";
 
 /**
  * Engine test campaigns. A hot-fire is one firing on one facility for a
@@ -173,6 +175,10 @@ export type Campaign = {
   structureTruth?: Record<string, number>;
   /** What proof tests and flights have shown of each structure. */
   structureKnowledge?: Record<string, { knockdown: number; tests: number }>;
+  /** Hidden truth of each guided design's attitude loop (bending, slosh, IMU drift, software), by design name. */
+  gncTruth?: Record<string, GncTruth>;
+  /** What modal surveys, IMU calibration, HITL runs and flights have shown, by design name. */
+  gncKnowledge?: Record<string, GncKnowledge>;
   /** $k spent on firings, lost hardware and fixes. */
   spent: number;
   /** Calendar days used by firings, rebuilds and fixes. */
@@ -656,6 +662,7 @@ export function flightUnknowns(vehicle: Vehicle, campaign: Campaign, mission?: M
     if (unknowns.some((u) => u.subject === st.key)) continue;
     unknowns.push({ subject: st.key, text: `Never proof-tested: the ${st.key.replace("@", " shell at ")} m carries what its drawing says, until a test article shows otherwise.` });
   }
+  for (const text of gncUnknowns(vehicle, campaign)) unknowns.push({ subject: `gnc:${vehicle.name}`, text });
   return unknowns;
 }
 

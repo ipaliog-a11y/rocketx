@@ -7,7 +7,9 @@ import { commandedPitch, kickDue, VERTICAL } from "./guidance.ts";
 import { asBuilt, firstFailure, IDEAL_TRUTH, type FailureMode, type HardwareTruth } from "./hardware.ts";
 import { launchGeometry, missionPlan, scoreInsertion, targetSemiMajorAxis, type InsertionReport, type Mission, type OrbitBurn } from "./mission.ts";
 import { isOrbit, orbitFrom, type OrbitElements } from "./orbit.ts";
+import { believedGnc, controlStep, newLoop, type Cause, type GncFlight } from "./control.ts";
 import { trueAxial, trueQAlpha } from "./structures.ts";
+import { CALM, windAt, type WindProfile } from "./wind.ts";
 import { burnTime, stackMass, type Stage, type Vehicle } from "./vehicle.ts";
 
 /**
@@ -44,6 +46,8 @@ export type EventKind =
   | "escape"
   | "tower-jettison"
   | "fairing-jettison"
+  | "attitude-oscillation"
+  | "loss-of-control"
   | "abort"
   | "apogee"
   | "impact"
@@ -62,6 +66,8 @@ export type FlightEvent = {
   value?: number;
   /** For an engine or structural failure, which failure mode. */
   mode?: FailureMode;
+  /** For a control event, what drove it. */
+  cause?: Cause;
 };
 
 export type Sample = {
@@ -148,10 +154,28 @@ export type FlightResult = {
     orbit: OrbitElements | null;
     /** Scored against the mission's target, when it has one. */
     insertion: InsertionReport | null;
+    /** The attitude loop's worst moments, for a vehicle flying the control model. */
+    control?: ControlSummary;
     /** Integrated vacuum Δv actually delivered, m/s. */
     idealDeltaV: number;
     losses: Losses;
   };
+};
+
+export type ControlSummary = {
+  /** Peak share of the gimbal range in use, and when. */
+  maxEffort: { value: number; t: number; mach: number };
+  /** Peak share of the actuator rate. */
+  maxRateUse: number;
+  /** Largest attitude oscillation, degrees, and what fed it. */
+  maxOscillation: { value: number; t: number; cause: Cause | null };
+  /** Peak airframe divergence over loop crossover, and loop gain at the bending mode. */
+  maxDivergence: number;
+  maxBendingGain: number;
+  /** Largest gust met below 15 km, m/s. */
+  maxGust: number;
+  /** IMU drift flown, deg/s. */
+  imuBias: number;
 };
 
 export type AscentOptions = {
@@ -181,6 +205,16 @@ export type AscentOptions = {
    * and a load over the budget is only recorded.
    */
   structure?: Record<string, number>;
+  /**
+   * The day's wind. Only a vehicle flying the control model feels it; left
+   * out, the air is calm.
+   */
+  wind?: WindProfile;
+  /**
+   * The attitude loop's real bending, slosh, IMU drift and software, by
+   * vehicle name, as flown. Left out, the loop flies as drawn.
+   */
+  gnc?: Record<string, GncFlight>;
 };
 
 /** [x, y, vx, vy, mass, gravity, drag, back-pressure, steering, ideal Δv] */
@@ -188,6 +222,10 @@ type State = [number, number, number, number, number, number, number, number, nu
 
 const X = 0, Y = 1, VX = 2, VY = 3, M = 4;
 const DEG = 180 / Math.PI;
+/** Dynamic pressure above which the air's moments are the attitude loop's to fight, Pa. Thinner than this, thrust alone points the vehicle. */
+const CONTROL_Q = 5_000;
+/** Share of the mean wind left after day-of-launch trajectory biasing. */
+const WIND_BIAS_RESIDUAL = 0.1;
 
 type Phase = {
   stage: Stage;
@@ -209,6 +247,10 @@ type Context = {
   omega: number;
   /** How the shape really behaves in the air. */
   aero: AeroTruth;
+  /** Wind along track, when the vehicle flies the control model. */
+  wind: WindProfile | null;
+  /** IMU drift, rad/s: the attitude the vehicle thinks it holds wanders off by this. */
+  drift: number;
 };
 
 /** Everything the integrator and the event checks need at one instant. */
@@ -228,6 +270,10 @@ type Snapshot = {
   pitch: number;
   thrustDir: [number, number];
   angleOfAttack: number;
+  /** Angle of attack with its sign: thrust above the airflow is positive, rad. */
+  alpha: number;
+  /** Gust along track here, m/s. */
+  gust: number;
   thrust: number;
   drag: number;
   mach: number;
@@ -254,21 +300,30 @@ function snapshot(ctx: Context, phase: Phase, t: number, s: State): Snapshot {
 
   const stageBurnFraction = phase.burning ? Math.min(1, (t - phase.ignitedAt) / burnTime(phase.stage)) : 1;
   const inertialFpa = Math.atan2(s[VX] * up[0] + s[VY] * up[1], s[VX] * horizontal[0] + s[VY] * horizontal[1]);
-  const pitch = phase.prograde
-    ? inertialFpa
-    : commandedPitch(vehicle.pitchProgram ?? VERTICAL, {
-        t,
-        kickStart: phase.kickStart,
-        flightPathAngle,
-        stage: phase.stageIndex,
-        stageBurnFraction,
-      });
+  const pitch =
+    (phase.prograde
+      ? inertialFpa
+      : commandedPitch(vehicle.pitchProgram ?? VERTICAL, {
+          t,
+          kickStart: phase.kickStart,
+          flightPathAngle,
+          stage: phase.stageIndex,
+          stageBurnFraction,
+        })) + ctx.drift * t;
   const thrustDir: [number, number] = [
     Math.cos(pitch) * horizontal[0] + Math.sin(pitch) * up[0],
     Math.cos(pitch) * horizontal[1] + Math.sin(pitch) * up[1],
   ];
   const heading: [number, number] = airSpeed > 1e-9 ? [rx / airSpeed, ry / airSpeed] : thrustDir;
   const cosAlpha = Math.min(1, Math.max(-1, thrustDir[0] * heading[0] + thrustDir[1] * heading[1]));
+  // Wind only loads the airframe: the trajectory is flown as planned, and
+  // the angle the air meets the body at gains the gusts and whatever of
+  // the mean wind the day's balloon and trajectory biasing didn't take out.
+  const w = ctx.wind ? windAt(ctx.wind, altitude) : null;
+  const gust = w ? w.gust : 0;
+  const crossWind = w ? WIND_BIAS_RESIDUAL * w.mean + w.gust : 0;
+  const steerAlpha = Math.atan2(heading[0] * thrustDir[1] - heading[1] * thrustDir[0], cosAlpha);
+  const windAlpha = crossWind !== 0 && airSpeed > 1 ? Math.atan2(crossWind * Math.abs(vUp / airSpeed), airSpeed) : 0;
 
   const atm = atmosphereAt(altitude);
   const mach = airSpeed / atm.speedOfSound;
@@ -285,6 +340,8 @@ function snapshot(ctx: Context, phase: Phase, t: number, s: State): Snapshot {
     pitch,
     thrustDir,
     angleOfAttack: Math.acos(cosAlpha),
+    alpha: steerAlpha + windAlpha,
+    gust,
     thrust: phase.burning ? phase.stage.engineCount * thrustAt(phase.stage.engine, atm.pressure) : 0,
     drag: q * dragCoefficient(vehicle.dragCurve, mach) * dragMultiplier(ctx.aero, mach) * phase.area,
     mach,
@@ -377,11 +434,22 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
   if (vehicle.stages.length === 0) throw new Error(`${vehicle.name} has no stages`);
   const program = vehicle.pitchProgram ?? VERTICAL;
   const geometry = launchGeometry(mission, options.rotatingEarth ?? true);
+  // A guided vehicle drawn with a control model flies its attitude loop, in the day's wind.
+  const control = design.control ?? null;
+  const gnc = control ? (options.gnc?.[design.name] ?? believedGnc(control, undefined)) : null;
   const ctx: Context = {
     vehicle,
     omega: geometry.rotationRate,
     aero: options.aero?.[aeroShape(design).key] ?? IDEAL_AERO,
+    wind: control ? (options.wind ?? CALM) : null,
+    drift: gnc ? (gnc.imuBias * Math.PI) / 180 : 0,
   };
+  const loop = newLoop();
+  let liftoffMass = 0;
+  const controlSummary: ControlSummary | null = control
+    ? { maxEffort: { value: 0, t: 0, mach: 0 }, maxRateUse: 0, maxOscillation: { value: 0, t: 0, cause: null }, maxDivergence: 0, maxBendingGain: 0, maxGust: 0, imuBias: gnc!.imuBias }
+    : null;
+  let oscillationSeen = false;
   const lastStage = vehicle.stages.length - 1;
 
   // Guidance shuts the last stage down once the orbit has the target's
@@ -473,9 +541,14 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     });
   };
 
-  const fail = (k: Snapshot, mode: FailureMode, value?: number) => {
-    const kind = mode === "transonic-buffet" || mode === "structural-buckling" ? "structural-failure" : "engine-failure";
-    events.push({ kind, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, mode, value });
+  const fail = (k: Snapshot, mode: FailureMode, value?: number, cause?: Cause) => {
+    const kind =
+      mode === "transonic-buffet" || mode === "structural-buckling"
+        ? "structural-failure"
+        : mode === "loss-of-control" || mode === "control-structure-coupling"
+          ? "loss-of-control"
+          : "engine-failure";
+    events.push({ kind, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, mode, value, ...(cause ? { cause } : {}) });
     outcome = "failure";
     record(k);
   };
@@ -535,6 +608,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
 
     if (!liftedOff && k.altitude > 0) {
       liftedOff = true;
+      liftoffMass = s[M];
       event("liftoff", k, thrustToWeight);
     }
     if (liftedOff && k.altitude < 0) {
@@ -571,7 +645,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     // that is reentry, not the ascent the airframe was sized for.
     const ascending = phase.burning || verticalSpeed(s) > 0;
     if (ascending && k.q > maxQ.value) maxQ = { value: k.q, t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex };
-    const qAlpha = k.q * k.angleOfAttack * DEG;
+    const qAlpha = k.q * (ctx.wind ? Math.abs(k.alpha) : k.angleOfAttack) * DEG;
     if (phase.burning && qAlpha > maxQAlpha.value) maxQAlpha = { value: qAlpha, t, altitude: k.altitude, mach: k.mach };
     const buffet = ascending ? buffetLoad(ctx.aero, k.mach, k.q) : 0;
     if (buffet > maxBuffet.value) maxBuffet = { value: buffet, t, mach: k.mach };
@@ -600,6 +674,35 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       const above = s[M] - phase.stage.dryMass - propellant;
       if (qAlpha > bendCap || (own && above * G0 * axialG > own.axial)) {
         fail(k, "structural-buckling", qAlpha > bendCap ? qAlpha : axialG);
+        break;
+      }
+    }
+    // The attitude loop: what it has to do this step, and whether it holds.
+    if (control && controlSummary && phase.burning && liftedOff && k.q > CONTROL_Q) {
+      const c = controlStep(control, gnc!, {
+        stage: stageIndex,
+        burned: Math.min(1, (t - phase.ignitedAt) / burnTime(phase.stage)),
+        mach: k.mach,
+        q: k.q,
+        alpha: k.alpha,
+        thrust: k.thrust,
+        axial: axialG * G0,
+        massRatio: liftoffMass / s[M],
+        dt: step,
+      }, loop);
+      const cs = controlSummary;
+      if (c.effort > cs.maxEffort.value) cs.maxEffort = { value: c.effort, t, mach: k.mach };
+      cs.maxRateUse = Math.max(cs.maxRateUse, c.rateUse);
+      if (c.amp > cs.maxOscillation.value) cs.maxOscillation = { value: c.amp, t, cause: c.growth > 0 ? growthCause(c) : cs.maxOscillation.cause };
+      cs.maxDivergence = Math.max(cs.maxDivergence, c.divergence);
+      cs.maxBendingGain = Math.max(cs.maxBendingGain, c.bendingGain);
+      if (k.altitude < 15_000) cs.maxGust = Math.max(cs.maxGust, Math.abs(k.gust));
+      if (!oscillationSeen && c.amp >= 0.5) {
+        oscillationSeen = true;
+        events.push({ kind: "attitude-oscillation", t, altitude: k.altitude, velocity: k.speed, mach: k.mach, stage: stageIndex, value: c.amp, cause: growthCause(c) });
+      }
+      if (c.cause && structuralFailures) {
+        fail(k, c.cause === "bending" ? "control-structure-coupling" : "loss-of-control", c.cause === "authority" ? c.effort : c.cause === "divergence" ? c.divergence : c.amp, c.cause);
         break;
       }
     }
@@ -843,6 +946,16 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       insertion,
       idealDeltaV: s[9],
       losses: { gravity: s[5], drag: s[6], backPressure: s[7], steering: s[8] },
+      ...(controlSummary ? { control: controlSummary } : {}),
     },
   };
+}
+
+/** What is feeding a growing oscillation most, from a step's figures. */
+function growthCause(c: { cause: Cause | null; divergence: number; bendingGain: number; rateUse: number }): Cause {
+  if (c.cause) return c.cause;
+  if (c.bendingGain > 0.25) return "bending";
+  if (c.rateUse > 1) return "rate";
+  if (c.divergence > 0.25) return "divergence";
+  return "slosh";
 }

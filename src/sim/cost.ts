@@ -1,3 +1,4 @@
+import { IMU } from "./control.ts";
 import { MATERIALS } from "./geometry.ts";
 import { engineUnitCost } from "./parts.ts";
 import type { Engine } from "./engine.ts";
@@ -40,6 +41,10 @@ export function vehicleCost(vehicle: Vehicle): { cost: number; days: number } {
     engines += stage.engineCount;
   });
   if (vehicle.fairing) cost += COSTS.structurePerKilogram * vehicle.fairing.mass;
+  // Avionics on a guided vehicle: the structure rate already pays for a default loop (navigation IMU,
+  // 5° at 15°/s); a better or cheaper unit and bigger or smaller actuators change the price.
+  const c = vehicle.control?.design;
+  if (c) cost += IMU[c.imu].cost - IMU.navigation.cost + engines * 4 * ((c.gimbal / 5) * Math.sqrt(c.actuatorRate / 15) - 1);
   const days = COSTS.buildDays + COSTS.buildDaysPerStage * vehicle.stages.length + COSTS.buildDaysPerEngine * engines;
   return { cost: Math.round(cost), days };
 }

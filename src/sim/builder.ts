@@ -2,6 +2,7 @@ import { SLENDER_ROCKET } from "./aero.ts";
 import { buildDragCurve } from "./aerodynamics.ts";
 import { REFERENCE_PC } from "./enginePhysics.ts";
 import { finArea, GEOMETRY_RANGES, MATERIALS, noseWetted, type Material, type VehicleGeometry } from "./geometry.ts";
+import { BAFFLE_MASS, BENDING_LIMIT, controlDesignOf, defaultControl, controlModel, designPoint, DIVERGENCE_LIMIT, IMU } from "./control.ts";
 import { stabilityOf, unguidedProblems } from "./stability.ts";
 import { structureLimits, structureModel, tankMass } from "./structures.ts";
 import { G0, P_SEA_LEVEL } from "./constants.ts";
@@ -134,14 +135,19 @@ export function assembleVehicle(spec: VehicleSpec, engines: Record<string, Engin
 function assembleGeometric(spec: VehicleSpec, geometry: VehicleGeometry, engines: Record<string, Engine>): Vehicle {
   const two = spec.stages.length > 1;
   const fairing = geometricFairingMass(spec.fairingDiameter, geometry);
+  const control = controlDesignOf(geometry);
+  const guided = control?.guided ? control : null;
   const built = spec.stages.map((s, i) => {
     const engine = engines[s.engine];
     if (!engine) throw new Error(`No engine called ${s.engine}.`);
     const geo = geometry.stages[i] ?? geometry.stages.at(-1)!;
     const propellantMass = propellantFor(s.diameter, s.tankLength);
-    const tanks = tankMass(geo, s.diameter, s.tankLength, propellantMass, feedPressure(engine));
+    // Base masses already carry a default loop's avionics and baffles: what's drawn pays or saves the difference.
+    const tanks = tankMass(geo, s.diameter, s.tankLength, propellantMass, feedPressure(engine)) * (guided && !guided.baffles ? 1 - BAFFLE_MASS : 1);
     const base = two && i > 0 ? 15 + 25 * s.diameter * s.diameter : 40 + 60 * s.diameter * s.diameter;
-    const dry = engineMass(engine) * s.engineCount + tanks + base + (i === 0 ? finMass(geometry) : 0);
+    // A guided stage carries gimbal actuators on every engine; the top stage carries the inertial unit.
+    const avionics = guided ? (actuatorMass(guided) - actuatorMass(DEFAULT_LOOP)) * s.engineCount + (i === spec.stages.length - 1 ? IMU[guided.imu].mass - IMU[DEFAULT_LOOP.imu].mass : 0) : 0;
+    const dry = engineMass(engine) * s.engineCount + tanks + base + avionics + (i === 0 ? finMass(geometry) : 0);
     return { s, engine, propellantMass, dryMass: Math.round(dry) };
   });
   const stages: Stage[] = built.map(({ s, engine, propellantMass, dryMass }, i) => ({
@@ -169,7 +175,63 @@ function assembleGeometric(spec: VehicleSpec, geometry: VehicleGeometry, engines
     fairing: { mass: fairing, jettisonAltitude: geometry.jettisonAltitude },
     stability: stabilityOf(input),
     structure: structureModel(structure),
+    ...(guided ? { control: controlModel(input, guided, limits.bendingFrequency) } : {}),
   };
+}
+
+/** The attitude loop at the design point: enough gimbal, a loop faster than the airframe diverges, clear of the bending mode and slosh. */
+export function controlChecks(v: Vehicle): { problems: string[]; warnings: string[] } {
+  const problems: string[] = [];
+  const warnings: string[] = [];
+  const model = v.control;
+  if (!model) return { problems, warnings };
+  const d = model.design;
+  const dp = designPoint(model);
+  const booster = v.stages[0]!;
+  const needs = dp.needs(booster.engine.thrustVac * booster.engineCount);
+  if (d.gimbal <= 0) problems.push("A guided vehicle steers by gimballing its engines: give them some range.");
+  else if (needs > d.gimbal) problems.push(`Needs ${needs.toFixed(1)}° of gimbal at max-q in a design gust; the engines swing ${d.gimbal.toFixed(1)}°. More range, fins, or a less unstable shape.`);
+  else if (needs > 0.7 * d.gimbal) warnings.push(`Uses ${Math.round((needs / d.gimbal) * 100)}% of the gimbal at max-q in a design gust: little left for a strong one.`);
+  if (dp.divergence > DIVERGENCE_LIMIT * 0.9) problems.push(`The airframe diverges at ${dp.divergenceHz.toFixed(2)} Hz near max-q: a ${d.bandwidth.toFixed(1)} Hz loop can't catch it. Raise the bandwidth, add fins, or move mass forward.`);
+  else if (dp.divergence > DIVERGENCE_LIMIT * 0.6) warnings.push(`The airframe diverges at ${Math.round(dp.divergence * 100)}% of the loop's speed near max-q: a strong gust could get ahead of it.`);
+  const seen = dp.bendingGain * (d.notch ? 0.1 : 1);
+  if (seen > BENDING_LIMIT) problems.push(`The loop at ${d.bandwidth.toFixed(1)} Hz is too close to the first bending mode at ${dp.bendingHz.toFixed(2)} Hz: it would couple. Slow the loop${d.notch ? "" : " or fit a notch filter"}.`);
+  else if (dp.bendingGain > BENDING_LIMIT) warnings.push(`The loop relies on the notch filter to stay clear of the bending mode at ${dp.bendingHz.toFixed(2)} Hz: the notch is tuned to the drawing until a modal survey measures the real one.`);
+  else if (!d.notch && dp.bendingGain > 0.1) warnings.push(`The bending mode at ${dp.bendingHz.toFixed(2)} Hz is within reach of the loop and there's no notch filter.`);
+  if (!d.baffles && dp.sloshHz.some((f) => Math.abs(f / d.bandwidth - 1) < 0.4)) warnings.push(`Propellant slosh near ${dp.sloshHz.map((f) => f.toFixed(1)).join(" and ")} Hz sits close to the ${d.bandwidth.toFixed(1)} Hz loop, and the tanks have no baffles.`);
+  return { problems, warnings };
+}
+
+/**
+ * Size a guided spec's attitude loop to its airframe: a loop at least three
+ * times faster than the airframe diverges, kept clear of the bending mode,
+ * and gimbal with half again what the design point needs. Leaves the
+ * rest of the control design as it is.
+ */
+export function fitControl(spec: VehicleSpec, engines: Record<string, Engine>): VehicleSpec {
+  const control = controlDesignOf(spec.geometry);
+  if (!spec.geometry || !control?.guided) return spec;
+  const round = (x: number, step: number) => Math.ceil(x / step - 1e-9) * step;
+  let c = { ...control };
+  for (let i = 0; i < 3; i++) {
+    const v = assembleVehicle({ ...spec, geometry: { ...spec.geometry, control: c } }, engines);
+    const dp = designPoint(v.control!);
+    const booster = v.stages[0]!;
+    const fast = round(Math.max(0.6, dp.divergenceHz / 0.3), 0.1);
+    const ceiling = Math.max(0.3, Math.floor(Math.sqrt(0.2) * dp.bendingHz * 10) / 10);
+    const bandwidth = Math.min(3, Math.max(fast, Math.min(c.bandwidth, ceiling)));
+    const gimbal = Math.min(10, Math.max(c.gimbal, round(1.5 * dp.needs(booster.engine.thrustVac * booster.engineCount), 0.5)));
+    if (bandwidth === c.bandwidth && gimbal === c.gimbal) break;
+    c = { ...c, bandwidth: Math.round(bandwidth * 10) / 10, gimbal };
+  }
+  return { ...spec, geometry: { ...spec.geometry, control: c } };
+}
+
+const DEFAULT_LOOP = defaultControl(2);
+
+/** Gimbal actuators for one engine, kg: bigger throws and faster slews need bigger actuators. */
+export function actuatorMass(c: { gimbal: number; actuatorRate: number }): number {
+  return 2 * (c.gimbal / 5) * Math.sqrt(c.actuatorRate / 15);
 }
 
 /** The spec a vehicle would have been drawn from: "start from" an existing design. */
@@ -272,10 +334,14 @@ export function checkVehicle(spec: VehicleSpec, engines: Record<string, Engine>,
     if (g.jettisonAltitude < 115_000) warnings.push(`Fairing jettison at ${Math.round(g.jettisonAltitude / 1000)} km: the heating on the payload is close to its limit.`);
     const v = assembleVehicle(spec, engines);
     const margin = v.stability!.min;
-    if (spec.stages.length === 1) {
+    if (!v.control) {
       problems.push(...unguidedProblems(v.stability!));
       if (margin < 0) warnings.push(`Unstable after burnout (${margin.toFixed(2)} calibres at Mach ${v.stability!.points[2]!.mach}): fins lose most of their bite supersonic. It coasts in thin air by then.`);
-    } else if (margin < 0) warnings.push(`Aerodynamically unstable (margin ${margin.toFixed(2)} calibres): it holds course on its engines' steering alone.`);
+    } else {
+      const r = controlChecks(v);
+      problems.push(...r.problems);
+      warnings.push(...r.warnings);
+    }
   }
   if (spec.fairingDiameter > Math.max(...spec.stages.map((s) => s.diameter))) {
     warnings.push("Hammerhead fairing: wider than the stack. Buffet on its shoulder near Mach 1 is likely; plan a transonic tunnel run.");
@@ -291,7 +357,11 @@ const BIG_TANK = 2.4;
 /** Heavy-lift tanks need a new building: the 4 m class, m. */
 const HEAVY_TANK = 4.0;
 
-export type DesignQuote = { cost: number; days: number; newTanks: number[]; newFairing: boolean; newMaterials?: Material[] };
+export type DesignQuote = { cost: number; days: number; newTanks: number[]; newFairing: boolean; newMaterials?: Material[]; newSoftware?: boolean };
+
+/** Flight software for a new attitude-loop configuration: written once, reused by designs that share it, $k and days. */
+export const FLIGHT_SOFTWARE = { cost: 60, days: 10 };
+const softwareKey = (c: { bandwidth: number; imu: string; notch: boolean }) => `${c.bandwidth.toFixed(1)}/${c.imu}/${c.notch}`;
 
 /** Tooling reaches this far either side of the diameter it was made for. */
 const TOOLING_REACH = 0.03;
@@ -314,11 +384,13 @@ export function designQuote(spec: VehicleSpec, existing: Vehicle[]): DesignQuote
   const qualified = new Set<Material>(existing.flatMap((v) => v.geometry?.stages.map((s) => s.material) ?? ["al-2219" as Material]));
   const newMaterials = [...new Set(spec.geometry?.stages.map((s) => s.material) ?? [])].filter((m) => !qualified.has(m));
   const qualify = newMaterials.reduce((a, m) => a + MATERIALS[m].qualify, 0);
+  const control = controlDesignOf(spec.geometry);
+  const newSoftware = control?.guided ? !existing.some((v) => v.control && softwareKey(v.control.design) === softwareKey(control)) : false;
   return {
-    cost: office.cost + tooling.reduce((a, t) => a + t.cost, 0) + (newFairing ? fairing.cost : 0) + qualify,
-    days: office.days + tooling.reduce((a, t) => a + t.days, 0) + (newFairing ? fairing.days : 0) + (newMaterials.length > 0 ? 15 : 0),
+    cost: office.cost + tooling.reduce((a, t) => a + t.cost, 0) + (newFairing ? fairing.cost : 0) + qualify + (newSoftware ? FLIGHT_SOFTWARE.cost : 0),
+    days: office.days + tooling.reduce((a, t) => a + t.days, 0) + (newFairing ? fairing.days : 0) + (newMaterials.length > 0 ? 15 : 0) + (newSoftware ? FLIGHT_SOFTWARE.days : 0),
     newTanks,
     newFairing,
-    ...(spec.geometry ? { newMaterials } : {}),
+    ...(spec.geometry ? { newMaterials, newSoftware } : {}),
   };
 }

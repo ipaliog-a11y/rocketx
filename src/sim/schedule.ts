@@ -8,6 +8,8 @@ import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, fixAbortFlaw, newCapsule, PAD_
 import { designEngine, sameDesign, type EngineDesign } from "./enginePhysics.ts";
 import { proofQuote, rollStructureTruths } from "./structures.ts";
 import { MATERIALS } from "./geometry.ts";
+import { rollGncTruth } from "./control.ts";
+import { GNC_TEST_LABELS, gncTestBlocked, gncTestQuote, runGncTest, type GncTest } from "./gncTests.ts";
 import { assembleEngine, developmentCost, INJECTORS, NOZZLES, OWNER, parsePartKey, partKeys, partLabel, partsProblems, type EngineParts, type InjectorOption, type NozzleOption } from "./parts.ts";
 import {
   applyFix,
@@ -43,7 +45,7 @@ import { developedParts, REFINE, reputation, settleDays, type ActionResult, type
  * firings of those parts booked before it.
  */
 
-export type Track = "stand" | "cell" | "office" | "tunnel" | "range" | "regulator";
+export type Track = "stand" | "cell" | "office" | "tunnel" | "range" | "regulator" | "lab";
 
 export type TrackSpec = {
   name: string;
@@ -64,9 +66,10 @@ export const TRACKS: Record<Track, TrackSpec> = {
   tunnel: { name: "Wind tunnel", extra: [] },
   range: { name: "Test range", extra: [] },
   regulator: { name: "Regulator", extra: [] },
+  lab: { name: "GNC lab", extra: [] },
 };
 
-export const TRACK_ORDER: Track[] = ["stand", "cell", "office", "tunnel", "range", "regulator"];
+export const TRACK_ORDER: Track[] = ["stand", "cell", "office", "tunnel", "lab", "range", "regulator"];
 
 export type TaskSpec =
   | { kind: "fire"; engine: string; seconds: number; facility: Facility; restart: boolean }
@@ -82,6 +85,7 @@ export type TaskSpec =
   | { kind: "capsule" }
   | { kind: "pad-abort" }
   | { kind: "proof"; design: string }
+  | { kind: "gnc"; design: string; test: GncTest }
   | { kind: "fix-abort"; flaw: AbortFlaw };
 
 export type Task = {
@@ -118,6 +122,7 @@ export function upgradeCompany(company: Company): void {
   company.nextTask ??= 1;
   company.units ??= newUnits();
   company.units.range ??= [0];
+  company.units.lab ??= [0];
   // Test-flight failures used to cost reputation. They no longer do.
   for (const r of company.record) {
     if (r.note.endsWith(" test flight") && r.tag !== "demonstrated") {
@@ -127,7 +132,7 @@ export function upgradeCompany(company: Company): void {
   }
 }
 
-export const newUnits = (): Record<Track, number[]> => ({ stand: [0], cell: [0], office: [0], tunnel: [0], range: [0], regulator: [0] });
+export const newUnits = (): Record<Track, number[]> => ({ stand: [0], cell: [0], office: [0], tunnel: [0], range: [0], regulator: [0], lab: [0] });
 
 // ── What a job is ───────────────────────────────────────────────────────
 
@@ -249,6 +254,14 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       const q = proofQuote(widest);
       return { track: "stand", title: `Proof test · ${design.name}`, cost: q.cost * untested.length, days: q.days, reads: untested.map((k) => `struct:${k}`), writes: untested.map((k) => `struct:${k}`) };
     }
+    case "gnc": {
+      const design = designOf(company, spec.design);
+      const blocked = gncTestBlocked(spec.test, design, company.campaign);
+      if (blocked) throw new Error(blocked);
+      if (company.tasks.some((t) => t.spec.kind === "gnc" && t.spec.design === spec.design && t.spec.test === spec.test)) throw new Error(`A ${GNC_TEST_LABELS[spec.test].toLowerCase()} of the ${design.name} is already booked.`);
+      const q = gncTestQuote(spec.test, design);
+      return { track: spec.test === "modal" ? "stand" : "lab", title: `${GNC_TEST_LABELS[spec.test]} · ${design.name}`, cost: q.cost, days: q.days, reads: [`gnc:${design.name}`], writes: [`gnc:${design.name}`] };
+    }
     case "pad-abort": {
       if (!company.capsule) throw new Error("There is no capsule to test yet.");
       return { track: "range", title: "Pad abort test", cost: PAD_ABORT.cost, days: PAD_ABORT.days, reads: ["capsule"], writes: [] };
@@ -300,6 +313,7 @@ export function designSpec(company: Company, spec: VehicleSpec): TaskSpec {
     ...quote.newTanks.map((d) => `${d} m tank tooling`),
     ...(quote.newFairing ? [`${spec.fairingDiameter} m fairing tooling`] : []),
     ...(quote.newMaterials ?? []).map((m) => `${MATERIALS[m].label} qualification`),
+    ...(quote.newSoftware ? ["flight software"] : []),
   ];
   return { kind: "design", vehicle, tooling, cost: quote.cost, days: quote.days };
 }
@@ -364,6 +378,7 @@ function categoryOf(spec: TaskSpec): Category {
     case "tunnel":
     case "pad-abort":
     case "proof":
+    case "gnc":
       return "test";
     case "fix-engine":
     case "fix-aero":
@@ -518,6 +533,7 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
       const newShape = !campaign.aeroTruth[shape.key];
       campaign.aeroTruth[shape.key] ??= rollAeroTruth(spec.vehicle, company.seed);
       if (spec.vehicle.structure) rollStructureTruths(spec.vehicle, company.seed, (campaign.structureTruth ??= {}));
+      if (spec.vehicle.control) (campaign.gncTruth ??= {})[spec.vehicle.name] ??= rollGncTruth(spec.vehicle.name, spec.vehicle.control.design, spec.vehicle.stages.length, company.seed);
       const text = `${spec.vehicle.name} drawn up.${spec.tooling.length > 0 ? ` New: ${spec.tooling.join(", ")}.` : ""}${newShape ? ` Its ${shape.label} is a shape the tunnel has never seen.` : ""}`;
       return { summary: `${spec.vehicle.name} drawn up: ready to build.`, text, key, tone: "info" };
     }
@@ -547,6 +563,10 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
         lines.push(`${st.key.replace("@", " shell at ")} m: buckled at ${Math.round(kd * 100)}% of its drawing${kd < 0.95 ? ". Weaker than drawn: fly it under its drawn q·α or thicken the wall" : kd > 1.02 ? ". Stronger than drawn" : ". As drawn"}.`);
       }
       return { summary: `${design.name}: proof test done.`, text: `Proof test, ${design.name}. ${lines.join(" ")}`, tone: lines.some((l) => l.includes("Weaker")) ? "bad" : "good" };
+    }
+    case "gnc": {
+      const r = runGncTest(spec.test, campaign, designOf(company, spec.design), company.seed);
+      return { summary: `${GNC_TEST_LABELS[spec.test]}: ${r.bad ? "problems found" : "done"}.`, text: r.text, tone: r.bad ? "bad" : "good" };
     }
     case "pad-abort": {
       const text = padAbort(company.capsule!, company.day);

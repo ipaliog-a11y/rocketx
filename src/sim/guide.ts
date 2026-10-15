@@ -1,5 +1,5 @@
 import { simulateAscent } from "./ascent.ts";
-import { assembleVehicle, designQuote, DIAMETERS, figures, MAX_SLENDERNESS, maxEngines, type DesignQuote, type Figures, type VehicleSpec } from "./builder.ts";
+import { assembleVehicle, designQuote, fitControl, DIAMETERS, figures, MAX_SLENDERNESS, maxEngines, type DesignQuote, type Figures, type VehicleSpec } from "./builder.ts";
 import { P_SEA_LEVEL } from "./constants.ts";
 import { vehicleCost } from "./cost.ts";
 import { flowSeparates, type Engine } from "./engine.ts";
@@ -126,6 +126,10 @@ export function asBuilt(c: Candidate, engines: Record<string, Engine>): Candidat
       vehicle = assembleVehicle(spec, engines);
       if (unguidedProblems(vehicle.stability!).length === 0) break;
     }
+  }
+  if (vehicle.control) {
+    spec = fitControl(spec, engines);
+    vehicle = assembleVehicle(spec, engines);
   }
   const f = figures(vehicle);
   const margin = (1 + c.margin) * (f.totalDeltaV / c.figures.totalDeltaV) - 1;

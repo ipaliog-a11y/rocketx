@@ -1,3 +1,4 @@
+import type { ControlDesign } from "./control.ts";
 import type { Engine } from "./engine.ts";
 
 /**
@@ -42,6 +43,8 @@ export type VehicleGeometry = {
   fins?: FinSet;
   /** One per stage, booster first. */
   stages: StageGeometry[];
+  /** Guidance and control. Left out, the default for the stage count (control.ts). */
+  control?: ControlDesign;
 };
 
 export const NOSE_LABELS: Record<NoseShape, string> = { cone: "Cone", ogive: "Tangent ogive", "power-half": "Power series ½", "von-karman": "Von Kármán (LD-Haack)" };

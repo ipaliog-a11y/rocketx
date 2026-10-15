@@ -16,6 +16,8 @@ import { believedHardware, flightUnknowns, newCampaign, type Campaign, type Faci
 import { retuneFromTests } from "./tuning.ts";
 import { believedAero, type AeroFacility } from "./tunnel.ts";
 import type { Vehicle } from "./vehicle.ts";
+import { believedGnc, flownGnc } from "./control.ts";
+import { flightWindSeed, rollWind } from "./wind.ts";
 
 /**
  * The company: the pressure around the engineering. Cash, a calendar,
@@ -605,7 +607,19 @@ export function fly(company: Company, key: string, target: { contract: string } 
 
   const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`)];
   company.inventory[key]! -= 1;
-  let result = simulateAscent(vehicle, mission, { hardware: company.campaign.truth, aero: company.campaign.aeroTruth, structure: company.campaign.structureTruth });
+  // The day's wind, and the attitude loop as built and as testing has corrected it.
+  const gncTruth = vehicle.control ? company.campaign.gncTruth?.[vehicle.name] : undefined;
+  let result = simulateAscent(vehicle, mission, {
+    hardware: company.campaign.truth,
+    aero: company.campaign.aeroTruth,
+    structure: company.campaign.structureTruth,
+    ...(vehicle.control
+      ? {
+          wind: rollWind(flightWindSeed(company.seed, company.flights.length)),
+          gnc: { [vehicle.name]: gncTruth ? flownGnc(vehicle.control, gncTruth, company.campaign.gncKnowledge?.[vehicle.name]) : believedGnc(vehicle.control, undefined) },
+        }
+      : {}),
+  });
   // The abort: on purpose at max-q in a test, or because the rocket is failing under a crew.
   let abortText: string | null = null;
   let crewLost = false;
@@ -762,6 +776,7 @@ export function bid(company: Company, contractId: string, key: string): Bid {
     aero: believedAero(company.campaign),
     // Shells the proof stand has measured fly as measured; the rest as drawn.
     structure: Object.fromEntries(Object.entries(company.campaign.structureKnowledge ?? {}).map(([k, v]) => [k, v.knockdown])),
+    ...(vehicle.control ? { gnc: { [vehicle.name]: believedGnc(vehicle.control, company.campaign.gncKnowledge?.[vehicle.name]) } } : {}),
   });
   const delivers =
     contract.minApogee !== undefined

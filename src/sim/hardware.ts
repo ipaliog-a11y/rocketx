@@ -30,7 +30,9 @@ export type FailureMode =
   | "flow-separation"
   | "transonic-buffet"
   | "relight-failure"
-  | "structural-buckling";
+  | "structural-buckling"
+  | "loss-of-control"
+  | "control-structure-coupling";
 
 export const FAILURE_LABELS: Record<FailureMode, string> = {
   "hard-start": "hard start",
@@ -40,6 +42,8 @@ export const FAILURE_LABELS: Record<FailureMode, string> = {
   "transonic-buffet": "transonic buffet",
   "relight-failure": "relight failure",
   "structural-buckling": "structural buckling",
+  "loss-of-control": "loss of control",
+  "control-structure-coupling": "control-structure coupling",
 };
 
 /** Odds and ranges the seed draws from. Tuned so most designs have at least one surprise. */
