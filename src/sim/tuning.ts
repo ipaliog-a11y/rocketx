@@ -1,5 +1,5 @@
 import { simulateAscent, type FlightResult } from "./ascent.ts";
-import type { AeroTruthTable } from "./airframe.ts";
+import { aeroShape, SUPERSONIC_FACTOR, type AeroTruthTable } from "./airframe.ts";
 import type { PitchProgram } from "./guidance.ts";
 import { FAILURE_LABELS, type HardwareTruth } from "./hardware.ts";
 import { missionPlan, type Mission } from "./mission.ts";
@@ -24,7 +24,32 @@ import type { Vehicle } from "./vehicle.ts";
 /** What a re-tune costs the company. */
 export const RETUNE_COST = { cost: 5, days: 3 };
 
-export type FlightModel = { hardware?: HardwareTruth; aero?: AeroTruthTable };
+/**
+ * What a re-tune flies. `spread` is the same flight with what's still
+ * unmeasured at either end of its range: a programme is judged on the worst
+ * of them, so one unmeasured number can't drop the orbit into the ground.
+ */
+export type FlightModel = { hardware?: HardwareTruth; aero?: AeroTruthTable; spread?: AeroTruthTable[] };
+
+/**
+ * The supersonic drag a shape drawn with a geometry flies on the model until
+ * a flight measures it: CFD narrows it to half. Returns the aero tables at
+ * either end of that range, or none once it's measured.
+ */
+export function supersonicSpread(campaign: Campaign, vehicle: Vehicle, aero: AeroTruthTable): AeroTruthTable[] {
+  const key = aeroShape(vehicle).key;
+  const model = aero[key];
+  if (model?.supersonicFactor === undefined) return [];
+  const known = campaign.aeroKnowledge[key];
+  if (known?.supersonicSource === "flight") return [];
+  const m = model.supersonicFactor;
+  let range: [number, number] = [...SUPERSONIC_FACTOR];
+  if (known?.supersonicSource === "cfd") {
+    const far = 1 + 2 * (m - 1);
+    range = [Math.max(SUPERSONIC_FACTOR[0], Math.min(m, far)), Math.min(SUPERSONIC_FACTOR[1], Math.max(m, far))];
+  }
+  return range.map((f) => ({ ...aero, [key]: { ...model, supersonicFactor: f } }));
+}
 
 export type GravityTurn = Extract<PitchProgram, { kind: "gravity-turn" }>;
 
@@ -115,18 +140,25 @@ export function retunePitch(vehicle: Vehicle, mission: Mission, model: FlightMod
 
   let runs = 0;
   const cache = new Map<string, number>();
+  // The grid searches the model alone; the refinement scores the worst of the model and the spread.
+  let robust = false;
   const evaluate = (p: Params): number => {
-    const key = p.map((x) => x.toFixed(3)).join(",");
+    const key = `${robust ? "r" : "m"}:${p.map((x) => x.toFixed(3)).join(",")}`;
     const cached = cache.get(key);
     if (cached !== undefined) return cached;
-    runs += 1;
-    const flown = simulateAscent({ ...vehicle, pitchProgram: programFrom(base, p) }, tuneFor, {
-      ...flightModel,
-      dt: SEARCH_DT,
-      sampleInterval: Infinity,
-      structuralFailures: false,
-    });
-    const s = score(flown, vehicle, tuneFor);
+    const tables = robust ? [flightModel.aero, ...(model.spread ?? [])] : [flightModel.aero];
+    let s = -Infinity;
+    for (const aero of tables) {
+      runs += 1;
+      const flown = simulateAscent({ ...vehicle, pitchProgram: programFrom(base, p) }, tuneFor, {
+        hardware: flightModel.hardware,
+        aero,
+        dt: SEARCH_DT,
+        sampleInterval: Infinity,
+        structuralFailures: false,
+      });
+      s = Math.max(s, score(flown, vehicle, tuneFor));
+    }
     cache.set(key, s);
     return s;
   };
@@ -141,8 +173,10 @@ export function retunePitch(vehicle: Vehicle, mission: Mission, model: FlightMod
   }
   seeds.sort((a, b) => a[1] - b[1]);
 
-  let best = seeds[0]!;
-  for (const seed of seeds.slice(0, 3)) {
+  robust = (model.spread?.length ?? 0) > 0;
+  const rescored: [Params, number][] = seeds.slice(0, 3).map(([p]) => [p, evaluate(p)]);
+  let best = rescored.reduce((a, b) => (b[1] < a[1] ? b : a));
+  for (const seed of rescored) {
     const refined = patternSearch(seed, evaluate);
     if (refined[1] < best[1]) best = refined;
   }
@@ -189,7 +223,8 @@ export function retuneFromTests(
   vehicle: Vehicle,
   mission: Mission,
 ): { vehicle: Vehicle; result: RetuneResult; text: string } {
-  const result = retunePitch(vehicle, mission, { hardware: believedHardware(campaign), aero: believedAero(campaign) });
+  const aero = believedAero(campaign);
+  const result = retunePitch(vehicle, mission, { hardware: believedHardware(campaign), aero, spread: supersonicSpread(campaign, vehicle, aero) });
   campaign.spent += RETUNE_COST.cost;
   campaign.days += RETUNE_COST.days;
 

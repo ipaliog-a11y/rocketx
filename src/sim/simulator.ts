@@ -7,7 +7,7 @@ import { missionPlan, type Mission } from "./mission.ts";
 import { INJECTORS, NOZZLES, partKeys } from "./parts.ts";
 import { believedHardware, FIXES, flightUnknowns, seenAt, type Campaign, type Unknown } from "./teststand.ts";
 import { believedAero } from "./tunnel.ts";
-import { retunePitch } from "./tuning.ts";
+import { retunePitch, supersonicSpread } from "./tuning.ts";
 import { burnTime, idealDeltaV, type Vehicle } from "./vehicle.ts";
 import { believedGnc, CAUSE_LABELS } from "./control.ts";
 
@@ -202,7 +202,8 @@ function warningsFor(campaign: Campaign, vehicle: Vehicle, mission: Mission, res
 export function bestSteering(campaign: Campaign, vehicle: Vehicle, mission: Mission): Vehicle {
   const isp = enginesOf(vehicle).map((e) => ispKnowledge(campaign, e));
   const shape = aeroShape(vehicle).key;
-  const result = retunePitch(vehicle, mission, { hardware: cleanHardware(isp, (k) => k.model), aero: { [shape]: dragKnowledge(campaign, vehicle).model } });
+  const aero = { [shape]: dragKnowledge(campaign, vehicle).model };
+  const result = retunePitch(vehicle, mission, { hardware: cleanHardware(isp, (k) => k.model), aero, spread: supersonicSpread(campaign, vehicle, aero) });
   return { ...vehicle, pitchProgram: result.program };
 }
 

@@ -253,6 +253,8 @@ type Context = {
   wind: WindProfile | null;
   /** IMU drift, rad/s: the attitude the vehicle thinks it holds wanders off by this. */
   drift: number;
+  /** A guided vehicle's flight computer steers its last stage to this altitude, m; null flies the programme. */
+  target: number | null;
 };
 
 /** Everything the integrator and the event checks need at one instant. */
@@ -284,6 +286,28 @@ type Snapshot = {
   gravity: number;
 };
 
+/**
+ * Closed-loop steering for a guided vehicle's last stage: the thrust angle
+ * that brings it to the target altitude with no vertical speed left when the
+ * burn ends (the minimum-effort terminal law for position and velocity,
+ * a = 6Δh/τ² − 4v/τ), with gravity less centrifugal relief made up. The
+ * flight computer re-solves it every step, so a booster that left the
+ * stage a little high, low, fast or slow still puts it on the orbit. It
+ * eases on from the flight path at ignition, as the open programme does.
+ */
+function terminalPitch(ctx: Context, phase: Phase, s: State, t: number, altitude: number, radius: number, up: [number, number], horizontal: [number, number], burned: number, flightPathAngle: number): number {
+  const vUp = s[VX] * up[0] + s[VY] * up[1];
+  const vH = s[VX] * horizontal[0] + s[VY] * horizontal[1];
+  const tgo = Math.max(10, burnTime(phase.stage) * (1 - burned));
+  const need = (6 * (ctx.target! - altitude)) / (tgo * tgo) - (4 * vUp) / tgo + MU_EARTH / (radius * radius) - (vH * vH) / radius;
+  const thrust = phase.stage.engineCount * thrustAt(phase.stage.engine, atmosphereAt(altitude).pressure);
+  const steer = Math.asin(Math.min(0.95, Math.max(-0.6, need / Math.max(1e-6, thrust / s[M]))));
+  const since = t - phase.ignitedAt;
+  if (since >= UPPER_STAGE_BLEND) return steer;
+  const x = since / UPPER_STAGE_BLEND;
+  return flightPathAngle + (steer - flightPathAngle) * x * x * (3 - 2 * x);
+}
+
 function snapshot(ctx: Context, phase: Phase, t: number, s: State): Snapshot {
   const { vehicle, omega } = ctx;
   const radius = Math.hypot(s[X], s[Y]);
@@ -302,17 +326,20 @@ function snapshot(ctx: Context, phase: Phase, t: number, s: State): Snapshot {
 
   const stageBurnFraction = phase.burning ? Math.min(1, (t - phase.ignitedAt) / burnTime(phase.stage)) : 1;
   const inertialFpa = Math.atan2(s[VX] * up[0] + s[VY] * up[1], s[VX] * horizontal[0] + s[VY] * horizontal[1]);
+  const closedLoop = ctx.target !== null && !phase.prograde && phase.burning && phase.stageIndex > 0 && phase.stageIndex === vehicle.stages.length - 1;
   const pitch =
     (phase.prograde
       ? inertialFpa
-      : commandedPitch(vehicle.pitchProgram ?? VERTICAL, {
-          t,
-          kickStart: phase.kickStart,
-          flightPathAngle,
-          stage: phase.stageIndex,
-          stageBurnFraction,
-          ...(ctx.wind ? { stageElapsed: t - phase.ignitedAt, blend: UPPER_STAGE_BLEND } : {}),
-        })) + ctx.drift * t;
+      : closedLoop
+        ? terminalPitch(ctx, phase, s, t, altitude, radius, up, horizontal, stageBurnFraction, flightPathAngle)
+        : commandedPitch(vehicle.pitchProgram ?? VERTICAL, {
+            t,
+            kickStart: phase.kickStart,
+            flightPathAngle,
+            stage: phase.stageIndex,
+            stageBurnFraction,
+            ...(ctx.wind ? { stageElapsed: t - phase.ignitedAt, blend: UPPER_STAGE_BLEND } : {}),
+          })) + ctx.drift * t;
   const thrustDir: [number, number] = [
     Math.cos(pitch) * horizontal[0] + Math.sin(pitch) * up[0],
     Math.cos(pitch) * horizontal[1] + Math.sin(pitch) * up[1],
@@ -446,6 +473,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     aero: options.aero?.[aeroShape(design).key] ?? IDEAL_AERO,
     wind: control ? (options.wind ?? CALM) : null,
     drift: gnc ? (gnc.imuBias * Math.PI) / 180 : 0,
+    target: control && plan.ascent ? plan.ascent.periapsis : null,
   };
   const loop = newLoop();
   let liftoffMass = 0;

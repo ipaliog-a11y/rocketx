@@ -30,6 +30,8 @@ import { SUBORBITAL_TEST } from "./missions.ts";
 import { missionPlan } from "./sim/mission.ts";
 import { ENGINES, VEHICLES } from "./vehicles.ts";
 import { suggestBuilds } from "./sim/guide.ts";
+import { flownGnc } from "./sim/control.ts";
+import { flightWindSeed, rollWind } from "./sim/wind.ts";
 import { designSpec, runTask } from "./sim/schedule.ts";
 import type { GncTest } from "./sim/gncTests.ts";
 
@@ -107,13 +109,20 @@ function proveShape(company: Company, key: string, facility: AeroFacility): bool
   return false;
 }
 
-/** The company's forecast for this contract: does it deliver? */
-function forecastDelivers(company: Company, key: string, contract: Contract): boolean {
+const board = (company: Company, id: string) => company.board.find((c) => c.id === id)!;
+
+/** What the company's forecast flies for this contract. */
+function forecastResult(company: Company, key: string, contract: Contract) {
   const vehicle = { ...company.designs[key]!, payloadMass: contract.payloadMass };
-  const result = simulateAscent(vehicle, contract.mission, {
+  return simulateAscent(vehicle, contract.mission, {
     hardware: believedHardware(company.campaign),
     aero: believedAero(company.campaign),
   });
+}
+
+/** The company's forecast for this contract: does it deliver? */
+function forecastDelivers(company: Company, key: string, contract: Contract): boolean {
+  const result = forecastResult(company, key, contract);
   if (contract.minApogee !== undefined) return result.outcome === "apogee" && result.summary.apogee >= contract.minApogee * 1.05;
   return result.summary.insertion?.inSpec ?? false;
 }
@@ -130,7 +139,25 @@ function canSign(company: Company, contract: Contract, key: string): boolean {
 /** Fly, and tally what lost the vehicle if it was lost. */
 function flyAndCount(company: Company, key: string, target: Parameters<typeof fly>[2]): boolean {
   return guard(company, () => {
+    const before = trace && "contract" in target ? forecastResult(company, key, board(company, target.contract)) : null;
     const report = fly(company, key, target);
+    if (before) {
+      const v = company.designs[key]!;
+      const shape = aeroShape(v).key;
+      const f = (r: typeof report.result) => `${r.outcome} burnout ${(r.summary.burnoutVelocity / 1000).toFixed(2)} km/s at ${(r.summary.burnoutAltitude / 1000).toFixed(0)} km, prop ${r.summary.propellantMargin.toFixed(0)} kg, losses ${Object.values(r.summary.losses).map((x) => x.toFixed(0)).join("/")}`;
+      console.log(`    forecast: ${f(before)}\n    flown:    ${f(report.result)}`);
+      console.log(`    aero truth ${JSON.stringify(company.campaign.aeroTruth[shape])} known ${JSON.stringify(company.campaign.aeroKnowledge[shape] && { d: company.campaign.aeroKnowledge[shape]!.dragFactor, s: company.campaign.aeroKnowledge[shape]!.supersonicFactor })}`);
+      const c = board(company, (target as { contract: string }).contract);
+      const veh = { ...v, payloadMass: c.payloadMass };
+      const base = { hardware: company.campaign.truth, aero: company.campaign.aeroTruth, structure: company.campaign.structureTruth };
+      const wind = rollWind(flightWindSeed(company.seed, company.flights.length - 1));
+      const gt = company.campaign.gncTruth?.[v.name];
+      const gnc = v.control && gt ? { [v.name]: flownGnc(v.control, gt, company.campaign.gncKnowledge?.[v.name]) } : undefined;
+      for (const [label, o] of [["truth", base], ["+wind", { ...base, wind }], ["+gnc", { ...base, gnc }], ["believed+wind", { hardware: believedHardware(company.campaign), aero: believedAero(company.campaign), wind }]] as const) {
+        console.log(`    ${label}: ${f(simulateAscent(veh, c.mission, o as Parameters<typeof simulateAscent>[2]))}`);
+      }
+      console.log(`    isp truth ${v.stages.map((st) => company.campaign.truth[st.engine.name]?.ispFactor.toFixed(3)).join("/")} known ${v.stages.map((st) => company.campaign.knowledge[st.engine.name]?.measuredIspFactor?.toFixed(3)).join("/")}`);
+    }
     const lost = report.result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
     if (lost) {
       const why = lost.cause ?? lost.mode ?? lost.kind;
@@ -263,6 +290,14 @@ function play(seed: number, policy: Policy): Outcome {
   }
   if (company.firstOrbitDay === null) note ||= "never reached orbit";
 
+  if (trace) {
+    const byCategory = new Map<string, number>();
+    for (const e of company.ledger) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount);
+    console.log(`  seed ${seed} ${policy}: ${[...byCategory].map(([k, v]) => `${k} ${(v / 1000).toFixed(2)}M`).join(", ")}`);
+    for (const f of company.flights) console.log(`    day ${f.day} ${f.design} ${f.mission}: ${f.outcome}${f.settlement ? ` (${f.settlement})` : ""}`);
+    for (const [id, status] of Object.entries(company.closed)) if (status !== "delivered") console.log(`    contract ${id}: ${status}`);
+    console.log(`    note: ${note || "-"}, licence ${company.licence}, rep ${reputation(company)}`);
+  }
   const statuses = Object.values(company.closed);
   return {
     seed,
@@ -290,12 +325,14 @@ const option = (name: string) => {
 const seeds = Number(option("--seeds") ?? 30);
 const policies = (option("--policy") ?? "careful,cheap,reckless,greedy").split(",") as Policy[];
 const verbose = args.includes("--verbose");
+const trace = args.includes("--trace");
+const only = option("--seed");
 
 for (const policy of policies) {
   losses.clear();
   extraTests.length = 0;
   const runs: Outcome[] = [];
-  for (let seed = 1; seed <= seeds; seed++) runs.push(play(seed, policy));
+  for (let seed = 1; seed <= seeds; seed++) if (!only || Number(only) === seed) runs.push(play(seed, policy));
   const orbit = runs.filter((r) => r.firstOrbitDay !== null);
   const notes = new Map<string, number>();
   for (const r of runs) if (r.note) notes.set(r.note, (notes.get(r.note) ?? 0) + 1);

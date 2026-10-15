@@ -140,15 +140,23 @@ export function asBuilt(c: Candidate, engines: Record<string, Engine>): Candidat
 
 /** Three picks from the candidates that clear the bar: cheapest, a comfortable margin, and the most margin for the money. */
 function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, note: (c: Candidate) => string, fit: (c: Candidate) => Candidate = (c) => c): Suggestion[] {
+  // Sized for flight (loop speed, shells for the wind), a pick can lose margin: re-check it, and fall through to the next.
+  const fitted = new Map<Candidate, Candidate>();
+  const sized = (c: Candidate) => {
+    if (!fitted.has(c)) fitted.set(c, fit(c));
+    return fitted.get(c)!;
+  };
   const ok = candidates.filter((c) => c.margin >= minMargin).sort((a, b) => a.firstCost - b.firstCost);
-  if (ok.length === 0) return [];
-  const cheapest = ok[0]!;
-  const balanced = ok.find((c) => c.margin >= minMargin * 2 && c !== cheapest);
-  const most = ok.filter((c) => c.firstCost <= cheapest.firstCost * 1.5 && c !== cheapest && c !== balanced).sort((a, b) => b.margin - a.margin)[0];
+  const first = (pool: Candidate[], bar: number) => pool.slice(0, 6).map(sized).find((c) => c.margin >= bar);
+  const cheapest = first(ok, minMargin);
+  if (!cheapest) return [];
+  const raw = [...fitted].find(([, v]) => v === cheapest)![0];
+  const balanced = first(ok.filter((c) => c !== raw && c.margin >= minMargin * 2), minMargin * 2);
+  const used = new Set([raw, ...[...fitted].filter(([, v]) => v === balanced).map(([k]) => k)]);
+  const most = first(ok.filter((c) => !used.has(c) && c.firstCost <= raw.firstCost * 1.5).sort((a, b) => b.margin - a.margin), minMargin);
   const out: Suggestion[] = [];
-  const add = (label: Suggestion["label"], picked: Candidate | undefined) => {
-    if (!picked) return;
-    const c = fit(picked);
+  const add = (label: Suggestion["label"], c: Candidate | undefined) => {
+    if (!c) return;
     out.push({ label, spec: c.spec, vehicle: c.vehicle, figures: c.figures, margin: c.margin, build: vehicleCost(c.vehicle), design: designQuote(c.spec, existing), note: note(c) });
   };
   add("Cheapest", cheapest);
