@@ -36,12 +36,17 @@ export function landingMargin(vehicle: Vehicle, mission: Mission, options: Ascen
   const ve = thrustAt(b.engine, 101_325) / massFlow(b.engine);
   let propellant = home?.propellantLeft ?? 0;
   if (home && home.cause === "out-of-propellant") {
-    // Fly it again with plenty, and see what it would have used.
-    const extra = b.propellantMass * 0.3;
+    // Fly it again with more, and see what it would have used. Too much more and it's too heavy to slow: step up.
     const sep = home.separation;
-    const again = flyHome({ engine: b.engine, engineCount: b.engineCount, diameter: b.diameter, recovery }, { ...sep, propellant: sep.propellant + extra });
-    // What it used, against what it had.
-    propellant = again.outcome === "landed" ? again.propellantLeft - extra : -extra;
+    propellant = -b.propellantMass * 0.35;
+    for (const share of [0.05, 0.1, 0.2, 0.35]) {
+      const extra = b.propellantMass * share;
+      const again = flyHome({ engine: b.engine, engineCount: b.engineCount, diameter: b.diameter, recovery }, { ...sep, propellant: sep.propellant + extra });
+      if (again.outcome === "landed") {
+        propellant = again.propellantLeft - extra;
+        break;
+      }
+    }
   }
   const dry = b.dryMass;
   const deltaV = propellant >= 0 ? ve * Math.log((dry + propellant) / dry) : -ve * Math.log((dry - propellant) / dry);

@@ -54,6 +54,8 @@ export const PAD_RADIUS = { rtls: 45, "drone-ship": 25 } as const;
 export const LANDING_SCATTER = { fins: 10, bare: 120 };
 /** The entry burn aims for this share of the heating limit, a margin for the air being thicker than the model's. */
 const ENTRY_AIM = 0.8;
+/** Scale height of the air the booster enters, m. */
+const SCALE_HEIGHT = 7_200;
 /** Lift coefficient of the grid fins steering, on the base area: a lift-to-drag of about a third. */
 const FIN_LIFT = 0.35;
 
@@ -191,11 +193,23 @@ function physics(b: Booster, sep: Separation) {
     return l.vUp < 0 ? 0.5 * atmosphereAt(l.altitude).density * l.air ** 3 : 0;
   };
   /**
-   * Entry burn: retrograde whenever the heating on the way down climbs past
-   * the shield's aim, burning the speed off where the air starts to bite. It
-   * never touches what the landing needs.
+   * The fastest it can meet the air at and keep the peak heating to the
+   * shield's aim. Allen and Eggers: falling ballistically into an
+   * exponential atmosphere, ½ρv³ peaks at β·sinγ·v³ / (3·H·e), β = m / (Cd·A).
+   * Gravity, which they leave out, keeps it speeding up: the real peak runs
+   * about twice that.
    */
-  const entryDue = (s: Body) => local(s).altitude > 5_000 && heatingAt(s) > ENTRY_AIM * ENTRY_HEATING && s.propellant > landingNeed();
+  const entryTarget = (s: Body) => {
+    const l = local(s);
+    const beta = mass(s) / (baseFirstCd(4, r.gridFins) * area);
+    const sinGamma = Math.max(0.05, -l.vUp / Math.max(1, l.air));
+    return Math.cbrt((ENTRY_AIM * ENTRY_HEATING * 3 * SCALE_HEIGHT * Math.E) / (2 * beta * sinGamma));
+  };
+  /** Entry burn: retrograde on the way down from 70 km, until it's no faster than it can enter at. It never touches what the landing needs. */
+  const entryDue = (s: Body) => {
+    const l = local(s);
+    return l.vUp < 0 && l.altitude < 70_000 && l.altitude > 8_000 && l.air > entryTarget(s) && s.propellant > landingNeed();
+  };
   /** Where it comes down from here, coasting and flying the entry burn, drag included, m downrange. */
   const predictLanding = (from: Body, engines: number): number => {
     const s = { ...from };
@@ -284,7 +298,7 @@ export function flyHome(b: Booster, sep: Separation, o: RecoveryOptions = {}): R
     lateral = (3 * miss) / (tgo * tgo);
   };
 
-  // 3–4. Coast over the top and down; the entry burn lights as the heating climbs, as often as it needs to.
+  // 3–4. Coast over the top and down; the entry burn lights when it's too fast to meet the air, as often as it needs to.
   let entry: { t: number; before: number } | null = null;
   for (let n = 0; n < 40_000 && p.local(s).altitude > 5_000; n++) {
     steer(n);
