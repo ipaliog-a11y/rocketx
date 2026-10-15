@@ -21,6 +21,8 @@ export type LandingMargin = {
   deltaV: number;
   /** Dynamic pressure at staging, Pa. */
   stagingQ: number;
+  /** What the last stage had left at cutoff, kg: the ascent's own margin with the reserve held back. */
+  ascentMargin: number;
 };
 
 export function landingMargin(vehicle: Vehicle, mission: Mission, options: AscentOptions = {}): LandingMargin | null {
@@ -51,5 +53,5 @@ export function landingMargin(vehicle: Vehicle, mission: Mission, options: Ascen
   }
   const dry = b.dryMass;
   const deltaV = propellant >= 0 ? ve * Math.log((dry + propellant) / dry) : -ve * Math.log((dry - propellant) / dry);
-  return { ascent: r.outcome, ascentLoss, recovery: home, propellant, deltaV, stagingQ: near?.dynamicPressure ?? 0 };
+  return { ascent: r.outcome, ascentLoss, recovery: home, propellant, deltaV, stagingQ: near?.dynamicPressure ?? 0, ascentMargin: r.summary.propellantMargin };
 }

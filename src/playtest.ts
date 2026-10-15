@@ -63,8 +63,9 @@ type Policy = "careful" | "cheap" | "reckless" | "greedy" | "designer" | "design
 const designs = (p: Policy) => p === "designer" || p === "designer-fast" || p === "designer-reuse";
 /** What each run's boosters did: landings, losses, reflights, and what building cost per flight. */
 const fleetRuns: Array<{ landed: number; lost: number; reflown: number; buildPerFlight: number }> = [];
-/** Landing margin the reuse bot wants on paper, m/s. */
+/** Landing margin the reuse bot wants on paper, m/s, and what it wants left in the last stage at orbit, as a share of its propellant. */
 const LANDING_MARGIN = 150;
+const ASCENT_MARGIN = 0.04;
 /** The reuse bot overhauls a booster every this many flights, and retires it this worn. */
 const OVERHAUL_EVERY = 5;
 const RETIRE_AT = 0.85;
@@ -216,7 +217,10 @@ function withLanding(company: Company, spec: VehicleSpec, job: Contract): Vehicl
   for (let reserve = 0.1; reserve <= 0.3 + 1e-9; reserve += 0.02) {
     const s = fitControl({ ...spec, geometry: { ...spec.geometry!, recovery: { ...defaultRecovery("drone-ship"), reserve: Math.round(reserve * 100) / 100 } } }, company.campaign.engines);
     try {
-      const m = landingMargin({ ...assembleVehicle(s, company.campaign.engines), payloadMass: job.payloadMass }, job.mission);
+      const v = { ...assembleVehicle(s, company.campaign.engines), payloadMass: job.payloadMass };
+      const m = landingMargin(v, job.mission);
+      // The reserve comes out of the ascent's margin: keep as much as the guide asks for.
+      if (m && m.ascent === "orbit" && m.ascentMargin < ASCENT_MARGIN * v.stages.at(-1)!.propellantMass) return null;
       if (m && m.ascent === "orbit" && m.deltaV >= LANDING_MARGIN) return s;
       // More reserve only stages it lower: past an ascent it can't fly, give up.
       if (m && m.ascent === "failure") return null;
