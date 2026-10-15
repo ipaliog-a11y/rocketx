@@ -27,7 +27,7 @@ const withG = (s: ReturnType<typeof specOf>) => writeParam(s, "payload", s.paylo
 test("the part tree follows the stack; parameters round-trip", () => {
   const c = company();
   const spec = specOf(meridianOf(c));
-  assert.deepEqual(vehicleParts(spec).map((p) => p.tag), ["FRG-1", ...spec.stages.map((_, i) => `S${spec.stages.length - i}`), "FIN-1", "PL-1"]);
+  assert.deepEqual(vehicleParts(spec).map((p) => p.tag), ["FRG-1", ...spec.stages.map((_, i) => `S${spec.stages.length - i}`), "FIN-1", "GNC-1", "PL-1"]);
   const s = writeParam(spec, "p0", 2.4);
   assert.equal(readParam(s, "p0"), 2.4);
   assert.equal(readParam(writeParam(spec, "jettison", 120), "jettison"), 120);

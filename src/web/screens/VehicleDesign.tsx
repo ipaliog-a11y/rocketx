@@ -9,12 +9,14 @@ import { CurveSlider, PanelHeader, Readout, Stamp, TitleBlock, Verb } from "../d
 import { money } from "../format.ts";
 import { game } from "../game.ts";
 import { designJob, proofJob } from "../jobs.ts";
+import { IMU, type ImuGrade } from "../../sim/control.ts";
 import { reducedMotion } from "../motion.ts";
 import { useGo } from "../nav.ts";
 import {
   crossing,
   drawQuote,
   nextRevisionName,
+  controlOf,
   readParam,
   revisionOf,
   SYSTEMS,
@@ -24,6 +26,7 @@ import {
   vehicleParts,
   vReadouts,
   vSpecRows,
+  withControl,
   withGeometry,
   writeParam,
 } from "../vehicleDesign.ts";
@@ -56,7 +59,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
   const firstKey = keys.find((k) => company.designs[k]!.stages.length > 1) ?? keys[0] ?? NEW;
   const [sel, setSel] = useState<string>(job ? NEW : firstKey);
   const base = sel === NEW ? null : (company.designs[sel] ?? null);
-  const [spec, setSpec] = useState<VehicleSpec>(() => withGeometry(specOf(base ?? company.designs[firstKey]!)));
+  const [spec, setSpec] = useState<VehicleSpec>(() => withGeometry(specOf(base ?? company.designs[firstKey]!), company.campaign.engines));
   const [part, setPart] = useState("stage-0");
   const [paramKey, setParamKey] = useState<string | null>(null);
   const [diff, setDiff] = useState(false);
@@ -68,7 +71,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
   const open = (key: string) => {
     setSel(key);
     const v = key === NEW ? null : company.designs[key]!;
-    setSpec(withGeometry(specOf(v ?? company.designs[firstKey]!)));
+    setSpec(withGeometry(specOf(v ?? company.designs[firstKey]!), engines));
     setDiff(false);
     setLog(v ? `> open ${id(key).toLowerCase()} rev ${revisionOf(v.name).toLowerCase()}${v.geometry ? "" : " · drawn before ks-struct, figures from its own record"}` : "> new design");
   };
@@ -110,6 +113,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
     fairing: d.problems.some((p) => /fairing|Jettison/i.test(p)),
     fins: d.problems.some((p) => /Static margin|Fins/i.test(p)),
     payload: false,
+    gnc: d.problems.some((p) => /gimbal|diverges|bending mode|loop/i.test(p)),
     ...Object.fromEntries(d.spec.stages.map((_, i) => [`stage-${i}`, d.problems.some((p) => p.toLowerCase().startsWith(stageRole(d.spec.stages.length, i)))])),
   };
   const rev = base ? revisionOf(base.name) : "A";
@@ -250,7 +254,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
               <VehicleSchematic
                 draft={{ spec: d.spec, vehicle: d.vehicle }}
                 base={diff && base ? (() => {
-                  const bs = withGeometry(specOf(base));
+                  const bs = withGeometry(specOf(base), engines);
                   return { spec: bs, vehicle: base.geometry ? base : d.vehicle };
                 })() : null}
                 sel={current.id}
@@ -270,7 +274,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
                 ["DRAWN", "CHIEF ENG"],
                 ["SCALE", d.vehicle ? `1:${vehicleScale({ spec: d.spec, vehicle: d.vehicle })}` : "—"],
                 ["DATE", `D-${company.day}`],
-                ["MODEL", "KS-STRUCT 1.0"],
+                ["MODEL", "KS-STRUCT · KS-GNC"],
               ]}
             />
             <Stamp {...stampState} />
@@ -284,6 +288,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
                 onClick={() => game.schedule(proofJob(company, sel))}
               />
               <Verb label="TO TUNNEL" note={canAct ? "TESTING" : "DRAW UP FIRST"} disabled={!canAct} onClick={() => go({ place: "testing", tab: "tunnel", design: sel })} />
+              <Verb label="TO GNC LAB" note={!base?.control ? "GUIDED, NEW MODEL" : canAct ? "TESTING" : "DRAW UP FIRST"} disabled={!canAct || !base?.control} onClick={() => go({ place: "testing", tab: "gnc", design: sel })} />
               <Verb label="SIMULATE" note={canAct ? "ROCKETS" : "DRAW UP FIRST"} disabled={!canAct} onClick={() => go({ place: "rockets", tab: "sim", design: sel })} />
             </div>
           </div>
@@ -314,13 +319,17 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
               <span className="mono muted">{param.unit}</span>
               <span className="mono muted" style={{ marginLeft: "auto", fontSize: 12 }}>
                 {base && d.changed ? (() => {
-                  const delta = readParam(d.spec, param.key) - readParam(withGeometry(specOf(base)), param.key);
+                  const delta = readParam(d.spec, param.key) - readParam(withGeometry(specOf(base), engines), param.key);
                   return Number(delta.toFixed(param.dec)) === 0 ? `REV ${rev}` : `${delta > 0 ? "+" : "−"}${Math.abs(delta).toFixed(param.dec)} vs REV ${rev}`;
                 })() : `REV ${rev}`}
               </span>
             </div>
           </div>
-          {curve && (
+          {current.id === "gnc" && !d.vehicle?.control ? (
+            <span className="mono muted" style={{ fontSize: 13 }}>
+              UNGUIDED: IT FLIES ON ITS FINS. GUIDE IT TO GIMBAL THE ENGINES.
+            </span>
+          ) : curve && (
             <CurveSlider
               curve={curve}
               sym={param.sym}
@@ -415,6 +424,56 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
               </div>
             </>
           )}
+          {current.id === "gnc" && (() => {
+            const c = controlOf(d.spec);
+            const setControl = (change: Parameters<typeof withControl>[1], what: string) => {
+              setSpec((s) => withControl(s, change));
+              setLog(`> set gnc-1.${what}`);
+            };
+            return (
+              <>
+                <fieldset className="ed-choice">
+                  <legend className="lbl">GUIDANCE</legend>
+                  <label>
+                    <input type="radio" name="vd-guided" checked={c.guided} onChange={() => setControl({ guided: true }, "guided")} />
+                    <span>GUIDED · GIMBALLED ENGINES</span>
+                  </label>
+                  <label>
+                    <input type="radio" name="vd-guided" checked={!c.guided} onChange={() => setControl({ guided: false }, "unguided")} />
+                    <span>UNGUIDED · FINS ONLY</span>
+                  </label>
+                </fieldset>
+                {c.guided && (
+                  <>
+                    <fieldset className="ed-choice">
+                      <legend className="lbl">FILTERS AND TANKS</legend>
+                      <label>
+                        <input type="checkbox" checked={c.notch} onChange={() => setControl({ notch: !c.notch }, `notch ${!c.notch ? "on" : "off"}`)} />
+                        <span>NOTCH FILTER AT THE BENDING MODE</span>
+                      </label>
+                      <label>
+                        <input type="checkbox" checked={c.baffles} onChange={() => setControl({ baffles: !c.baffles }, `baffles ${!c.baffles ? "on" : "off"}`)} />
+                        <span>SLOSH BAFFLES</span>
+                        <span className="note">+3% TANK MASS</span>
+                      </label>
+                    </fieldset>
+                    <fieldset className="ed-choice">
+                      <legend className="lbl">INERTIAL UNIT</legend>
+                      {(Object.keys(IMU) as ImuGrade[]).map((g) => (
+                        <label key={g}>
+                          <input type="radio" name="vd-imu" checked={c.imu === g} onChange={() => setControl({ imu: g }, `imu ${g}`)} />
+                          <span>{IMU[g].label.toUpperCase()}</span>
+                          <span className="note">
+                            {IMU[g].drift}°/H · {money(IMU[g].cost)}
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+                  </>
+                )}
+              </>
+            );
+          })()}
           {current.id === "fins" && (
             <>
               <fieldset className="ed-choice">
@@ -465,7 +524,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
           <span className="cyan">{log}</span>
           <span className="cursor" aria-hidden="true" />
           <span className="muted" style={{ marginLeft: "auto" }}>
-            KS-STRUCT 1.0 · DRAG AND SHELLS ON THE MODEL UNTIL TESTED
+            KS-STRUCT 1.0 · KS-GNC 1.0 · DRAG, SHELLS AND LOOP ON THE MODEL UNTIL TESTED
           </span>
         </div>
       </section>

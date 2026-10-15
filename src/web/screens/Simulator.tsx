@@ -4,6 +4,9 @@ import type { Contract } from "../../sim/contracts.ts";
 import { withCapsule } from "../../sim/crew.ts";
 import type { Mission } from "../../sim/mission.ts";
 import { bestSteering, simulate, type SimFlight, type Simulation } from "../../sim/simulator.ts";
+import { DISPERSION_RUNS, runDispersions, type Dispersions } from "../../sim/dispersions.ts";
+import { CAUSE_LABELS, type Cause } from "../../sim/control.ts";
+import { FAILURE_LABELS, type FailureMode } from "../../sim/hardware.ts";
 import type { Vehicle } from "../../sim/vehicle.ts";
 import { LEO_300, SUBORBITAL_TEST } from "../../missions.ts";
 import { Chip } from "../components/Bits.tsx";
@@ -154,6 +157,37 @@ function Results({ company, sim, designKey, contract, steering, canTune }: { com
   ];
   const budget = sim.vehicle.limits.maxDynamicPressure;
   const unmeasured = sim.isp.filter((k) => !k.measured);
+  const [mc, setMc] = useState<{ done: number; result: Dispersions | null; runs: Dispersions["runs"] } | null>(null);
+  const mcTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A new simulation drops the old runs.
+  useEffect(() => {
+    setMc(null);
+    return () => {
+      if (mcTimer.current) clearTimeout(mcTimer.current);
+    };
+  }, [sim]);
+  const canDisperse = !!(sim.vehicle.control || sim.vehicle.structure);
+  const disperse = () => {
+    const it = runDispersions(company.campaign, sim.vehicle, sim.mission, { minApogee: sim.minApogee });
+    const runs: Dispersions["runs"] = [];
+    setMc({ done: 0, result: null, runs });
+    // One flight per tick, so the page keeps painting the progress.
+    const tick = () => {
+      const step = it.next();
+      if (step.done) {
+        setMc({ done: runs.length, result: step.value, runs: step.value.runs });
+        mcTimer.current = null;
+        return;
+      }
+      runs.push(step.value);
+      setMc({ done: runs.length, result: null, runs: [...runs] });
+      mcTimer.current = setTimeout(tick, 0);
+    };
+    mcTimer.current = setTimeout(tick, 30);
+  };
+  const mcGhosts = mc?.result
+    ? mc.result.runs.map((r) => ({ result: r.result, color: r.lost ? WORST : COLORS.muted, label: r.lost ? "Red: dispersion runs lost" : "Grey: dispersion runs" }))
+    : [];
 
   return (
     <div className="stack" style={{ gap: 16 }}>
@@ -213,7 +247,9 @@ function Results({ company, sim, designKey, contract, steering, canTune }: { com
         </div>
       )}
 
-      <Replay result={m.result} budget={budget} title="Replay of the modelled flight" ghosts={ghosts} autoplay={false} />
+      {canDisperse && <DispersionCard mc={mc} run={disperse} />}
+
+      <Replay result={m.result} budget={budget} title="Replay of the modelled flight" ghosts={[...ghosts, ...mcGhosts]} autoplay={false} />
 
       <details className="card" open={unmeasured.length > 0 || sim.drag.source !== "tunnel"}>
         <summary style={{ cursor: "pointer", fontWeight: 600 }}>Where the range comes from</summary>
@@ -251,6 +287,92 @@ function Results({ company, sim, designKey, contract, steering, canTune }: { com
             ))}
           </ul>
         </details>
+      )}
+    </div>
+  );
+}
+
+const lossLabel = (k: string) => (k in CAUSE_LABELS ? CAUSE_LABELS[k as Cause] : k in FAILURE_LABELS ? FAILURE_LABELS[k as FailureMode] : k);
+
+/** Monte Carlo dispersions: the flight in many days' wind, with what's untested drawn from its range. */
+function DispersionCard({ mc, run }: { mc: { done: number; result: Dispersions | null; runs: Dispersions["runs"] } | null; run: () => void }) {
+  const r = mc?.result;
+  const busy = mc !== null && !r;
+  return (
+    <div className="card" style={{ gap: 10 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+        <p className="label">
+          Dispersions · {DISPERSION_RUNS} runs
+          <Info label="About dispersions">
+            The flight flown {DISPERSION_RUNS} times, each in a different day's wind, with whatever testing hasn't pinned down drawn from its range: the bending mode, slosh, the IMU's drift, an error in untested flight software, the real strength of shells never proof-tested. What's measured flies as measured. Unlike the runs above, failures count.
+          </Info>
+        </p>
+        {r && <Chip tone={r.success >= 0.95 ? "good" : r.success >= 0.8 ? "warn" : "bad"}>{Math.round(r.success * 100)}% DELIVER</Chip>}
+      </div>
+      {!r && (
+        <div className="actions" style={{ alignItems: "center" }}>
+          <button type="button" className="btn" onClick={run} disabled={busy}>
+            {busy ? `Run ${mc!.done} of ${DISPERSION_RUNS}…` : "Run dispersions"}
+          </button>
+          {busy && (
+            <span role="progressbar" aria-valuemin={0} aria-valuemax={DISPERSION_RUNS} aria-valuenow={mc!.done} aria-label="Dispersion runs" style={{ flex: "1 1 120px", height: 4, background: "var(--line)", position: "relative" }}>
+              <span style={{ position: "absolute", inset: 0, width: `${(mc!.done / DISPERSION_RUNS) * 100}%`, background: "var(--data, #5bb8e3)" }} />
+            </span>
+          )}
+        </div>
+      )}
+      {r && (
+        <>
+          <ul className="list" style={{ gap: 4, fontSize: 15 }}>
+            <li style={{ display: "block" }}>
+              <strong>Delivered</strong> <span className="soft">{r.runs.filter((x) => x.delivers).length} of {r.runs.length} runs.</span>
+            </li>
+            {Object.keys(r.losses).length > 0 && (
+              <li style={{ display: "block" }}>
+                <strong className="bad">Lost</strong>{" "}
+                <span className="soft">
+                  {Object.entries(r.losses)
+                    .map(([k, n]) => `${lossLabel(k)} ×${n}`)
+                    .join(", ")}
+                  .
+                </span>
+              </li>
+            )}
+            {r.effort.max > 0 && (
+              <li style={{ display: "block" }}>
+                <strong>Gimbal used</strong>{" "}
+                <span className="soft">
+                  typical {Math.round(r.effort.p50 * 100)}%, worst 1 in 20 {Math.round(r.effort.p95 * 100)}%, worst {Math.round(r.effort.max * 100)}%{r.effort.max > 1 ? " ▲ out of range" : ""}.
+                </span>
+              </li>
+            )}
+            {r.qAlphaBudget > 0 && (
+              <li style={{ display: "block" }}>
+                <strong>Side load q·α</strong>{" "}
+                <span className="soft">
+                  typical {(r.qAlpha.p50 / 1000).toFixed(1)}, worst 1 in 20 {(r.qAlpha.p95 / 1000).toFixed(1)}, worst {(r.qAlpha.max / 1000).toFixed(1)} kPa·° against a drawn {(r.qAlphaBudget / 1000).toFixed(1)}
+                  {r.qAlpha.max > r.qAlphaBudget ? " ▲ over" : ""}.
+                </span>
+              </li>
+            )}
+            {r.reach.max > 0 && (
+              <li style={{ display: "block" }}>
+                <strong>{r.orbital ? "Perigee" : "Apogee"}</strong>{" "}
+                <span className="soft">
+                  {km(r.reach.p5, 0)} to {km(r.reach.p95, 0)} across nine runs in ten.
+                </span>
+              </li>
+            )}
+          </ul>
+          <span className="soft" style={{ fontSize: 14 }}>
+            The runs are drawn behind the replay below: grey delivered or flew on, red lost.
+          </span>
+          <div className="actions">
+            <button type="button" className="btn ghost" onClick={run}>
+              Run again
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

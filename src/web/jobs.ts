@@ -1,6 +1,7 @@
 import { build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { EngineDesign } from "../sim/enginePhysics.ts";
 import { proofQuote } from "../sim/structures.ts";
+import { GNC_TEST_LABELS, gncTestQuote, HITL_RUNS, type GncTest } from "../sim/gncTests.ts";
 import { buyUnit, cancelTask, designSpec, runTask, TRACKS, type Task, type TaskSpec, type Track } from "../sim/schedule.ts";
 import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, PAD_ABORT, type AbortFlaw } from "../sim/crew.ts";
 import type { Contract } from "../sim/contracts.ts";
@@ -159,6 +160,21 @@ export function proofJob(company: Company, key: string): Job {
       caveat: "One test article per untested shell, loaded to failure on the stand. It shows how much of the drawn q·α budget is real.",
     },
     () => ({ kind: "proof", design: key }),
+  );
+}
+
+/** A GNC test on a guided design: modal survey on the stand, IMU calibration or HITL in the lab. */
+export function gncJob(company: Company, key: string, test: GncTest): Job {
+  const v = company.designs[key]!;
+  const q = gncTestQuote(test, v);
+  const what: Record<GncTest, string> = {
+    modal: "The stack hung soft and shaken: its first bending mode (the notch retunes to it) and how hard its propellant sloshes.",
+    "imu-cal": "The inertial unit on a rate table: its drift, which the flight software then takes out.",
+    hitl: `The flight computer and actuators fly ${HITL_RUNS} ascents against a simulation of the real vehicle in seeded winds. A gain-schedule error it finds is corrected.`,
+  };
+  return trackJob(
+    { title: `${GNC_TEST_LABELS[test]} of the ${v.name}?`, doing: `${GNC_TEST_LABELS[test]}: ${v.name}`, verb: "Test", days: q.days, cost: q.cost, caveat: what[test] },
+    () => ({ kind: "gnc", design: key, test }),
   );
 }
 

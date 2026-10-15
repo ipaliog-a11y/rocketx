@@ -137,15 +137,16 @@ export function asBuilt(c: Candidate, engines: Record<string, Engine>): Candidat
 }
 
 /** Three picks from the candidates that clear the bar: cheapest, a comfortable margin, and the most margin for the money. */
-function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, note: (c: Candidate) => string): Suggestion[] {
+function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, note: (c: Candidate) => string, fit: (c: Candidate) => Candidate = (c) => c): Suggestion[] {
   const ok = candidates.filter((c) => c.margin >= minMargin).sort((a, b) => a.firstCost - b.firstCost);
   if (ok.length === 0) return [];
   const cheapest = ok[0]!;
   const balanced = ok.find((c) => c.margin >= minMargin * 2 && c !== cheapest);
   const most = ok.filter((c) => c.firstCost <= cheapest.firstCost * 1.5 && c !== cheapest && c !== balanced).sort((a, b) => b.margin - a.margin)[0];
   const out: Suggestion[] = [];
-  const add = (label: Suggestion["label"], c: Candidate | undefined) => {
-    if (!c) return;
+  const add = (label: Suggestion["label"], picked: Candidate | undefined) => {
+    if (!picked) return;
+    const c = fit(picked);
     out.push({ label, spec: c.spec, vehicle: c.vehicle, figures: c.figures, margin: c.margin, build: vehicleCost(c.vehicle), design: designQuote(c.spec, existing), note: note(c) });
   };
   add("Cheapest", cheapest);
@@ -273,5 +274,30 @@ export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, exist
     const engines = [...new Set(c.vehicle.stages.map((st) => st.engine.name))];
     const restart = relights ? ` Restart-test the ${c.vehicle.stages.at(-1)!.engine.name} in the altitude cell: this mission relights it after a coast.` : "";
     return `${(c.figures.totalDeltaV / 1000).toFixed(2)} km/s on paper against about ${(needed / 1000).toFixed(2)} needed. Test the ${engines.join(", ")}, run the shape in the tunnel, and re-tune before trusting a forecast.${restart}`;
-  });
+  }, (c) => flightFit(c, goal.mission, engines));
+}
+
+/**
+ * Fly a guided pick once in calm air on its job and speed up its attitude
+ * loop if the airframe diverges anywhere along the way (staging in thick
+ * air is where the paper checks can't see), so what the guide suggests
+ * holds attitude as drawn.
+ */
+function flightFit(c: Candidate, mission: Mission, engines: Record<string, Engine>): Candidate {
+  let spec = c.spec;
+  let vehicle = c.vehicle;
+  for (let i = 0; i < 3 && vehicle.control && spec.geometry; i++) {
+    const r = simulateAscent(vehicle, mission, { structuralFailures: false });
+    const div = r.summary.control?.maxDivergence ?? 0;
+    const bw = vehicle.control.design.bandwidth;
+    if (div <= 0.3 || bw >= 3) break;
+    // No faster than keeps the bending mode clear: the loop gain there under a fifth, notch or not.
+    const fb = vehicle.control.bendingFrequency;
+    const ceiling = Math.floor(fb * Math.sqrt(0.2 / (vehicle.control.design.notch ? 0.1 : 1)) * 10) / 10;
+    const next = Math.min(3, ceiling, Math.ceil(((bw * div) / 0.28) * 10) / 10);
+    if (next <= bw) break;
+    spec = { ...spec, geometry: { ...spec.geometry, control: { ...vehicle.control.design, bandwidth: next } } };
+    vehicle = { ...assembleVehicle(spec, engines), pitchProgram: vehicle.pitchProgram };
+  }
+  return spec === c.spec ? c : { ...c, spec, vehicle, figures: figures(vehicle) };
 }

@@ -101,7 +101,7 @@ export type Settlement = {
 
 /** What the customer makes of the flight. */
 export function settle(contract: Contract, result: FlightResult): Settlement {
-  const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+  const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
   const lost = (tag: Tag, why: string): Settlement => ({
     status: "failed",
     payout: 0,

@@ -351,17 +351,32 @@ export function controlStep(model: ControlModel, flight: GncFlight, s: StepInput
   return { delta, effort, rateUse, divergence, bendingGain, sloshFrequency: fs, growth, cause, amp: loop.amp };
 }
 
-/** What the drawing says at the design point: max-q, a 2° steering angle and a 0.6° gust, half the booster burned. */
-export function designPoint(model: ControlModel, q = 35_000, mach = 1.3) {
-  const c = configAt(model, 0, 0.5, mach);
+/**
+ * Points along a typical boost the drawing is checked at: max-q half burned,
+ * past it, and late in the burn when the booster is nearly empty, its
+ * inertia is least and the centre of pressure has moved forward.
+ */
+export const DESIGN_POINTS = [
+  { mach: 1.3, burned: 0.5, q: 40_000 },
+  { mach: 2, burned: 0.75, q: 38_000 },
+  { mach: 3, burned: 0.92, q: 25_000 },
+];
+
+/** What the drawing says along the boost, with a 2° steering angle and a 0.6° gust: the worst of the design points. */
+export function designPoint(model: ControlModel) {
   const alpha = (2.6 * Math.PI) / 180;
-  const arm = c.cg - c.cp;
   const d = model.design;
   const omegaC = 2 * Math.PI * d.bandwidth;
-  const omegaA = arm > 0 ? Math.sqrt((q * c.area * c.cnAlpha * arm) / c.inertia) : 0;
+  const at = DESIGN_POINTS.map((p) => {
+    const c = configAt(model, 0, p.burned, p.mach);
+    const arm = c.cg - c.cp;
+    return { p, c, arm, omegaA: arm > 0 ? Math.sqrt((p.q * c.area * c.cnAlpha * arm) / c.inertia) : 0 };
+  });
+  const omegaA = Math.max(...at.map((x) => x.omegaA));
   return {
-    /** Gimbal needed for the moment at a typical thrust over weight of 1.5, degrees. */
-    needs: (thrust: number) => (Math.asin(Math.min(1, (q * c.area * c.cnAlpha * alpha * Math.abs(arm)) / (thrust * Math.max(0.5, c.nozzle - c.cg)))) * 180) / Math.PI,
+    /** Gimbal needed against the air's moment, degrees, for a booster thrust. */
+    needs: (thrust: number) =>
+      Math.max(...at.map(({ p, c, arm }) => (Math.asin(Math.min(1, (p.q * c.area * c.cnAlpha * alpha * Math.abs(arm)) / (thrust * Math.max(0.5, c.nozzle - c.cg)))) * 180) / Math.PI)),
     divergence: omegaA / omegaC,
     divergenceHz: omegaA / (2 * Math.PI),
     bendingHz: model.bendingFrequency,

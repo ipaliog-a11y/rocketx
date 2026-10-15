@@ -4,7 +4,7 @@ import { hashSeed } from "./random.ts";
 import type { Campaign } from "./teststand.ts";
 import type { Vehicle } from "./vehicle.ts";
 import { rollWind } from "./wind.ts";
-import { LEO_300 } from "../missions.ts";
+import { LEO_300, SUBORBITAL_TEST } from "../missions.ts";
 
 /**
  * The tests that pin down a guided vehicle's attitude loop before it flies:
@@ -79,19 +79,27 @@ export function runGncTest(test: GncTest, campaign: Campaign, vehicle: Vehicle, 
       const causes = new Map<Cause, number>();
       let peak = 0;
       let losses = 0;
+      let where: { stage: number; mach: number } | null = null;
+      // The ascent it's built for: to orbit if it turns, straight up if not.
+      const mission = vehicle.pitchProgram?.kind === "gravity-turn" ? LEO_300 : SUBORBITAL_TEST;
       for (let i = 0; i < HITL_RUNS; i++) {
-        const r = simulateAscent(vehicle, LEO_300, { dt: 0.1, wind: rollWind(hashSeed(`${seed}:hitl:${vehicle.name}:${known.hitl?.runs ?? 0}:${i}`)), gnc: { [vehicle.name]: flight } });
+        const r = simulateAscent(vehicle, mission, { dt: 0.1, wind: rollWind(hashSeed(`${seed}:hitl:${vehicle.name}:${known.hitl?.runs ?? 0}:${i}`)), gnc: { [vehicle.name]: flight } });
         peak = Math.max(peak, r.summary.control?.maxEffort.value ?? 0);
         const lost = r.events.find((e) => e.kind === "loss-of-control");
         if (lost) {
           losses += 1;
           if (lost.cause) causes.set(lost.cause, (causes.get(lost.cause) ?? 0) + 1);
+          where ??= { stage: lost.stage, mach: lost.mach };
         }
       }
       const flaw = flight.flaw;
       known.hitl = { runs: (known.hitl?.runs ?? 0) + HITL_RUNS, losses, peakEffort: peak, flaw };
       if (flaw) known.flawFixed = true;
-      const lostText = losses === 0 ? `held attitude in all ${HITL_RUNS} runs` : `lost the vehicle in ${losses} of ${HITL_RUNS} runs (${[...causes].map(([c, n]) => `${CAUSE_LABELS[c]} ×${n}`).join(", ")})`;
+      const stageName = (i: number) => (vehicle.stages.length === 1 ? "the stage" : i === 0 ? "the booster" : i === 1 ? "the upper stage" : "the kick stage");
+      const lostText =
+        losses === 0
+          ? `held attitude in all ${HITL_RUNS} runs`
+          : `lost the vehicle in ${losses} of ${HITL_RUNS} runs (${[...causes].map(([c, n]) => `${CAUSE_LABELS[c]} ×${n}`).join(", ")}), first on ${stageName(where!.stage)} near Mach ${where!.mach.toFixed(1)}`;
       const flawText = flaw ? ` Found a gain-schedule error between Mach ${flaw.from.toFixed(1)} and ${flaw.to.toFixed(1)}: corrected in the flight software.` : " No software errors found.";
       return { text: `Hardware-in-the-loop, ${vehicle.name}: ${lostText}, peak gimbal use ${Math.round(peak * 100)}%.${flawText}`, bad: losses > 0 || flaw !== null };
     }

@@ -49,7 +49,7 @@
 .ed-tree { grid-area: tree; border-right: 1px solid var(--ed-line-dim); display: flex; flex-direction: column; min-width: 0; }
 .ed-sheet { grid-area: sheet; display: flex; flex-direction: column; min-width: 0; }
 .ed-strip { grid-area: strip; border-left: 1px solid var(--ed-line-dim); padding: 14px 20px 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.ed-readouts { grid-area: readouts; border-top: 1px solid var(--ed-line-dim); display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.ed-readouts { grid-area: readouts; border-top: 1px solid var(--ed-line-dim); display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .ed-log { grid-area: log; border-top: 1px solid var(--ed-line-dim); min-height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 16px; font-family: var(--ed-mono); font-size: 13px; flex-wrap: wrap; }
 .ed-log .cursor { width: 8px; height: 15px; background: var(--ed-line); }
 
@@ -173,7 +173,7 @@
   .ed .tb-row { grid-template-columns: minmax(0, 1fr); }
   .ed .titleblock,
   .ed .stamp-cell { border-right: 0; border-bottom: 1px solid var(--ed-grid); }
-  .ed-readouts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ed-readouts { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ed .readout { border-bottom: 1px solid var(--ed-grid); }
   .ed .readout:nth-child(2n) { border-right: 0; }
   .ed .big { font-size: 34px; }
@@ -199,4 +199,15 @@
 @media (max-width: 900px) {
   .ed .ed-guide-results { grid-template-columns: minmax(0, 1fr); }
   .ed .ed-guide-card { border-right: 0; border-bottom: 1px solid var(--ed-grid); }
+}
+
+/* The GNC lab: tree, sheet and tests, no readout row. */
+.ed.ed-lab { grid-template-areas: "tree sheet strip" "log log log"; }
+@media (max-width: 900px) {
+  .ed.ed-lab { grid-template-areas: "tree" "sheet" "strip" "log"; }
+  .ed.ed-lab .tb-row { grid-template-columns: minmax(0, 1fr) !important; }
+}
+.ed .lab-strip text { font-size: 12px; font-family: var(--ed-mono); }
+@media (max-width: 600px) {
+  .ed .lab-strip text { font-size: 22px; }
 }

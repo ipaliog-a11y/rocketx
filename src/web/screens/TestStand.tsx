@@ -14,6 +14,7 @@ import { money, pct } from "../format.ts";
 import { EngineDesign } from "./EngineDesign.tsx";
 import { Parts } from "./Parts.tsx";
 import { Sheet } from "../components/Sheet.tsx";
+import { GncLab } from "./GncLab.tsx";
 import { Tunnel } from "./Tunnel.tsx";
 import type { Route } from "../nav.ts";
 import { Info, Term } from "../components/Info.tsx";
@@ -52,13 +53,14 @@ function statusOf(known: EngineKnowledge | undefined, burn: number): { text: str
   return { text: "PARTLY PROVEN", tone: "warn" };
 }
 
-type Tab = "engines" | "parts" | "shop" | "tunnel";
+type Tab = "engines" | "parts" | "shop" | "tunnel" | "gnc";
 
 /** What each tab is for, behind the ⓘ beside the title. */
 const TESTING_INTROS: Record<Tab, string> = {
   engines: "Fire engines on the sea-level stand or in the altitude cell. Each bar is proven running against the longest burn a design asks of that engine. Engines that share a part share what the stand learns about it.",
   parts: "Every engine is built from four parts: cycle, injector, cooling and nozzle. What tests learn lands on the part, so every engine built with it shares the knowledge, the faults and the fixes. Tap a part for its record and what it still needs.",
   shop: "The drawing board for engines. Select a part, set its parameter along its curve, and every readout follows the engine model. Commit makes the next revision; a released revision goes to the stand. Parts already in production keep what tests learned.",
+  gnc: "The attitude loop of each guided design against the modes it must stay clear of. A modal survey measures bending and slosh, IMU calibration takes out drift, and hardware-in-the-loop runs fly the software against the real vehicle and fix what they find.",
   tunnel: "One shape per outer mould line: designs that share a shape share what the tunnel learns. CFD is cheap and half right; the subsonic tunnel measures drag; the transonic tunnel also sees the drag rise and buffet.",
 };
 
@@ -70,7 +72,7 @@ export type Focus = { engine: string; facility?: Facility; seconds?: number; res
  * the parts they share, new engines from the shop, and shapes in the tunnel.
  */
 export function TestStand({ company, route }: { company: Company; route: Route }) {
-  const first = (["engines", "parts", "shop", "tunnel"] as const).find((t) => t === route.tab) ?? "engines";
+  const first = (["engines", "parts", "shop", "tunnel", "gnc"] as const).find((t) => t === route.tab) ?? "engines";
   const [tab, setTab] = useState<Tab>(first);
   const [focus, setFocus] = useState<Focus | null>(
     route.engine ? { engine: route.engine, facility: route.facility, seconds: route.seconds, restart: route.restart, why: route.why } : null,
@@ -80,7 +82,7 @@ export function TestStand({ company, route }: { company: Company; route: Route }
       <div className="screen-head">
         <h1>
           Testing
-          <Info label={`About ${tab === "engines" ? "the engines" : tab === "parts" ? "parts" : tab === "shop" ? "engine design" : "the wind tunnel"}`}>{TESTING_INTROS[tab]}</Info>
+          <Info label={`About ${tab === "engines" ? "the engines" : tab === "parts" ? "parts" : tab === "shop" ? "engine design" : tab === "gnc" ? "the GNC lab" : "the wind tunnel"}`}>{TESTING_INTROS[tab]}</Info>
         </h1>
         <Tabs<Tab>
           label="Testing views"
@@ -94,6 +96,7 @@ export function TestStand({ company, route }: { company: Company; route: Route }
             ["parts", "Parts"],
             ["shop", "Design"],
             ["tunnel", "Wind tunnel"],
+            ["gnc", "GNC lab"],
           ]}
         />
       </div>
@@ -117,6 +120,7 @@ export function TestStand({ company, route }: { company: Company; route: Route }
         />
       )}
       {tab === "tunnel" && <Tunnel company={company} design={route.design} />}
+      {tab === "gnc" && <GncLab company={company} design={route.design} />}
     </div>
   );
 }

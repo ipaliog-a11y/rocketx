@@ -624,14 +624,14 @@ export function fly(company: Company, key: string, target: { contract: string } 
   let abortText: string | null = null;
   let crewLost = false;
   if (abortTest) {
-    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
     // At max-q, or earlier if the booster fails first: then the abort fires on a real failure.
     const at = failure && failure.t <= result.summary.maxQ.t + 1 ? failure.t : result.summary.maxQ.t;
     const q = qAt(result, at);
     result = abortAt(result, at, q);
     abortText = inflightAbort(company.capsule!, company.day, q);
   } else if (crewed) {
-    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
     if (failure) {
       const q = qAt(result, failure.t);
       const outcome = abortOutcome(company.capsule!.truth, failure.t, q);
@@ -673,7 +673,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
     if (completed.length > 0) lines.push("", ...completed);
     if (crewLost) lines.push("", ...lossOfCrew(company, contract));
   } else {
-    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+    const failure = result.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
     // A test flight risks only the company's own vehicle: the record keeps it, reputation doesn't move.
     if (failure?.mode) company.record.push({ day: company.day, tag: failure.mode, reputation: 0, note: `${design.name} test flight`, test: true });
     // A design's first orbit is flight heritage customers will pay for.
@@ -820,7 +820,7 @@ export function brief(company: Company, contractId: string, key: string): string
 }
 
 function describeForecast(contract: Contract, forecast: FlightResult): string {
-  const failure = forecast.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure");
+  const failure = forecast.events.find((e) => e.kind === "engine-failure" || e.kind === "structural-failure" || e.kind === "loss-of-control");
   if (failure?.mode) return `lost to a known ${FAILURE_LABELS[failure.mode]} at T+${failure.t.toFixed(1)} s.`;
   if (contract.minApogee !== undefined) {
     const apogee = forecast.summary.apogee;

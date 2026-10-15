@@ -1,6 +1,7 @@
 import { dragCoefficient } from "../sim/aero.ts";
 import { atmosphereAt } from "../sim/atmosphere.ts";
-import { assembleVehicle, checkVehicle, designQuote, figures, maxEngines, specOf, type VehicleSpec } from "../sim/builder.ts";
+import { assembleVehicle, checkVehicle, designQuote, figures, fitControl, maxEngines, specOf, type VehicleSpec } from "../sim/builder.ts";
+import { BENDING_LIMIT, CONTROL_RANGES, controlDesignOf, defaultControl, designPoint, DIVERGENCE_LIMIT, IMU, type ControlDesign, type ControlModel } from "../sim/control.ts";
 import type { Company } from "../sim/company.ts";
 import { vehicleCost } from "../sim/cost.ts";
 import type { Engine } from "../sim/engine.ts";
@@ -24,13 +25,13 @@ export function vehicleParts(spec: VehicleSpec): VPart[] {
       .map((_, i) => ({ id: `stage-${i}`, tag: `S${i + 1}`, name: ["BOOSTER", "UPPER", "KICK"][i] ?? `STAGE ${i + 1}` }))
       .reverse(),
     { id: "fins", tag: "FIN-1", name: "FINS" },
+    { id: "gnc", tag: "GNC-1", name: "GUIDANCE & CONTROL" },
     { id: "payload", tag: "PL-1", name: "PAYLOAD" },
   ];
 }
 
 /** Systems on the vehicle the design office doesn't draw yet. */
 export const SYSTEMS: Array<[string, string, string]> = [
-  ["GNC-1", "GUIDANCE & CONTROL", "PHASE C"],
   ["TLM-1", "TELEMETRY", "NOT MODELLED"],
   ["TCS-1", "THERMAL CONTROL", "NOT MODELLED"],
   ["FTS-1", "FLIGHT TERMINATION", "NOT MODELLED"],
@@ -64,14 +65,43 @@ export function vehicleParams(part: string, spec: VehicleSpec): VParam[] {
       { key: "sweep", sym: "Λ", name: "LEADING-EDGE SWEEP", unit: "°", min: 0, max: 60, step: 1, dec: 0, info: "Sweep moves the fin's pressure aft and eases transonic drag." },
     ];
   }
+  if (part === "gnc") {
+    const r = CONTROL_RANGES;
+    return [
+      { key: "g:bw", sym: "ωc", name: "LOOP BANDWIDTH", unit: "Hz", min: r.bandwidth[0], max: r.bandwidth[1], step: 0.1, dec: 1, info: "A faster loop catches an unstable airframe sooner, and comes nearer the bending mode." },
+      { key: "g:gimbal", sym: "δ", name: "GIMBAL RANGE", unit: "°", min: r.gimbal[0], max: r.gimbal[1], step: 0.5, dec: 1, info: "How far the engines swing either way: authority against the air's moment, and actuator mass." },
+      { key: "g:rate", sym: "δ̇", name: "ACTUATOR RATE", unit: "°/s", min: r.actuatorRate[0], max: r.actuatorRate[1], step: 1, dec: 0, info: "How fast the actuators slew. Too slow and they fall behind the loop in a gust." },
+    ];
+  }
   return [{ key: "payload", sym: "M", name: "DESIGN PAYLOAD", unit: "kg", min: 0, max: 20_000, step: 10, dec: 0, info: "The payload the design is drawn around; contracts load their own." }];
 }
 
-/** A spec always carries a geometry on this screen; one drawn before the model gets the defaults. */
-export function withGeometry(spec: VehicleSpec): VehicleSpec & { geometry: VehicleGeometry } {
+/**
+ * A spec always carries a geometry on this screen; one drawn before the
+ * model gets the defaults, with its attitude loop sized to the airframe
+ * when the engines are at hand.
+ */
+export function withGeometry(spec: VehicleSpec, engines?: Record<string, Engine>): VehicleSpec & { geometry: VehicleGeometry } {
   const g = spec.geometry ?? defaultGeometry(spec.stages.length);
   const stages = spec.stages.map((_, i) => g.stages[i] ?? g.stages.at(-1)!);
-  return { ...spec, geometry: { ...g, stages } };
+  const out = { ...spec, geometry: { ...g, stages } };
+  if (spec.geometry || !engines) return out;
+  try {
+    return fitControl(out, engines) as VehicleSpec & { geometry: VehicleGeometry };
+  } catch {
+    return out;
+  }
+}
+
+/** The control design a spec flies, explicit. */
+export function controlOf(spec: VehicleSpec): ControlDesign {
+  return controlDesignOf(withGeometry(spec).geometry) ?? defaultControl(spec.stages.length);
+}
+
+/** Change the control design. */
+export function withControl(spec: VehicleSpec, change: Partial<ControlDesign>): VehicleSpec {
+  const w = withGeometry(spec);
+  return { ...w, geometry: { ...w.geometry, control: { ...controlOf(w), ...change } } };
 }
 
 /** Read a parameter's value from a spec. */
@@ -85,6 +115,9 @@ export function readParam(spec: VehicleSpec, key: string): number {
   if (key === "span") return fins?.span ?? 0;
   if (key === "chord") return fins?.rootChord ?? 0.5;
   if (key === "sweep") return fins?.sweep ?? 35;
+  if (key === "g:bw") return controlOf(spec).bandwidth;
+  if (key === "g:gimbal") return controlOf(spec).gimbal;
+  if (key === "g:rate") return controlOf(spec).actuatorRate;
   const i = Number(key.replace(/^\D+/, ""));
   if (key.startsWith("d")) return spec.stages[i]!.diameter;
   if (key.startsWith("l")) return spec.stages[i]!.tankLength;
@@ -97,6 +130,9 @@ const round = (v: number, step: number) => Math.round(v / step) * step;
 
 /** Write a parameter into a spec, keeping it buildable: an upper stage no wider than the one below, fins sized off the booster. */
 export function writeParam(specIn: VehicleSpec, key: string, value: number): VehicleSpec {
+  if (key === "g:bw") return withControl(specIn, { bandwidth: round(value, 0.1) });
+  if (key === "g:gimbal") return withControl(specIn, { gimbal: round(value, 0.5) });
+  if (key === "g:rate") return withControl(specIn, { actuatorRate: Math.round(value) });
   const spec = withGeometry(specIn);
   const g = { ...spec.geometry, stages: spec.geometry.stages.map((s) => ({ ...s })) };
   const fins = (): FinSet => g.fins ?? { ...defaultFins(spec.stages[0]!.diameter), span: 0 };
@@ -130,8 +166,8 @@ export type VDraft = {
 };
 
 export function vDraft(company: Company, specIn: VehicleSpec, base: Vehicle | null, takenNames: string[]): VDraft {
-  const spec = withGeometry(specIn);
   const engines = company.campaign.engines;
+  const spec = withGeometry(specIn, engines);
   const check = checkVehicle(spec, engines, takenNames);
   let vehicle: Vehicle | null = null;
   try {
@@ -139,7 +175,7 @@ export function vDraft(company: Company, specIn: VehicleSpec, base: Vehicle | nu
   } catch {
     vehicle = null;
   }
-  const baseSpec = base ? withGeometry(specOf(base)) : null;
+  const baseSpec = base ? withGeometry(specOf(base), engines) : null;
   const strip = (s: VehicleSpec) => JSON.stringify({ ...s, name: "" });
   const changed = !baseSpec || strip(baseSpec) !== strip(spec);
   return { spec, vehicle, problems: check.problems, warnings: check.warnings, changed, base };
@@ -154,7 +190,7 @@ export function vReadouts(d: VDraft, engines: Record<string, Engine>): VReadout[
   const v = d.vehicle;
   if (!v) return [];
   // Against a design drawn before the model, compare with the model at its default geometry: Δ is what the change does.
-  const b = d.base && d.changed ? (d.base.geometry ? d.base : assembleVehicle(withGeometry(specOf(d.base)), engines)) : null;
+  const b = d.base && d.changed ? (d.base.geometry ? d.base : assembleVehicle(withGeometry(specOf(d.base), engines), engines)) : null;
   const f = figures(v);
   const fb = b ? figures(b) : null;
   const margin = (x: Vehicle) => (x.stages.length === 1 ? x.stability?.points[0]!.margin : x.stability?.min) ?? 0;
@@ -168,8 +204,28 @@ export function vReadouts(d: VDraft, engines: Record<string, Engine>): VReadout[
     { key: "cd", label: "CD M1.2", value: cd12(v), dec: 3, unit: "", lo: 0.2, hi: 0.9, delta: delta(cd12(v), b ? cd12(b) : undefined) },
     { key: "qa", label: "Q·α CAP", value: (v.limits.maxQAlpha ?? 0) / 1000, dec: 1, unit: "kPa·°", lo: 0, hi: Math.max(80, ((v.limits.maxQAlpha ?? 0) / 1000) * 1.25), delta: delta((v.limits.maxQAlpha ?? 0) / 1000, b ? (b.limits.maxQAlpha ?? 0) / 1000 : undefined) },
     { key: "sm", label: unguided ? "MARGIN LIFTOFF" : "STATIC MARGIN", value: margin(v), dec: 2, unit: "cal", lo: -6, hi: 3, delta: delta(margin(v), b ? margin(b) : undefined), tag: lowMargin ? "▲ UNSTABLE" : undefined },
+    ...(v.control
+      ? [(() => {
+          const e = controlEffort(v);
+          return { key: "gnc", label: "CTRL EFFORT", value: e * 100, dec: 0, unit: "%", lo: 0, hi: 120, delta: b?.control ? e * 100 - controlEffort(b) * 100 : null, tag: e > 1 ? "▲ AUTHORITY" : undefined };
+        })()]
+      : []),
     { key: "cost", label: "BUILD COST", value: vehicleCost(v).cost / 1000, dec: 2, unit: "$M", lo: 0, hi: Math.max(1, (vehicleCost(v).cost / 1000) * 1.6), delta: delta(vehicleCost(v).cost / 1000, b ? vehicleCost(b).cost / 1000 : undefined) },
   ];
+}
+
+/** Share of the gimbal range the design point takes. */
+export function controlEffort(v: Vehicle): number {
+  const c = v.control;
+  if (!c) return 0;
+  const booster = v.stages[0]!;
+  return c.design.gimbal > 0 ? designPoint(c).needs(booster.engine.thrustVac * booster.engineCount) / c.design.gimbal : Infinity;
+}
+
+/** The loop's margins at the design point, as shares of their limits. */
+export function controlMargins(model: ControlModel) {
+  const dp = designPoint(model);
+  return { divergence: dp.divergence / DIVERGENCE_LIMIT, bending: (dp.bendingGain * (model.design.notch ? 0.1 : 1)) / BENDING_LIMIT, dp };
 }
 
 export type VCurve = { xs: number[]; a: { label: string; ys: number[] }; b?: { label: string; ys: number[] }; redlines: Array<{ x: number; label: string; dotted?: boolean }> };
@@ -212,6 +268,35 @@ export function vCurve(company: Company, spec: VehicleSpec, p: VParam): VCurve |
       a: { label: "HEATING EST W/m², TO 5k", ys: ys2 },
       redlines: [{ x: 100, label: "MIN 100 KM" }, ...(cross ? [{ x: cross, label: "1135 W/m²", dotted: true }] : [])],
     };
+  }
+  if (p.key === "g:bw") {
+    // Both as a share of their limit: divergence falls as the loop speeds up, the bending mode's pull rises.
+    const div = ys((v) => (v.control ? controlMargins(v.control).divergence * 100 : NaN));
+    const bend = ys((v) => (v.control ? controlMargins(v.control).bending * 100 : NaN));
+    const curve: VCurve = { xs, a: { label: "DIVERGENCE % OF LIMIT", ys: div }, b: { label: "BENDING % OF LIMIT", ys: bend }, redlines: [] };
+    const r1 = crossing(curve, 90, "a");
+    const r2 = crossing(curve, 100, "b");
+    curve.redlines = [...(r1 !== null ? [{ x: r1, label: "DIVERGENCE" }] : []), ...(r2 !== null ? [{ x: r2, label: "BENDING", dotted: true }] : [])];
+    return curve;
+  }
+  if (p.key === "g:gimbal") {
+    const curve: VCurve = { xs, a: { label: "GIMBAL USE AT MAX-Q %", ys: ys((v) => Math.min(300, controlEffort(v) * 100)) }, redlines: [] };
+    const r = crossing(curve, 100, "a");
+    if (r !== null) curve.redlines = [{ x: r, label: "AUTHORITY" }];
+    return curve;
+  }
+  if (p.key === "g:rate") {
+    // The loop chasing a design gust at its own crossover: δ·ωc.
+    const demand = (v: Vehicle) => {
+      const c = v.control;
+      if (!c) return NaN;
+      const booster = v.stages[0]!;
+      return (designPoint(c).needs(booster.engine.thrustVac * booster.engineCount) * 2 * Math.PI * c.design.bandwidth) / c.design.actuatorRate;
+    };
+    const curve: VCurve = { xs, a: { label: "RATE USE IN A GUST %", ys: ys((v) => Math.min(300, demand(v) * 100)) }, redlines: [] };
+    const r = crossing(curve, 100, "a");
+    if (r !== null) curve.redlines = [{ x: r, label: "RATE LIMIT" }];
+    return curve;
   }
   if (p.key === "span" || p.key === "chord" || p.key === "sweep") {
     return {
@@ -265,6 +350,18 @@ export function vSpecRows(part: string, d: VDraft): Array<[string, string]> {
       ["MARGIN LIFTOFF", `${v.stability?.points[0]!.margin.toFixed(2)} cal`],
       ["MARGIN MAX-Q", `${v.stability?.points[1]!.margin.toFixed(2)} cal`],
       ["MARGIN BURNOUT", `${v.stability?.points[2]!.margin.toFixed(2)} cal`],
+    ];
+  }
+  if (part === "gnc") {
+    const c = v.control;
+    if (!c) return [["GUIDANCE", "NONE · FLIES ON ITS FINS"]];
+    const m = controlMargins(c);
+    return [
+      ["LOOP", `${c.design.bandwidth.toFixed(1)} Hz · ${c.design.gimbal.toFixed(1)}° · ${c.design.actuatorRate}°/s`],
+      ["AIRFRAME", m.dp.divergenceHz > 0 ? `diverges ${m.dp.divergenceHz.toFixed(2)} Hz` : "stable"],
+      ["BENDING", `${m.dp.bendingHz.toFixed(2)} Hz drawn${c.design.notch ? " · notch" : ""}`],
+      ["SLOSH", `${m.dp.sloshHz.map((f) => f.toFixed(1)).join(" / ")} Hz${c.design.baffles ? " · baffled" : ""}`],
+      ["IMU", `${IMU[c.design.imu].label.toUpperCase()} · ${IMU[c.design.imu].drift}°/h`],
     ];
   }
   return [
