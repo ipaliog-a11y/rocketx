@@ -208,7 +208,7 @@ function Design({ company, designKey, simulate }: { company: Company; designKey:
             type="button"
             className="btn"
             disabled={ready === null || !holds(company, missionLicence(mission))}
-            title={!holds(company, missionLicence(mission)) ? "Orbital test flights need the orbital licence" : ready === null ? `Order a ${v.name} first` : undefined}
+            title={!holds(company, missionLicence(mission)) ? "Orbital test flights need the orbital license" : ready === null ? `Order a ${v.name} first` : undefined}
             onClick={() => game.schedule(testFlightJob(company, designKey, mission, (r) => game.showFlight(r, designKey)))}
           >
             Test flight · {mission.target ? `LEO ${km(mission.target.apoapsis, 0)}` : "straight up"}

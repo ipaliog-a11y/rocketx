@@ -74,7 +74,7 @@ export function Contracts({ company, version, route }: Props) {
           <h1>
             Contracts
             <Info label="About contracts">
-              Work posted by customers. Each pays on delivery and charges a penalty if you sign and miss the deadline. Some need a licence or a reputation; some customers won't sign after a
+              Work posted by customers. Each pays on delivery and charges a penalty if you sign and miss the deadline. Some need a license or a reputation; some customers won't sign after a
               failure like the one they fear. Recurring work comes as a series: commit to all of it for a bonus. The calendar shows postings, deadlines and rollouts; pick a future day to advance to it.
             </Info>
           </h1>
@@ -99,7 +99,7 @@ export function Contracts({ company, version, route }: Props) {
               <p className="label bad">Reputation {reputation(company)}: most customers won't sign</p>
               <span className="soft">
                 Two ways back. Student payloads accept any record and earn +1 when delivered. And every clean test flight above 100 km, from Rockets › Design, wins back a point
-                until you are at 0.{company.licence === "suborbital" ? " The orbital licence also needs a reputation of 0 or better." : ""}
+                until you are at 0.{company.licence === "suborbital" ? " The orbital license also needs a reputation of 0 or better." : ""}
               </span>
             </div>
           )}
@@ -198,7 +198,7 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
         <label>
           <span>Licence</span>
           <select value={licence} onChange={(e) => setLicence(e.target.value as Licence | "all")}>
-            <option value="all">Any licence</option>
+            <option value="all">Any license</option>
             <option value="suborbital">Suborbital</option>
             <option value="orbital">Orbital</option>
             <option value="crew">Crewed flight</option>

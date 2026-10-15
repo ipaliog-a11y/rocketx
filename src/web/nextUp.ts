@@ -96,11 +96,11 @@ export function nextUp(company: Company, statuses = flightStatuses(company), lim
 
   const app = nextLicence(company, reputation(company));
   if (app?.ready) {
-    add({ key: "licence", tone: "good", title: `Apply for the ${LICENCE_LABELS[app.tier].toLowerCase()} licence`, text: "Every requirement is met.", action: { label: "Apply", route: { place: "home", tab: "company" } } });
+    add({ key: "licence", tone: "good", title: `Apply for the ${LICENCE_LABELS[app.tier].toLowerCase()} license`, text: "Every requirement is met.", action: { label: "Apply", route: { place: "home", tab: "company" } } });
   } else if (app) {
     const met = app.requirements.filter((r) => r.met).length;
     const missing = app.requirements.find((r) => !r.met)!;
-    add({ key: "licence", tone: "data", title: `${LICENCE_LABELS[app.tier]} licence: ${met} of ${app.requirements.length}`, text: `Next: ${missing.text.charAt(0).toLowerCase()}${missing.text.slice(1)}${missing.progress ? ` (${missing.progress[0]}/${missing.progress[1]})` : ""}.`, action: { label: "Licence", route: { place: "home", tab: "company" } } });
+    add({ key: "licence", tone: "data", title: `${LICENCE_LABELS[app.tier]} license: ${met} of ${app.requirements.length}`, text: `Next: ${missing.text.charAt(0).toLowerCase()}${missing.text.slice(1)}${missing.progress ? ` (${missing.progress[0]}/${missing.progress[1]})` : ""}.`, action: { label: "Licence", route: { place: "home", tab: "company" } } });
   }
 
   if (statuses.length === 0) {

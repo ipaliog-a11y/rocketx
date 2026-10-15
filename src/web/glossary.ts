@@ -29,9 +29,9 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: "gto", term: "GTO", text: "Geostationary transfer orbit: from a low perigee up to 35,786 km. Needs a coast and a relight." },
   { id: "c3", term: "C3", text: "Energy left over after escaping the Earth, in km²/s². Lunar and deep-space probes need a C3 at or above a target." },
   { id: "heritage", term: "Heritage", text: "What a design has already done: orbits reached, highest orbit, heaviest payload. Customers trust a design more for work it has done before." },
-  { id: "reputation", term: "Reputation", text: "What customers think of the company. Deliveries raise it, failed or late contracts lower it. Some contracts need a minimum, and below zero the orbital licence is out of reach." },
+  { id: "reputation", term: "Reputation", text: "What customers think of the company. Deliveries raise it, failed or late contracts lower it. Some contracts need a minimum, and below zero the orbital license is out of reach." },
   { id: "series", term: "Series", text: "A run of recurring contracts from one customer. Commit to the whole series and deliver every one for a bonus at the end." },
-  { id: "licence", term: "Licence tiers", text: "Suborbital, orbital and crewed flight. Each opens new work; the regulator wants a record first, and the application takes a fee and some days." },
+  { id: "licence", term: "License tiers", text: "Suborbital, orbital and crewed flight. Each opens new work; the regulator wants a record first, and the application takes a fee and some days." },
   { id: "abort-tower", term: "Abort tower", text: "A small rocket on top of the crew capsule that pulls it clear if the launcher fails. Dropped once the rocket is through the thick air." },
 ];
 

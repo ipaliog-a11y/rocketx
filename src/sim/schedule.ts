@@ -238,16 +238,16 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       return { track: "office", title: `Re-tune · ${design.name}`, cost: RETUNE_COST.cost, days: RETUNE_COST.days, reads: [], writes: [] };
     }
     case "licence": {
-      if (pendingOf(company, "licence").length > 0) throw new Error("A licence application is already with the regulator.");
+      if (pendingOf(company, "licence").length > 0) throw new Error("A license application is already with the regulator.");
       const next = nextLicence(company, reputation(company));
-      if (!next) throw new Error("The company already holds every licence there is.");
+      if (!next) throw new Error("The company already holds every license there is.");
       const missing = next.requirements.filter((r) => !r.met);
       if (missing.length > 0) throw new Error(`The regulator wants: ${missing.map((r) => r.text.toLowerCase()).join("; ")}.`);
-      return { track: "regulator", title: `${LICENCE_LABELS[next.tier]} licence review`, cost: next.fee, days: next.days, reads: [], writes: ["licence"] };
+      return { track: "regulator", title: `${LICENCE_LABELS[next.tier]} license review`, cost: next.fee, days: next.days, reads: [], writes: ["licence"] };
     }
     case "capsule": {
       if (company.capsule || pendingOf(company, "capsule").length > 0) throw new Error("The company already has a capsule programme.");
-      if (!holds(company, "orbital")) throw new Error("A capsule programme needs the orbital licence first: the regulator won't look at people before orbit.");
+      if (!holds(company, "orbital")) throw new Error("A capsule programme needs the orbital license first: the regulator won't look at people before orbit.");
       return { track: "office", title: "Develop the crew capsule", cost: CAPSULE.develop.cost, days: CAPSULE.develop.days, reads: [], writes: ["capsule"] };
     }
     case "proof": {
@@ -560,7 +560,7 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
     }
     case "licence":
       company.licence = spec.tier;
-      return { summary: `${LICENCE_LABELS[spec.tier]} licence granted.`, text: `${LICENCE_LABELS[spec.tier]} licence granted on day ${company.day}.`, tone: "good" };
+      return { summary: `${LICENCE_LABELS[spec.tier]} license granted.`, text: `${LICENCE_LABELS[spec.tier]} license granted on day ${company.day}.`, tone: "good" };
     case "capsule":
       company.capsule = newCapsule(company.seed, company.day);
       return {

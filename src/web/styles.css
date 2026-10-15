@@ -277,9 +277,11 @@ svg text { font-family: var(--mono); }
 
 /* Company page */
 .tiles { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 12px; }
-.tile { padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); display: flex; flex-direction: column; gap: 2px; }
+.tile { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); display: flex; flex-direction: column; gap: 2px; }
 .tile dt { color: var(--muted); font-size: 13px; }
-.tile dd { margin: 0; font-family: var(--mono); font-size: 22px; font-weight: 600; }
+.tile dd { margin: 0; font-family: var(--mono); font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+/* A word, not a figure: the narrow face, so "Suborbital" fits the tile. */
+.tile dd.word { font-family: var(--sans); font-size: 22px; line-height: 1.2; overflow-wrap: normal; }
 .tile > span { font-size: 13px; }
 .ladder { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ladder li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; font-weight: 600; color: var(--muted); }

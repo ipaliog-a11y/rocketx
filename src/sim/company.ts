@@ -352,7 +352,7 @@ export function rename(company: Company, name: string): void {
 /** The licence an application now would be for. */
 export function licenceSpec(company: Company): TaskSpec {
   const next = nextLicence(company, reputation(company));
-  if (!next) throw new Error("The company already holds every licence there is.");
+  if (!next) throw new Error("The company already holds every license there is.");
   return { kind: "licence", tier: next.tier };
 }
 
@@ -367,7 +367,7 @@ function signingProblem(company: Company, contract: Contract, announcedOk = fals
   if (!announcedOk && company.day < contract.postedDay) return `"${contract.title}" isn't on the board yet.`;
   if (company.day > contract.deadline) return `"${contract.title}" has expired.`;
   const needs = requiredLicence(contract);
-  if (!holds(company, needs)) return `"${contract.title}" needs the ${LICENCE_LABELS[needs].toLowerCase()} licence.`;
+  if (!holds(company, needs)) return `"${contract.title}" needs the ${LICENCE_LABELS[needs].toLowerCase()} license.`;
   if ((contract.kind === "cargo" || contract.kind === "crew") && !company.capsule) return `"${contract.title}" flies the company's own capsule: develop one first.`;
   if (reputation(company) < contract.minReputation) return `${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`;
   const objection = objectionTo(company, contract);
@@ -437,7 +437,7 @@ function lossOfCrew(company: Company, contract: Contract): string[] {
   company.ledger.push({ day: company.day, category: "penalty", amount: -LOSS_OF_CREW.penalty, note: `${contract.title}: loss of crew` });
   company.record.push({ day: company.day, tag: "crew-lost", reputation: LOSS_OF_CREW.reputation, note: contract.title });
   return [
-    `The regulator revokes the crewed-flight licence. Compensation and the investigation cost ${money(LOSS_OF_CREW.penalty)}, and the record shows it: reputation ${LOSS_OF_CREW.reputation}. The company goes on, but it will have to earn the right to fly people again.`,
+    `The regulator revokes the crewed-flight license. Compensation and the investigation cost ${money(LOSS_OF_CREW.penalty)}, and the record shows it: reputation ${LOSS_OF_CREW.reputation}. The company goes on, but it will have to earn the right to fly people again.`,
   ];
 }
 
@@ -666,7 +666,7 @@ export function fly(company: Company, key: string, target: ({ contract: string }
   const abortTest = "abortTest" in target && target.abortTest === true;
   const crewed = contract?.kind === "crew";
   const needs = contract ? requiredLicence(contract) : missionLicence(mission);
-  if (!holds(company, needs)) throw new Error(needs === "crew" ? "Flying people needs the crewed-flight licence." : `Flying to orbit needs an orbital licence. Apply on the company page.`);
+  if (!holds(company, needs)) throw new Error(needs === "crew" ? "Flying people needs the crewed-flight license." : `Flying to orbit needs an orbital license. Apply on the company page.`);
   if ((abortTest || crewed || contract?.kind === "cargo") && !company.capsule) throw new Error("That flight needs the company's capsule: develop one first.");
   if (crewed) {
     const rating = crewRating(company, key, mission);
@@ -876,7 +876,7 @@ export function bid(company: Company, contractId: string, key: string): Bid {
     blockers.push(`${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`);
   }
   const needs = requiredLicence(contract);
-  if (!holds(company, needs)) blockers.push(`Needs the ${LICENCE_LABELS[needs].toLowerCase()} licence; the company holds ${LICENCE_LABELS[company.licence].toLowerCase()}.`);
+  if (!holds(company, needs)) blockers.push(`Needs the ${LICENCE_LABELS[needs].toLowerCase()} license; the company holds ${LICENCE_LABELS[company.licence].toLowerCase()}.`);
   const objection = objectionTo(company, contract);
   if (objection) blockers.push(`${contract.customer} won't sign with a record that shows ${describeTag(objection.tag)}.`);
 
@@ -993,7 +993,7 @@ function describeTag(tag: Tag): string {
 }
 
 export function status(company: Company): string {
-  const lines = [`${company.name.replace(/\.$/, "")}. Day ${company.day}. Cash ${money(company.cash)}. Reputation ${reputation(company)}. ${LICENCE_LABELS[company.licence]} licence.`];
+  const lines = [`${company.name.replace(/\.$/, "")}. Day ${company.day}. Cash ${money(company.cash)}. Reputation ${reputation(company)}. ${LICENCE_LABELS[company.licence]} license.`];
   const built = Object.entries(company.inventory).filter(([, n]) => n > 0);
   if (built.length > 0) lines.push(`  On the ground: ${built.map(([k, n]) => `${n} × ${company.designs[k]!.name}`).join(", ")}.`);
   for (const id of company.accepted) {

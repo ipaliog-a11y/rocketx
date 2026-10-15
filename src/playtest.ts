@@ -291,7 +291,7 @@ function play(seed: number, policy: Policy): Outcome {
     } else break;
   }
   if (nextLicence(company, reputation(company))?.ready) guard(company, () => applyForLicence(company));
-  if (!holds(company, "orbital")) note ||= "no orbital licence";
+  if (!holds(company, "orbital")) note ||= "no orbital license";
 
   // The orbital rocket: the preset Meridian, or one the designer bots draw themselves.
   let orbiter = "meridian";
@@ -375,7 +375,7 @@ function play(seed: number, policy: Policy): Outcome {
     console.log(`  seed ${seed} ${policy}: ${[...byCategory].map(([k, v]) => `${k} ${(v / 1000).toFixed(2)}M`).join(", ")}`);
     for (const f of company.flights) console.log(`    day ${f.day} ${f.design} ${f.mission}: ${f.outcome}${f.settlement ? ` (${f.settlement})` : ""}`);
     for (const [id, status] of Object.entries(company.closed)) if (status !== "delivered") console.log(`    contract ${id}: ${status}`);
-    console.log(`    note: ${note || "-"}, licence ${company.licence}, rep ${reputation(company)}`);
+    console.log(`    note: ${note || "-"}, license ${company.licence}, rep ${reputation(company)}`);
   }
   const flown = company.flights.filter((f) => f.design === company.designs[orbiter]?.name || (reuser !== null && f.design === company.designs[reuser]?.name));
   if (designs(policy) && flown.length > 0) {

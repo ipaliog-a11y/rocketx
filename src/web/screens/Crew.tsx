@@ -33,7 +33,7 @@ export function Crew({ company }: { company: Company }) {
             <button type="button" className="btn primary" disabled={!orbital} onClick={() => game.schedule(capsuleJob())}>
               Develop the capsule · {money(CAPSULE.develop.cost)} · {CAPSULE.develop.days} d
             </button>
-            {!orbital && <span className="muted">Needs the orbital licence first.</span>}
+            {!orbital && <span className="muted">Needs the orbital license first.</span>}
           </div>
         )}
       </section>
@@ -167,8 +167,8 @@ function strongEnough(d: { stages: Array<{ engine: { thrustVac: number }; engine
 function Licence({ company }: { company: Company }) {
   if (company.licence === "crew") {
     return (
-      <section className="card" aria-label="Crewed-flight licence">
-        <p className="label">Crewed-flight licence</p>
+      <section className="card" aria-label="Crewed-flight license">
+        <p className="label">Crewed-flight license</p>
         <span>
           <Chip tone="good">HELD</Chip> <span className="soft">Crew rotations can be signed on the Contracts page.</span>
         </span>
@@ -178,15 +178,15 @@ function Licence({ company }: { company: Company }) {
   const application = nextLicence(company, reputation(company));
   if (!application || application.tier !== "crew") {
     return (
-      <section className="card" aria-label="Crewed-flight licence">
-        <p className="label">Crewed-flight licence</p>
-        <span className="muted">After the {LICENCE_LABELS.orbital.toLowerCase()} licence.</span>
+      <section className="card" aria-label="Crewed-flight license">
+        <p className="label">Crewed-flight license</p>
+        <span className="muted">After the {LICENCE_LABELS.orbital.toLowerCase()} license.</span>
       </section>
     );
   }
   return (
-    <section className="card" aria-label="Crewed-flight licence">
-      <p className="label">Crewed-flight licence · apply from Home › Company</p>
+    <section className="card" aria-label="Crewed-flight license">
+      <p className="label">Crewed-flight license · apply from Home › Company</p>
       <ul className="list" style={{ gap: 4 }}>
         {application.requirements.map((r) => (
           <li key={r.text}>

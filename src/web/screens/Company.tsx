@@ -19,7 +19,7 @@ type HomeTab = "today" | "company" | "work" | "ledger";
 /** What each tab is for, behind the ⓘ beside the company's name. */
 const HOME_INTROS: Record<HomeTab, string> = {
   today: "What needs you, most pressing first: each line links to where it's dealt with. Below it, each signed flight's road to the pad, and Port Avery: every facility shows what it's doing and opens where it's run.",
-  company: "Where the company stands: its numbers, the licence ladder and what the next licence wants, where the money went, the fleet and achievements.",
+  company: "Where the company stands: its numbers, the license ladder and what the next license wants, where the money went, the fleet and achievements.",
   work: "Each track works one job at a time per unit, and the tracks work side by side. Book work with “Add to plan”, then advance the calendar once: results land on the day each job finishes. Jobs on the same hardware keep the order they were booked in.",
   ledger: "Every payment in and out, and every flight and its outcome.",
 };
@@ -145,7 +145,7 @@ function Overview({ company, list }: { company: CompanyState; list: Achievement[
         <Tile icon="money" label="Cash" value={money(company.cash)} tone={company.cash < 2_000 ? "bad" : undefined} />
         <Tile icon="day" label="Day" value={String(company.day)} sub={shortDate(company.day)} />
         <Tile icon="reputation" label="Reputation" value={signed(rep)} tone={rep > 0 ? "good" : rep < 0 ? "bad" : undefined} />
-        <Tile icon="licence" label="Licence" value={LICENCE_LABELS[company.licence]} />
+        <Tile icon="licence" label="License" value={LICENCE_LABELS[company.licence]} word />
         <Tile icon="factory" label="Rockets built" value={String(built)} />
         <Tile icon="hangar" label="In the hangar" value={String(owned)} />
         <Tile icon="launch" label="Launches" value={String(company.flights.length)} />
@@ -192,14 +192,14 @@ function Overview({ company, list }: { company: CompanyState; list: Achievement[
   );
 }
 
-function Tile({ icon, label, value, sub, tone }: { icon: IconName; label: string; value: string; sub?: string; tone?: "good" | "bad" }) {
+function Tile({ icon, label, value, sub, tone, word }: { icon: IconName; label: string; value: string; sub?: string; tone?: "good" | "bad"; word?: boolean }) {
   return (
     <div className="tile">
       <dt className="with-icon">
         <Icon name={icon} size="sm" />
         {label}
       </dt>
-      <dd className={tone}>{value}</dd>
+      <dd className={[tone, word ? "word" : ""].filter(Boolean).join(" ") || undefined}>{value}</dd>
       {sub && <span className="muted">{sub}</span>}
     </div>
   );
@@ -209,8 +209,8 @@ function LicenceCard({ company, rep }: { company: CompanyState; rep: number }) {
   const application = nextLicence(company, rep);
   const held = licenceRank(company.licence);
   return (
-    <section className="card" aria-label="Launch licence">
-      <p className="label">Launch licence</p>
+    <section className="card" aria-label="Launch license">
+      <p className="label">Launch license</p>
       <ol className="ladder">
         {LICENCE_ORDER.map((tier, i) => (
           <li key={tier} className={i <= held ? "held" : i === held + 1 ? "next" : undefined}>
@@ -227,7 +227,7 @@ function LicenceCard({ company, rep }: { company: CompanyState; rep: number }) {
       {application ? (
         <>
           <span className="soft">
-            For the <strong>{LICENCE_LABELS[application.tier].toLowerCase()}</strong> licence the regulator wants:
+            For the <strong>{LICENCE_LABELS[application.tier].toLowerCase()}</strong> license the regulator wants:
           </span>
           <ul className="list">
             {application.requirements.map((r) => (
@@ -252,7 +252,7 @@ function LicenceCard({ company, rep }: { company: CompanyState; rep: number }) {
           </div>
         </>
       ) : (
-        <span className="good">The company holds every licence there is.</span>
+        <span className="good">The company holds every license there is.</span>
       )}
     </section>
   );

@@ -71,7 +71,7 @@ test("whether an abort saves the crew follows the abort system's truth", () => {
 test("the capsule is developed in the office, and the pad abort finds a misfiring tower that a fix then clears", () => {
   const c = company();
   c.licence = "suborbital";
-  assert.throws(() => book(c, { kind: "capsule" }), /orbital licence/);
+  assert.throws(() => book(c, { kind: "capsule" }), /orbital license/);
   c.licence = "orbital";
   runTask(c, { kind: "capsule" });
   assert.ok(c.capsule);

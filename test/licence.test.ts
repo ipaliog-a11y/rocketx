@@ -21,9 +21,9 @@ test("a new company holds only the suborbital licence", () => {
   const c = company();
   assert.equal(c.licence, "suborbital");
   assert.equal(c.name, "Test Rocketry");
-  assert.throws(() => accept(c, "leo-150"), /needs the orbital licence/);
+  assert.throws(() => accept(c, "leo-150"), /needs the orbital license/);
   build(c, "meridian");
-  assert.throws(() => fly(c, "meridian", { mission: LEO_300 }), /orbital licence/);
+  assert.throws(() => fly(c, "meridian", { mission: LEO_300 }), /orbital license/);
 });
 
 test("the orbital licence takes two flights above 100 km, a fee and a review", () => {
