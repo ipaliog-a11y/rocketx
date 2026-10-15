@@ -187,3 +187,16 @@
 @media (max-width: 600px) {
   .ed .schematic text { font-size: 24px; }
 }
+
+/* The sizing guide under the vehicle sheet: a full-width panel, not the sheet's grid. */
+.ed.ed-guide { display: block; margin-top: 16px; }
+.ed .ed-guide-head { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--ed-grid); }
+.ed .ed-guide-form { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; align-items: center; max-width: 640px; }
+.ed .ed-guide-form .verb { grid-column: 1 / -1; }
+.ed .ed-guide-results { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ed .ed-guide-card { padding: 14px 16px; border-right: 1px solid var(--ed-grid); display: flex; flex-direction: column; gap: 10px; background: transparent; border-radius: 0; border-top: 0; border-left: 0; border-bottom: 0; }
+.ed .ed-guide-card:last-child { border-right: 0; }
+@media (max-width: 900px) {
+  .ed .ed-guide-results { grid-template-columns: minmax(0, 1fr); }
+  .ed .ed-guide-card { border-right: 0; border-bottom: 1px solid var(--ed-grid); }
+}

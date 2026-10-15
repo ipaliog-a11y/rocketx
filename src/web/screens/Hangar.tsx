@@ -8,7 +8,7 @@ import { Chip, Facts, Stack, Tabs } from "../components/Bits.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
 import { game } from "../game.ts";
 import { buildJob, retuneTestJob, testFlightJob } from "../jobs.ts";
-import { DrawingBoard } from "./DrawingBoard.tsx";
+import { VehicleDesign } from "./VehicleDesign.tsx";
 import { Simulator, type SimFocus } from "./Simulator.tsx";
 import type { Route } from "../nav.ts";
 import { km, money } from "../format.ts";
@@ -66,7 +66,7 @@ export function Rockets({ company, route }: { company: Company; route: Route }) 
       )}
       {tab === "design" && <Design company={company} designKey={company.designs[key] ? key : "meridian"} simulate={(k) => (setSimFocus({ design: k }), setTab("sim"))} />}
       {tab === "sim" && <Simulator key={JSON.stringify(simFocus ?? {})} company={company} focus={simFocus} />}
-      {tab === "board" && <DrawingBoard company={company} job={route.tab === "board" ? route.contract : undefined} drawn={(k) => (setKey(k), setTab("design"))} />}
+      {tab === "board" && <VehicleDesign company={company} job={route.tab === "board" ? route.contract : undefined} drawn={(k) => (setKey(k), setTab("design"))} />}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { EngineDesign } from "../sim/enginePhysics.ts";
+import { proofQuote } from "../sim/structures.ts";
 import { buyUnit, cancelTask, designSpec, runTask, TRACKS, type Task, type TaskSpec, type Track } from "../sim/schedule.ts";
 import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, PAD_ABORT, type AbortFlaw } from "../sim/crew.ts";
 import type { Contract } from "../sim/contracts.ts";
@@ -141,6 +142,24 @@ export function lineJob(company: Company): Job | null {
     caveat: `It takes orders from day ${company.day + next.days}, after ${next.days} days of setting up.`,
     run: (c) => buyLine(c),
   };
+}
+
+/** Proof-test a design's shells: a test article loaded until it buckles shows the real knock-down. */
+export function proofJob(company: Company, key: string): Job {
+  const v = company.designs[key]!;
+  const untested = [...new Set(v.structure?.stages.map((s) => s.key) ?? [])].filter((k) => !company.campaign.structureKnowledge?.[k]).length;
+  const q = proofQuote(Math.max(...v.stages.map((s) => s.diameter)));
+  return trackJob(
+    {
+      title: `Proof-test the ${v.name}'s shells?`,
+      doing: `Proof test: loading a ${v.name} test article until it buckles`,
+      verb: "Test",
+      days: q.days,
+      cost: q.cost * Math.max(1, untested),
+      caveat: "One test article per untested shell, loaded to failure on the stand. It shows how much of the drawn q·α budget is real.",
+    },
+    () => ({ kind: "proof", design: key }),
+  );
 }
 
 export function designJob(spec: VehicleSpec, quote: DesignQuote, onDone?: (key: string) => void): Job {

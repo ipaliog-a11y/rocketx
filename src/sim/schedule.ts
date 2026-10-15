@@ -7,6 +7,7 @@ import { holds, LICENCE_LABELS, nextLicence, type Licence } from "./licence.ts";
 import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, fixAbortFlaw, newCapsule, PAD_ABORT, padAbort, type AbortFlaw } from "./crew.ts";
 import { designEngine, sameDesign, type EngineDesign } from "./enginePhysics.ts";
 import { proofQuote, rollStructureTruths } from "./structures.ts";
+import { MATERIALS } from "./geometry.ts";
 import { assembleEngine, developmentCost, INJECTORS, NOZZLES, OWNER, parsePartKey, partKeys, partLabel, partsProblems, type EngineParts, type InjectorOption, type NozzleOption } from "./parts.ts";
 import {
   applyFix,
@@ -295,7 +296,11 @@ export function designSpec(company: Company, spec: VehicleSpec): TaskSpec {
   if (problems.length > 0) throw new Error(problems.join(" "));
   const vehicle = assembleVehicle({ ...spec, name: spec.name.trim() }, engines);
   const quote = designQuote(spec, [...Object.values(company.designs), ...pendingDesigns(company)]);
-  const tooling = [...quote.newTanks.map((d) => `${d} m tank tooling`), ...(quote.newFairing ? [`${spec.fairingDiameter} m fairing tooling`] : [])];
+  const tooling = [
+    ...quote.newTanks.map((d) => `${d} m tank tooling`),
+    ...(quote.newFairing ? [`${spec.fairingDiameter} m fairing tooling`] : []),
+    ...(quote.newMaterials ?? []).map((m) => `${MATERIALS[m].label} qualification`),
+  ];
   return { kind: "design", vehicle, tooling, cost: quote.cost, days: quote.days };
 }
 
