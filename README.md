@@ -96,6 +96,8 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 - An engine identical to one the company already has (same parts, same size) can't be developed again
 - Engine work scales with the chamber. Developing a part, fixing it, the propellant a firing burns and the test engine a failure destroys all cost less on a 9 kN chamber than on a 250 kN one (a 35 kN chamber is the reference). A destroyed test engine costs 60% of its build price (pumps and valves are salvaged) and 12–18 days on its stand. At 35 kN a fix is $90–220k and 12–25 days: about half what it was. Developing a new engine with one new part takes about two to three weeks
 - Achievements worked out from the record: first firing, first flight above 100 km, first orbit, the orbital licence, a fleet of five, $10M earned, a completed series and so on
+- Reusable boosters. A two-stage design on the drawing board can bring its booster back, to a drone ship downrange or to the pad, with landing legs (+6% of the booster's dry mass), grid fins and a base heat shield. The booster cuts off with a reserve of its propellant still in the tanks; the upper stage flies on without it. After separation the booster flies its own path home on the same Earth, gravity and air. It flips, then (to the pad) burns back until its predicted landing, drag included, is the pad. It burns again on the way down until it's slow enough to meet the air at the shield's limit: the Allen–Eggers peak-heating estimate from its mass and flight-path angle. Grid fins steer it toward the pad, and a last burn lands it, leaning to close the gap. Every burn after the first is a relight, so an engine whose relight truth fails can't come home. It is lost if it runs dry, burns up, lands harder than 6 m/s or misses the pad or the heaving deck. A drone ship landing needs about 12% of the booster's propellant, the pad about 20%. On a small rocket that much reserve stages it so low and slow that the upper stage can't hold attitude in the air. The board plots the paper landing margin against the reserve, with both redlines
+- A booster that lands keeps its serial (B1001…), its flights and wear nobody sees. A hot entry or a hard touchdown wears it faster. The new booster hangar turns it around (12% of its build cost, 20 days) or overhauls it (30%, 45 days, takes out a third of the wear and measures what's left). Then a new upper stage is stacked on it for the upper stage's cost plus $100k of integration. Every booster has a hidden life of about ten flights, ±35%; past three-quarters of it, its engines can fail on the way up. Crew and series customers won't fly on a booster that has flown until the company has three clean reflights
 
 ## Balance
 
@@ -133,7 +135,8 @@ Not modelled yet: loans or investors, and the rest of DESIGN.md's later domains 
 5. ~~New regimes, part b: crew~~ (done)
 6. ~~Mobile-first UI overhaul~~ (done)
 7. ~~Design physics: continuous engines (A), vehicles with built-up drag, Barrowman stability and shells (B), guidance and control with wind, GNC tests and Monte Carlo (C)~~ (done)
-8. After that: reusable boosters (land and refurbish), the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
+8. ~~Reusable boosters: the flight home, landing, the fleet, the hangar and re-stacking~~ (done)
+9. After that: the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
 
 ## Playing in the browser
 

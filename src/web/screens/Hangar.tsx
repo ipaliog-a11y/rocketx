@@ -92,6 +92,18 @@ function LineUp({ company, open }: { company: Company; open: (key: string) => vo
                   Δv {(dv / 1000).toFixed(2)} km/s
                 </span>
                 {stock > 0 && <Chip tone="good">{stock} BUILT</Chip>}
+                {(() => {
+                  // A design that brings its booster back: how its boosters have fared.
+                  const fleet = (company.boosters ?? []).filter((b) => b.design === key);
+                  if (fleet.length === 0) return null;
+                  const flights = fleet.reduce((n, b) => n + b.flights, 0);
+                  const flying = fleet.filter((b) => b.status !== "lost" && b.status !== "retired").length;
+                  return (
+                    <span className="mono soft" style={{ fontSize: 13 }}>
+                      {fleet.length} booster{fleet.length === 1 ? "" : "s"} · {flights} flight{flights === 1 ? "" : "s"} · {flying} in service
+                    </span>
+                  );
+                })()}
               </span>
             </button>
           );
