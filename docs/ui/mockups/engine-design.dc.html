@@ -1,0 +1,451 @@
+<!doctype html>
+<!--
+  RocketX UI mockup: Design screen, engine ENG-01 KESTREL-1.
+  Reference for implementation, not production code. Follows UI-DESIGN.md.
+
+  Format: a "Design Component" file from a design canvas. Markup inside <x-dc>
+  is the layout; {{holes}} are filled by renderVals() in the script at the bottom,
+  <sc-for> repeats a block per list item. Port the layout, styles and behaviour
+  into src/web; do not ship this file or its support.js runtime.
+
+  The engine model in model() uses invented placeholder physics.
+  Replace it with the real sim in src/sim.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RocketX Engine Design</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B1118}
+a{color:#7C8C99}a:hover{color:#C9D6E0}
+button:focus-visible,input:focus-visible,a:focus-visible{outline:2px solid #F2A93B;outline-offset:2px}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type=number]::-webkit-inner-spin-button{opacity:.6}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; background: #0B1118; color: #C9D6E0; font-family: 'IBM Plex Sans Condensed', sans-serif; display: flex; flex-direction: column; overflow: hidden">
+
+<div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 32px; padding: 0 16px; border-bottom: 1px solid #2E5A66">
+<span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 14px; letter-spacing: 0.22em; color: #C9D6E0">ROCKETX</span>
+<nav aria-label="Modules" style="display: flex; gap: 24px; height: 100%">
+<a href="#design" aria-current="page" style="display: flex; align-items: center; height: 100%; box-sizing: border-box; border-bottom: 2px solid #5FD4E6; color: #C9D6E0; text-decoration: none; font-size: 13px; font-weight: 600; letter-spacing: 0.14em">DESIGN</a>
+<a href="#research" style="display: flex; align-items: center; height: 100%; text-decoration: none; font-size: 13px; font-weight: 500; letter-spacing: 0.14em">RESEARCH</a>
+<a href="#stand" style="display: flex; align-items: center; height: 100%; text-decoration: none; font-size: 13px; font-weight: 500; letter-spacing: 0.14em">TEST STAND</a>
+<a href="#contracts" style="display: flex; align-items: center; height: 100%; text-decoration: none; font-size: 13px; font-weight: 500; letter-spacing: 0.14em">CONTRACTS</a>
+<a href="#flight" style="display: flex; align-items: center; height: 100%; text-decoration: none; font-size: 13px; font-weight: 500; letter-spacing: 0.14em">FLIGHT LOG</a>
+</nav>
+<div style="margin-left: auto; display: flex; gap: 28px; font-family: 'IBM Plex Mono', monospace; font-size: 13px">
+<span><span style="color: #7C8C99">DAY </span>214 · Y2 Q3</span>
+<span><span style="color: #7C8C99">CASH </span>$4.82M</span>
+<span><span style="color: #7C8C99">BURN </span>−$61k/d</span>
+<span><span style="color: #7C8C99">STAND-2 </span><span style="color: #5FD4E6">{{standStatus}}</span></span>
+</div>
+</div>
+
+<div style="height: 680px; flex-shrink: 0; display: flex">
+
+<div style="width: 260px; flex-shrink: 0; border-right: 1px solid #2E5A66; display: flex; flex-direction: column">
+<div style="padding: 14px 16px 10px">
+<div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 500; letter-spacing: 0.14em; color: #7C8C99"><span>PART TREE</span><span>ENG-01</span></div>
+<div style="margin-top: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #C9D6E0">KESTREL-1 · GG CYCLE</div>
+</div>
+<div style="display: flex; flex-direction: column">
+<sc-for list="{{parts}}" as="part" hint-placeholder-count="4">
+<button type="button" onClick="{{part.pick}}" aria-pressed="{{part.pressed}}" style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px 0 13px; border: 0; border-left: 3px solid {{part.bar}}; background: {{part.rowBg}}; color: {{part.nameColor}}; text-align: left; cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 13px">
+<span style="color: #7C8C99; width: 40px">{{part.id}}</span>
+<span style="flex-grow: 1">{{part.name}}</span>
+<span style="color: {{part.stColor}}; font-size: 12px">{{part.status}}</span>
+</button>
+</sc-for>
+</div>
+
+<div style="padding: 20px 16px 8px; border-top: 1px solid #1A2633; margin-top: 12px">
+<div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 500; letter-spacing: 0.14em; color: #7C8C99"><span>SUPPORT SYSTEMS</span><span>VEH-01</span></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 0 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #7C8C99">
+<div style="display: flex; gap: 10px; height: 26px; align-items: center"><span style="width: 52px">GNC-1</span><span>GUIDANCE</span></div>
+<div style="display: flex; gap: 10px; height: 26px; align-items: center"><span style="width: 52px">TLM-1</span><span>TELEMETRY</span></div>
+<div style="display: flex; gap: 10px; height: 26px; align-items: center"><span style="width: 52px">TCS-1</span><span>THERMAL CONTROL</span></div>
+<div style="display: flex; gap: 10px; height: 26px; align-items: center"><span style="width: 52px">FTS-1</span><span>FLIGHT TERMINATION</span></div>
+<div style="font-family: 'IBM Plex Sans Condensed', sans-serif; font-size: 12px; letter-spacing: 0.1em; margin-top: 4px">EDIT IN VEHICLE MODULE</div>
+</div>
+
+<div style="margin-top: auto; padding: 14px 16px 16px; border-top: 1px solid #1A2633">
+<div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 500; letter-spacing: 0.14em; color: #7C8C99; margin-bottom: 8px"><span>READINESS</span><span>REV {{draftRev}}</span></div>
+<sc-for list="{{checks}}" as="chk" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid #1A2633">
+<div style="display: flex; justify-content: space-between; font-size: 12px; letter-spacing: 0.06em; color: #7C8C99"><span>{{chk.label}}</span><span style="font-family: 'IBM Plex Mono', monospace; color: {{chk.col}}">{{chk.st}}</span></div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #C9D6E0">{{chk.val}}</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<div style="height: 36px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #1A2633; font-size: 12px; font-weight: 500; letter-spacing: 0.14em; color: #7C8C99">
+<span>ENG-01 / SCHEMATIC</span>
+<span>SELECT A PART TO EDIT</span>
+</div>
+<div style="flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background-color: #0B1118; background-image: linear-gradient(#141E29 1px, transparent 1px), linear-gradient(90deg, #141E29 1px, transparent 1px); background-size: 8px 8px">
+<svg viewBox="0 0 600 560" width="525" height="490" role="img" aria-label="Engine schematic of KESTREL-1: turbopumps, turbine, combustion chamber and nozzle" style="display: block; overflow: visible">
+<path d="M4 20 V4 H20 M580 4 H596 V20 M596 540 V556 H580 M20 556 H4 V540" style="fill: none; stroke: #2E5A66"></path>
+<path d="M200 10 V116 M400 10 V116" style="fill: none; stroke: #5FD4E6"></path>
+<text x="210" y="26" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">LOX ▼</text>
+<text x="410" y="26" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">RP-1 ▼</text>
+
+<g onClick="{{pickTurbine}}" style="cursor: pointer">
+<path d="M200 70 H284 M400 70 H316" style="fill: none; stroke: {{c.turbine}}; stroke-width: {{w.turbine}}; stroke-dasharray: 3 3"></path>
+<rect x="284" y="52" width="32" height="34" style="fill: #0B1118; stroke: {{c.turbine}}; stroke-width: {{w.turbine}}"></rect>
+<path d="M300 86 V130" style="fill: none; stroke: {{c.turbine}}; stroke-width: {{w.turbine}}"></path>
+<path d="M234 150 H366" style="fill: none; stroke: {{c.turbine}}; stroke-width: {{w.turbine}}; stroke-dasharray: 8 4"></path>
+<rect x="268" y="130" width="64" height="40" style="fill: #0B1118; stroke: {{c.turbine}}; stroke-width: {{w.turbine}}"></rect>
+<path d="M278 134 L286 166 M292 134 L300 166 M306 134 L314 166 M320 134 L328 166" style="fill: none; stroke: {{c.turbine}}"></path>
+<path d="M332 140 H352 V96 H392 A8 8 0 0 1 408 96 H520 V176" style="fill: none; stroke: {{c.turbine}}; stroke-width: {{w.turbine}}"></path>
+<path d="M514 168 L520 180 L526 168" style="fill: none; stroke: {{c.turbine}}"></path>
+<text x="326" y="48" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">GG-1</text>
+<text x="528" y="176" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">EXH</text>
+<text x="262" y="196" style="fill: #C9D6E0; font-family: 'IBM Plex Mono', monospace; font-size: 14px">TT-1 {{tt}} K</text>
+<text x="262" y="214" style="display: {{lim.turbine}}; fill: #FF4D4D; font-family: 'IBM Plex Mono', monospace; font-size: 14px">▲ LIMIT</text>
+</g>
+
+<g onClick="{{pickPumps}}" style="cursor: pointer">
+<path d="M200 184 V250 H250 M400 184 V250 H350" style="fill: none; stroke: {{c.pumps}}; stroke-width: {{w.pumps}}"></path>
+<circle cx="200" cy="150" r="34" style="fill: #0B1118; stroke: {{c.pumps}}; stroke-width: {{w.pumps}}"></circle>
+<circle cx="400" cy="150" r="34" style="fill: #0B1118; stroke: {{c.pumps}}; stroke-width: {{w.pumps}}"></circle>
+<path d="M182 132 L218 168 M218 132 L182 168 M382 132 L418 168 M418 132 L382 168" style="fill: none; stroke: {{c.pumps}}"></path>
+<text x="96" y="146" style="fill: #C9D6E0; font-family: 'IBM Plex Mono', monospace; font-size: 14px">OP-1</text>
+<text x="96" y="164" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">{{pd}} bar</text>
+<text x="446" y="146" style="fill: #C9D6E0; font-family: 'IBM Plex Mono', monospace; font-size: 14px">FP-1</text>
+<text x="446" y="164" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">{{pd}} bar</text>
+<text x="96" y="200" style="display: {{lim.pumps}}; fill: #FF4D4D; font-family: 'IBM Plex Mono', monospace; font-size: 14px">▲ LIMIT</text>
+</g>
+
+<g onClick="{{pickChamber}}" style="cursor: pointer">
+<path d="M240 250 H360" style="fill: none; stroke: {{c.chamber}}; stroke-width: 3"></path>
+<path d="M250 254 H350 V340 L322 382 H278 L250 340 Z" style="fill: #0B1118; stroke: {{c.chamber}}; stroke-width: {{w.chamber}}"></path>
+<path d="M262 262 V334 M338 262 V334" style="fill: none; stroke: #2E5A66; stroke-dasharray: 2 4"></path>
+<text x="368" y="300" style="fill: #C9D6E0; font-family: 'IBM Plex Mono', monospace; font-size: 14px">CC-1</text>
+<text x="368" y="318" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">{{pc}} bar</text>
+</g>
+
+<path d="{{nzBase.path}}" style="display: {{diffDisp}}; fill: none; stroke: #7C8C99; stroke-dasharray: 5 4"></path>
+<g onClick="{{pickNozzle}}" style="cursor: pointer">
+<path d="{{nz.area}}" style="fill: transparent; stroke: none"></path>
+<path d="{{nz.path}}" style="fill: none; stroke: {{c.nozzle}}; stroke-width: {{w.nozzle}}"></path>
+<path d="{{nz.exit}}" style="fill: none; stroke: {{c.nozzle}}; stroke-dasharray: 2 4"></path>
+<path d="{{nz.dim}}" style="fill: none; stroke: #7C8C99"></path>
+<text x="{{nz.dimX}}" y="{{nz.dimY}}" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">Ø {{nz.dia}} m</text>
+<text x="{{nz.lx}}" y="{{nz.ly}}" style="fill: #C9D6E0; font-family: 'IBM Plex Mono', monospace; font-size: 14px">NZ-1</text>
+<text x="{{nz.lx}}" y="{{nz.ly2}}" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 14px">ε {{epsStr}}</text>
+<text x="{{nz.lx}}" y="{{nz.ly3}}" style="display: {{lim.nozzle}}; fill: #FF4D4D; font-family: 'IBM Plex Mono', monospace; font-size: 14px">▲ SEPARATION</text>
+</g>
+</svg>
+</div>
+
+<div style="height: 148px; flex-shrink: 0; border-top: 1px solid #2E5A66; display: grid; grid-template-columns: 300px 200px minmax(0, 1fr)">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-right: 1px solid #1A2633">
+<div style="padding: 12px 16px; border-bottom: 1px solid #1A2633; border-right: 1px solid #1A2633"><div style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99">DWG</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">ENG-01-KS1</div></div>
+<div style="padding: 12px 16px; border-bottom: 1px solid #1A2633"><div style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99">REVISION</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">{{revLabel}}</div></div>
+<div style="padding: 12px 16px; border-bottom: 1px solid #1A2633; border-right: 1px solid #1A2633"><div style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99">DRAWN</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">CHIEF ENG</div></div>
+<div style="padding: 12px 16px; border-bottom: 1px solid #1A2633"><div style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99">SCALE</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">1:20</div></div>
+<div style="padding: 12px 16px; border-right: 1px solid #1A2633"><div style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99">DATE</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">D-214</div></div>
+<div style="padding: 12px 16px"><div style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99">SHEET</div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">1 / 4</div></div>
+</div>
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; border-right: 1px solid #1A2633">
+<div style="border: 2px solid {{stamp.col}}; color: {{stamp.col}}; padding: 6px 14px; transform: rotate(-4deg); font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 16px; letter-spacing: 0.16em">{{stamp.text}}</div>
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8C99">{{stamp.sub}}</div>
+</div>
+<div style="display: flex; flex-direction: column; justify-content: center; gap: 0; padding: 0 16px">
+<button type="button" onClick="{{toggleDiff}}" aria-pressed="{{diffPressed}}" style="height: 44px; display: flex; align-items: center; justify-content: space-between; border: 0; border-bottom: 1px solid #1A2633; background: transparent; color: #C9D6E0; padding: 0 4px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.06em"><span>DIFF VS REV {{rev}}</span><span style="color: #7C8C99">{{diffState}}</span></button>
+<button type="button" onClick="{{commit}}" disabled="{{commitDisabled}}" style="height: 44px; display: flex; align-items: center; justify-content: space-between; border: 0; border-bottom: 1px solid #1A2633; background: transparent; color: #5FD4E6; padding: 0 4px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.06em"><span>COMMIT REV {{draftRev}}</span><span style="color: #7C8C99">{{commitNote}}</span></button>
+<button type="button" onClick="{{send}}" disabled="{{sendDisabled}}" style="height: 44px; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; color: #C9D6E0; padding: 0 4px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.06em"><span>{{sendLabel}}</span><span style="color: #7C8C99">{{sendNote}}</span></button>
+</div>
+</div>
+</div>
+
+<div style="width: 360px; flex-shrink: 0; border-left: 1px solid #2E5A66; box-sizing: border-box; padding: 14px 20px 16px; display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 500; letter-spacing: 0.14em; color: #7C8C99"><span>PARAMETER STRIP</span><span>{{sel.id}}</span></div>
+<div>
+<div style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99">{{sel.name}} · {{sel.param}}</div>
+<div style="display: flex; align-items: baseline; gap: 8px; margin-top: 4px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 40px; font-weight: 500; color: #F2A93B; line-height: 1.1">{{sel.valStr}}</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #7C8C99">{{sel.unit}}</span>
+<span style="margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8C99">{{sel.delta}}</span>
+</div>
+</div>
+<div style="display: flex; gap: 16px; align-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C8C99">
+<span style="display: flex; align-items: center; gap: 6px"><svg width="18" height="4" aria-hidden="true"><path d="M0 2 H18" style="stroke: #5FD4E6; stroke-width: 2"></path></svg>{{pl.la}}</span>
+<span style="display: {{pl.lbDisp}}; align-items: center; gap: 6px"><svg width="18" height="4" aria-hidden="true"><path d="M0 2 H18" style="stroke: #5FD4E6; stroke-width: 2; stroke-dasharray: 4 3"></path></svg>{{pl.lb}}</span>
+<span style="margin-left: auto; color: #F2A93B">○ NOW</span>
+</div>
+<svg viewBox="0 0 320 172" width="320" height="172" role="img" aria-label="Trade-off curve for {{sel.param}}" style="display: block; overflow: visible">
+<path d="M44 12 V150 H314" style="fill: none; stroke: #2E5A66"></path>
+<path d="M44 81 H314 M134 12 V150 M224 12 V150" style="fill: none; stroke: #1A2633"></path>
+<line x1="{{pl.r1.x}}" y1="12" x2="{{pl.r1.x}}" y2="150" style="display: {{pl.r1.disp}}; stroke: #FF4D4D; stroke-dasharray: 4 3"></line>
+<text x="{{pl.r1.lx}}" y="26" style="display: {{pl.r1.disp}}; text-anchor: {{pl.r1.anchor}}; fill: #FF4D4D; font-family: 'IBM Plex Mono', monospace; font-size: 12px">▲ {{pl.r1.label}}</text>
+<line x1="{{pl.r2.x}}" y1="12" x2="{{pl.r2.x}}" y2="150" style="display: {{pl.r2.disp}}; stroke: #FF4D4D; stroke-dasharray: 1 3"></line>
+<text x="{{pl.r2.lx}}" y="42" style="display: {{pl.r2.disp}}; text-anchor: {{pl.r2.anchor}}; fill: #FF4D4D; font-family: 'IBM Plex Mono', monospace; font-size: 12px">▲ {{pl.r2.label}}</text>
+<path d="{{pl.b}}" style="display: {{pl.bDisp}}; fill: none; stroke: #5FD4E6; stroke-width: 1.5; stroke-dasharray: 4 3"></path>
+<path d="{{pl.a}}" style="fill: none; stroke: #5FD4E6; stroke-width: 1.5"></path>
+<line x1="{{pl.mx}}" y1="12" x2="{{pl.mx}}" y2="150" style="stroke: #F2A93B; stroke-dasharray: 1 3"></line>
+<circle cx="{{pl.mx}}" cy="{{pl.my}}" r="5" style="fill: #0B1118; stroke: #F2A93B; stroke-width: 2"></circle>
+<circle cx="{{pl.mx}}" cy="{{pl.myB}}" r="3.5" style="display: {{pl.bDisp}}; fill: #0B1118; stroke: #F2A93B; stroke-width: 1.5"></circle>
+<text x="38" y="18" style="text-anchor: end; fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 12px">{{pl.yhi}}</text>
+<text x="38" y="152" style="text-anchor: end; fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 12px">{{pl.ylo}}</text>
+<text x="44" y="168" style="fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 12px">{{sel.min}}</text>
+<text x="314" y="168" style="text-anchor: end; fill: #7C8C99; font-family: 'IBM Plex Mono', monospace; font-size: 12px">{{sel.max}} {{sel.unit}}</text>
+</svg>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<label for="prm" style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99">ADJUST {{sel.sym}}</label>
+<input id="prm" type="range" min="{{sel.min}}" max="{{sel.max}}" step="{{sel.step}}" value="{{sel.val}}" onChange="{{setParam}}" style="width: 100%; accent-color: #F2A93B; margin: 0; height: 24px">
+<div style="display: flex; align-items: center; gap: 10px">
+<input type="number" aria-label="{{sel.param}} value" min="{{sel.min}}" max="{{sel.max}}" step="{{sel.step}}" value="{{sel.val}}" onChange="{{setParam}}" style="width: 120px; height: 36px; box-sizing: border-box; padding: 0 8px; background: #111A24; border: 1px solid #2E5A66; color: #C9D6E0; font-family: 'IBM Plex Mono', monospace; font-size: 14px">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #7C8C99">{{sel.unit}}</span>
+</div>
+</div>
+<div style="display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid #1A2633; border-bottom: 1px solid #1A2633">
+<span style="font-size: 12px; letter-spacing: 0.12em; color: #7C8C99; padding-top: 1px">INFO</span>
+<span style="font-size: 14px; color: #C9D6E0; line-height: 1.35">{{sel.info}}</span>
+</div>
+<div style="display: flex; flex-direction: column">
+<sc-for list="{{specs}}" as="sp" hint-placeholder-count="3">
+<div style="display: flex; justify-content: space-between; height: 26px; align-items: center; font-family: 'IBM Plex Mono', monospace; font-size: 13px"><span style="color: #7C8C99">{{sp.k}}</span><span>{{sp.v}}</span></div>
+</sc-for>
+</div>
+</div>
+</div>
+
+<div style="height: 140px; flex-shrink: 0; border-top: 1px solid #2E5A66; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr))">
+<sc-for list="{{readouts}}" as="r" hint-placeholder-count="7">
+<div style="padding: 14px 16px; border-right: 1px solid #1A2633; display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; font-weight: 500; letter-spacing: 0.14em; color: #7C8C99">{{r.k}}</div>
+<div style="display: flex; align-items: baseline; gap: 6px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 30px; color: {{r.col}}">{{r.v}}</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #7C8C99">{{r.u}}</span></div>
+<div style="height: 2px; background: #1A2633; position: relative"><div style="position: absolute; left: 0; top: 0; height: 2px; width: {{r.pct}}; background: {{r.col}}"></div></div>
+<div style="display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 12px"><span style="color: #7C8C99">{{r.delta}}</span><span style="color: #FF4D4D">{{r.tag}}</span></div>
+</div>
+</sc-for>
+</div>
+
+<div style="height: 36px; flex-shrink: 0; border-top: 1px solid #2E5A66; display: flex; align-items: center; gap: 6px; padding: 0 16px; font-family: 'IBM Plex Mono', monospace; font-size: 13px">
+<span style="color: #5FD4E6">{{log}}</span>
+<span aria-hidden="true" style="width: 8px; height: 15px; background: #5FD4E6"></span>
+<span style="margin-left: auto; color: #7C8C99">MODEL KS-SIM 0.4 · ±3 % UNTIL TESTED</span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    var p0 = { eps: 24, pc: 97, tt: 820, pd: 140 };
+    this.state = { sel: 'nozzle', p: p0, base: p0, rev: 'C', diff: false, queued: false, log: '> open eng-01 rev c   · stand-2 run T-0412 loaded' };
+  }
+  defs() {
+    return [
+      { id: 'NZ-1', key: 'eps', part: 'nozzle', name: 'NOZZLE', param: 'EXPANSION RATIO', sym: 'ε', unit: ':1', min: 5, max: 80, step: 0.5, dec: 1, info: 'Bigger bell: more vacuum Isp, separates at sea level.' },
+      { id: 'CC-1', key: 'pc', part: 'chamber', name: 'CHAMBER', param: 'CHAMBER PRESSURE', sym: 'Pc', unit: 'bar', min: 40, max: 250, step: 1, dec: 0, info: 'Higher pressure: more thrust, demands stronger pumps.' },
+      { id: 'TT-1', key: 'tt', part: 'turbine', name: 'TURBINE', param: 'INLET TEMPERATURE', sym: 'T0', unit: 'K', min: 600, max: 1100, step: 5, dec: 0, info: 'Hotter gas drives pumps harder. Blades redline at 950 K.' },
+      { id: 'PU-1', key: 'pd', part: 'pumps', name: 'TURBOPUMPS', param: 'DISCHARGE PRESSURE', sym: 'Pd', unit: 'bar', min: 60, max: 320, step: 1, dec: 0, info: 'Must beat chamber pressure by 30 % for stable injection.' }
+    ];
+  }
+  model(p) {
+    var isp_vac = 228 + 34 * Math.log(p.eps) + 0.09 * (p.pc - 97);
+    var sepEps = p.pc * 0.45;
+    var isp_sl = isp_vac - p.eps * 1.55 * (97 / p.pc);
+    var thrust = p.pc * 8.2 * (isp_sl / 307);
+    var mass = 420 + p.eps * 4.2 + p.pc * 1.3 + (p.tt - 600) * 0.18 + p.pd * 0.6;
+    var tw = thrust * 1000 / (mass * 9.81);
+    var margin = p.pd / p.pc;
+    var pwrMax = 0.3 * p.tt - 40;
+    var sep = p.eps > sepEps, blade = p.tt > 950, marginOk = margin >= 1.3, pwrOk = p.pd <= pwrMax;
+    var rel = 99.4 - Math.max(0, p.tt - 800) * 0.012 - Math.max(0, p.pc - 120) * 0.01;
+    if (sep) rel -= 4;
+    if (blade) rel -= 6;
+    if (!marginOk) rel -= 5;
+    if (!pwrOk) rel -= 3;
+    var cost = 1.6 + p.eps * 0.006 + p.pc * 0.004 + (p.tt - 600) * 0.0012;
+    return { isp_vac: isp_vac, isp_sl: isp_sl, thrust: thrust, mass: mass, tw: tw, margin: margin, pwrMax: pwrMax, sepEps: sepEps, sep: sep, blade: blade, marginOk: marginOk, pwrOk: pwrOk, rel: rel, cost: cost };
+  }
+  f(v, d) { return Number(v).toFixed(d); }
+  sgn(v, d) { var s = Math.abs(v).toFixed(d); if (Number(s) === 0) return '±0'; return (v > 0 ? '+' : '−') + s; }
+  nozzle(eps) {
+    var rE = 22 * Math.sqrt(eps) * 0.8, L = 80 + eps * 0.9, y0 = 382, yE = y0 + L, cx = 300;
+    var lx = cx - rE, rx = cx + rE, qy = y0 + L * 0.42;
+    var f = function (v) { return v.toFixed(1); };
+    var left = 'M278 ' + y0 + ' Q ' + f(cx - rE * 0.72) + ' ' + f(qy) + ' ' + f(lx) + ' ' + f(yE);
+    var right = 'M322 ' + y0 + ' Q ' + f(cx + rE * 0.72) + ' ' + f(qy) + ' ' + f(rx) + ' ' + f(yE);
+    var area = left + ' L ' + f(rx) + ' ' + f(yE) + ' Q ' + f(cx + rE * 0.72) + ' ' + f(qy) + ' 322 ' + y0 + ' Z';
+    var dy = yE + 16;
+    return {
+      path: left + ' ' + right,
+      area: area,
+      exit: 'M' + f(lx) + ' ' + f(yE) + ' H' + f(rx),
+      dim: 'M' + f(lx) + ' ' + f(dy - 6) + ' V' + f(dy + 6) + ' M' + f(rx) + ' ' + f(dy - 6) + ' V' + f(dy + 6) + ' M' + f(lx) + ' ' + f(dy) + ' H' + f(rx),
+      dimX: f(rx + 10), dimY: f(dy + 5),
+      dia: (0.28 * Math.sqrt(eps)).toFixed(2),
+      lx: f(cx + rE * 0.62 + 20), ly: f(y0 + L * 0.42), ly2: f(y0 + L * 0.42 + 18), ly3: f(y0 + L * 0.42 + 36)
+    };
+  }
+  plot(fa, fb, xmin, xmax, x, reds, la, lb) {
+    var Lp = 44, Rp = 314, Tp = 12, Bp = 150, n = 72, xs = [], i;
+    for (i = 0; i <= n; i++) xs.push(xmin + (xmax - xmin) * i / n);
+    var ya = xs.map(fa), yb = fb ? xs.map(fb) : [];
+    var all = ya.concat(yb);
+    var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    var pad = (hi - lo) * 0.1 || 1; lo -= pad; hi += pad;
+    var dec = (hi - lo) < 5 ? 2 : ((hi - lo) < 50 ? 1 : 0);
+    var clampX = function (v) { return Math.min(xmax, Math.max(xmin, v)); };
+    var sx = function (v) { return Lp + (clampX(v) - xmin) / (xmax - xmin) * (Rp - Lp); };
+    var sy = function (v) { return Bp - (v - lo) / (hi - lo) * (Bp - Tp); };
+    var path = function (arr) { return arr.map(function (y, k) { return (k ? 'L' : 'M') + sx(xs[k]).toFixed(1) + ' ' + sy(y).toFixed(1); }).join(' '); };
+    var red = function (k) {
+      var q = reds[k];
+      if (!q) return { x: 0, disp: 'none', label: '', lx: 0, anchor: 'start' };
+      var inR = q.x >= xmin && q.x <= xmax, X = sx(q.x), far = X > 220;
+      return { x: X.toFixed(1), disp: inR ? 'inline' : 'none', label: q.label, lx: (far ? X - 6 : X + 6).toFixed(1), anchor: far ? 'end' : 'start' };
+    };
+    var cx = clampX(x);
+    return {
+      a: path(ya), b: fb ? path(yb) : 'M0 0', bDisp: fb ? 'inline' : 'none', lbDisp: fb ? 'flex' : 'none',
+      mx: sx(cx).toFixed(1), my: sy(fa(cx)).toFixed(1), myB: fb ? sy(fb(cx)).toFixed(1) : '0',
+      ylo: lo.toFixed(dec), yhi: hi.toFixed(dec), r1: red(0), r2: red(1), la: la, lb: lb || ''
+    };
+  }
+  renderVals() {
+    var self = this, s = this.state, p = s.p, m = this.model(p), mb = this.model(s.base);
+    var defs = this.defs();
+    var d = defs.filter(function (x) { return x.part === s.sel; })[0];
+    var lim = { nozzle: m.sep, chamber: false, turbine: m.blade || !m.pwrOk, pumps: !m.marginOk };
+    var keys = ['eps', 'pc', 'tt', 'pd'];
+    var changed = keys.some(function (k) { return p[k] !== s.base[k]; });
+    var draftRev = String.fromCharCode(s.rev.charCodeAt(0) + 1);
+
+    var parts = defs.map(function (x) {
+      var on = x.part === s.sel;
+      return {
+        id: x.id, name: x.name,
+        status: lim[x.part] ? '▲ LIMIT' : '● OK',
+        stColor: lim[x.part] ? '#FF4D4D' : '#7C8C99',
+        rowBg: on ? '#111A24' : 'transparent',
+        bar: on ? '#F2A93B' : 'transparent',
+        nameColor: on ? '#F2A93B' : '#C9D6E0',
+        pressed: on ? 'true' : 'false',
+        pick: function () { self.setState({ sel: x.part }); }
+      };
+    });
+    var pickOf = function (part) { return function () { self.setState({ sel: part }); }; };
+    var c = {}, w = {};
+    ['nozzle', 'chamber', 'turbine', 'pumps'].forEach(function (k) {
+      c[k] = k === s.sel ? '#F2A93B' : (lim[k] ? '#FF4D4D' : '#5FD4E6');
+      w[k] = k === s.sel ? '2' : '1';
+    });
+
+    var val = p[d.key];
+    var fk = function (k) { return function (xv) { var q = Object.assign({}, p); q[d.key] = xv; return self.model(q)[k]; }; };
+    var pl;
+    if (d.part === 'nozzle') pl = this.plot(fk('isp_vac'), fk('isp_sl'), d.min, d.max, val, [{ x: m.sepEps, label: 'SEP @ SL' }], 'ISP VAC s', 'ISP SL s');
+    else if (d.part === 'chamber') pl = this.plot(fk('thrust'), null, d.min, d.max, val, [{ x: p.pd / 1.3, label: 'PUMP LIMIT' }], 'THRUST SL kN');
+    else if (d.part === 'turbine') pl = this.plot(fk('rel'), null, d.min, d.max, val, [{ x: 950, label: 'BLADE REDLINE' }], 'RELIABILITY %');
+    else pl = this.plot(function (xv) { return xv / p.pc; }, null, d.min, d.max, val, [{ x: p.pc * 1.3, label: 'MIN MARGIN' }, { x: m.pwrMax, label: 'TURBINE MAX' }], 'MARGIN Pd/Pc');
+
+    var dv = val - s.base[d.key];
+    var sel = {
+      id: d.id, name: d.name, param: d.param, sym: d.sym, unit: d.unit, min: d.min, max: d.max, step: d.step, info: d.info,
+      val: val, valStr: this.f(val, d.dec),
+      delta: Math.abs(dv) < 1e-9 ? 'REV ' + s.rev : this.sgn(dv, d.dec) + ' vs REV ' + s.rev
+    };
+
+    var nzc = this.nozzle(p.eps);
+    var specs;
+    if (d.part === 'nozzle') specs = [
+      { k: 'EXIT Ø', v: nzc.dia + ' m' },
+      { k: 'SEP LIMIT ε', v: this.f(m.sepEps, 1) },
+      { k: 'VAC GAIN', v: '+' + this.f(m.isp_vac - m.isp_sl, 1) + ' s' }];
+    else if (d.part === 'chamber') specs = [
+      { k: 'THROAT Ø', v: '0.28 m' },
+      { k: 'MIXTURE O/F', v: '2.36' },
+      { k: 'COOLING', v: 'REGEN RP-1' }];
+    else if (d.part === 'turbine') specs = [
+      { k: 'SHAFT SPEED', v: this.f(18000 + (p.tt - 600) * 40, 0) + ' rpm' },
+      { k: 'BLADE MARGIN', v: this.f(950 - p.tt, 0) + ' K' },
+      { k: 'MAX Pd DRIVEN', v: this.f(m.pwrMax, 0) + ' bar' }];
+    else specs = [
+      { k: 'MARGIN Pd/Pc', v: this.f(m.margin, 2) },
+      { k: 'SHAFT POWER', v: this.f(p.pd * 9.5, 0) + ' kW' },
+      { k: 'TURBINE MAX', v: this.f(m.pwrMax, 0) + ' bar' }];
+
+    var ro = [
+      { k: 'ISP SL', mk: 'isp_sl', d: 1, u: 's', lo: 230, hi: 340 },
+      { k: 'ISP VAC', mk: 'isp_vac', d: 1, u: 's', lo: 280, hi: 390 },
+      { k: 'THRUST SL', mk: 'thrust', d: 0, u: 'kN', lo: 200, hi: 2400 },
+      { k: 'DRY MASS', mk: 'mass', d: 0, u: 'kg', lo: 500, hi: 1300, bad: m.mass > 1150 },
+      { k: 'T/W', mk: 'tw', d: 1, u: '', lo: 40, hi: 300, bad: m.tw < 60 },
+      { k: 'RELIABILITY', mk: 'rel', d: 2, u: '%', lo: 85, hi: 100, bad: m.rel < 97 },
+      { k: 'UNIT COST', mk: 'cost', d: 2, u: '$M', lo: 1.5, hi: 3.5 }
+    ].map(function (r) {
+      var v = m[r.mk], dvv = v - mb[r.mk];
+      var pct = Math.max(2, Math.min(100, (v - r.lo) / (r.hi - r.lo) * 100));
+      var dstr = Number(Math.abs(dvv).toFixed(r.d)) === 0 ? 'REV ' + s.rev : 'Δ ' + self.sgn(dvv, r.d);
+      return { k: r.k, v: self.f(v, r.d), u: r.u, pct: pct.toFixed(1) + '%', col: r.bad ? '#FF4D4D' : '#C9D6E0', tag: r.bad ? '▲ LIMIT' : '', delta: dstr };
+    });
+
+    var checks = [
+      { label: 'FLOW SEPARATION AT SL', val: 'ε ' + this.f(p.eps, 1) + ' / max ' + this.f(m.sepEps, 1), ok: !m.sep },
+      { label: 'PUMP MARGIN ≥ 1.30', val: 'Pd/Pc ' + this.f(m.margin, 2), ok: m.marginOk },
+      { label: 'BLADE TEMP ≤ 950 K', val: 'T0 ' + p.tt + ' K', ok: !m.blade },
+      { label: 'TURBINE POWER', val: 'Pd ' + Math.round(p.pd) + ' / ' + this.f(m.pwrMax, 0) + ' bar', ok: m.pwrOk }
+    ].map(function (x) { return { label: x.label, val: x.val, st: x.ok ? '● GO' : '▲ LIMIT', col: x.ok ? '#5FD4E6' : '#FF4D4D', ok: x.ok }; });
+    var anyLimit = checks.some(function (x) { return !x.ok; });
+
+    var stamp;
+    if (anyLimit) stamp = { text: '✕ NO-GO', col: '#FF4D4D', sub: 'RESOLVE LIMITS' };
+    else if (changed) stamp = { text: 'DRAFT', col: '#7C8C99', sub: 'REV ' + draftRev + ' UNCOMMITTED' };
+    else stamp = { text: 'RELEASED', col: '#5FD4E6', sub: 'REV ' + s.rev + ' · ' + (s.queued ? 'QUEUED' : 'READY TO TEST') };
+
+    var setParam = function (e) {
+      var v = parseFloat(e.target.value);
+      if (!isFinite(v) || v <= 0) return;
+      var np = Object.assign({}, self.state.p); np[d.key] = v;
+      self.setState({ p: np, queued: false, log: '> set ' + d.id.toLowerCase() + '.' + d.key + ' ' + v });
+    };
+    var commit = function () {
+      if (anyLimit || !changed) return;
+      self.setState({ base: Object.assign({}, p), rev: draftRev, diff: false, queued: false, log: '> commit eng-01 rev ' + draftRev.toLowerCase() + '   · ' + self.f(m.isp_sl, 1) + ' s SL · ' + self.f(m.thrust, 0) + ' kN' });
+    };
+    var send = function () {
+      if (anyLimit || changed || s.queued) return;
+      self.setState({ queued: true, log: '> queue stand-2 eng-01 rev ' + s.rev.toLowerCase() + '   · slot D-216 06:00' });
+    };
+    var toggleDiff = function () { self.setState({ diff: !self.state.diff }); };
+
+    return {
+      parts: parts, checks: checks, readouts: ro, specs: specs, sel: sel, pl: pl,
+      c: c, w: w,
+      lim: { nozzle: lim.nozzle ? 'inline' : 'none', turbine: lim.turbine ? 'inline' : 'none', pumps: lim.pumps ? 'inline' : 'none' },
+      nz: nzc, nzBase: this.nozzle(s.base.eps), diffDisp: s.diff ? 'inline' : 'none',
+      tt: Math.round(p.tt), pd: Math.round(p.pd), pc: Math.round(p.pc), epsStr: this.f(p.eps, 1),
+      pickNozzle: pickOf('nozzle'), pickChamber: pickOf('chamber'), pickTurbine: pickOf('turbine'), pickPumps: pickOf('pumps'),
+      rev: s.rev, draftRev: changed ? draftRev : s.rev,
+      revLabel: changed ? s.rev + ' → ' + draftRev : s.rev,
+      stamp: stamp,
+      diffPressed: s.diff ? 'true' : 'false', diffState: s.diff ? 'ON' : 'OFF',
+      commitDisabled: anyLimit || !changed, commitNote: anyLimit ? 'BLOCKED' : (changed ? '' : 'NO CHANGES'),
+      sendDisabled: anyLimit || changed || s.queued,
+      sendLabel: s.queued ? 'QUEUED ON STAND-2' : 'SEND TO STAND-2',
+      sendNote: s.queued ? 'D-216' : (changed ? 'COMMIT FIRST' : ''),
+      standStatus: s.queued ? '● QUEUED D-216' : '● IDLE',
+      log: s.log,
+      setParam: setParam, commit: commit, send: send, toggleDiff: toggleDiff
+    };
+  }
+}
+</script>
+</body>
+</html>
