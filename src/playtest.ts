@@ -66,6 +66,8 @@ const fleetRuns: Array<{ landed: number; lost: number; reflown: number; buildPer
 const boosterLosses = new Map<string, number>();
 /** Cash beyond the reusable rocket's build cost the bot wants before drawing one, $k: drawing, tests and slack. */
 const REUSE_CUSHION = 6_000;
+/** Days left in the run the reuse bot wants before it switches to a reusable rocket. */
+const REUSE_RUNWAY = 365;
 /** The reuse bot overhauls a booster every this many flights, and retires it this worn. */
 const OVERHAUL_EVERY = 5;
 const RETIRE_AT = 0.85;
@@ -294,6 +296,8 @@ function play(seed: number, policy: Policy): Outcome {
   // The orbital rocket: the preset Meridian, or one the designer bots draw themselves.
   let orbiter = "meridian";
   let reusePick: Suggestion | null = null;
+  // A reusable rocket drawn alongside the expendable one: it flies what it can carry, the expendable the rest.
+  let reuser: string | null = null;
   if (designs(policy)) {
     // The reuse bot flies reusable from the start if it can afford to, else switches once it can.
     reusePick = policy === "designer-reuse" && !company.dead ? (suggestBuilds({ mission: contract("leo-150").mission, payloadMass: contract("leo-150").payloadMass, reuse: "drone-ship" }, company.campaign.engines, Object.values(company.designs), "Reuser")[0] ?? null) : null;
@@ -313,10 +317,11 @@ function play(seed: number, policy: Policy): Outcome {
   const considered = new Set<string>();
   let demos = 0;
   while (!company.dead && company.day < HORIZON && holds(company, "orbital")) {
+    // Switching to reuse costs a drawing and its tests: only worth it with a year left to fly it.
+    if (reusePick && company.day > HORIZON - REUSE_RUNWAY) reusePick = null;
     if (reusePick && company.firstOrbitDay !== null && company.cash >= reusePick.build.cost + REUSE_CUSHION) {
       if (trace) console.log(`    reuse: day ${company.day}, cash $${(company.cash / 1000).toFixed(2)}M: drawing the reusable rocket`);
-      const drawn = drawOrbiter(company, policy, contract("leo-150"), reusePick, "Reuser");
-      if (drawn) orbiter = drawn;
+      reuser = drawOrbiter(company, policy, contract("leo-150"), reusePick, "Reuser");
       reusePick = null;
     }
     if (reputation(company) < 1) {
@@ -336,7 +341,7 @@ function play(seed: number, policy: Policy): Outcome {
         missionPlan(c.mission).burns.length === 0 &&
         !considered.has(c.id) &&
         (policy === "greedy" || c.id !== "sso-150") &&
-        canSign(company, c, orbiter),
+        (canSign(company, c, orbiter) || (reuser !== null && canSign(company, c, reuser))),
     );
     const next = wanted[0];
     if (!next) {
@@ -346,12 +351,21 @@ function play(seed: number, policy: Policy): Outcome {
       continue;
     }
     considered.add(next.id);
+    // The reusable rocket first, if it can carry the job; the expendable one if not.
+    const keys = [...(reuser ? [reuser] : []), orbiter].filter((k) => canSign(company, next, k));
+    let flyOn: string | null = keys[0] ?? null;
     if (testing) {
-      guard(company, () => retune(company, orbiter, next.id));
-      const greedyBid = policy === "greedy" && next.id === "sso-150";
-      if (!greedyBid && !forecastDelivers(company, orbiter, next)) continue;
+      flyOn = null;
+      for (const k of keys) {
+        guard(company, () => retune(company, k, next.id));
+        const greedyBid = policy === "greedy" && next.id === "sso-150";
+        if (greedyBid || forecastDelivers(company, k, next)) {
+          flyOn = k;
+          break;
+        }
+      }
     }
-    deliver(company, orbiter, next);
+    if (flyOn) deliver(company, flyOn, next);
   }
   if (company.firstOrbitDay === null) note ||= "never reached orbit";
 
@@ -363,7 +377,7 @@ function play(seed: number, policy: Policy): Outcome {
     for (const [id, status] of Object.entries(company.closed)) if (status !== "delivered") console.log(`    contract ${id}: ${status}`);
     console.log(`    note: ${note || "-"}, licence ${company.licence}, rep ${reputation(company)}`);
   }
-  const flown = company.flights.filter((f) => f.design === company.designs[orbiter]?.name);
+  const flown = company.flights.filter((f) => f.design === company.designs[orbiter]?.name || (reuser !== null && f.design === company.designs[reuser]?.name));
   if (designs(policy) && flown.length > 0) {
     const building = -company.ledger.filter((e) => e.category === "build").reduce((s, e) => s + e.amount, 0);
     fleetRuns.push({
