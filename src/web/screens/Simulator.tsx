@@ -5,6 +5,7 @@ import { withCapsule } from "../../sim/crew.ts";
 import type { Mission } from "../../sim/mission.ts";
 import { bestSteering, simulate, type SimFlight, type Simulation } from "../../sim/simulator.ts";
 import { DISPERSION_RUNS, runDispersions, type Dispersions } from "../../sim/dispersions.ts";
+import { ENTRY_HEATING, RECOVERY_CAUSE_LABELS, type RecoveryCause } from "../../sim/recovery.ts";
 import { CAUSE_LABELS, type Cause } from "../../sim/control.ts";
 import { FAILURE_LABELS, type FailureMode } from "../../sim/hardware.ts";
 import type { Vehicle } from "../../sim/vehicle.ts";
@@ -222,6 +223,13 @@ function Results({ company, sim, designKey, contract, steering, canTune }: { com
           {sim.worst && !sim.worst.delivers && m.delivers ? " The worst case misses: what's unmeasured could cost the flight." : ""}
           {sim.worst?.delivers ? " Even the worst case gets there." : ""}
         </span>
+        {m.result.recovery && (
+          <span className={m.result.recovery.outcome === "landed" ? "soft" : "bad"} style={{ fontSize: 14 }}>
+            {m.result.recovery.outcome === "landed"
+              ? `The booster lands ${m.result.recovery.mode === "rtls" ? "back at the pad" : "on the drone ship"} with ${Math.round(m.result.recovery.propellantLeft)} kg to spare${m.result.recovery.peakHeating > ENTRY_HEATING ? ", after a hot entry" : ""}.`
+              : `▲ The booster would be lost: ${RECOVERY_CAUSE_LABELS[m.result.recovery.cause!]}.`}
+          </span>
+        )}
         {steering === "best" && canTune && (
           <div className="actions">
             <button
@@ -334,6 +342,20 @@ function DispersionCard({ mc, run }: { mc: { done: number; result: Dispersions |
                   {Object.entries(r.losses)
                     .map(([k, n]) => `${lossLabel(k)} ×${n}`)
                     .join(", ")}
+                  .
+                </span>
+              </li>
+            )}
+            {r.landed !== null && (
+              <li style={{ display: "block" }}>
+                <strong>Booster landed</strong>{" "}
+                <span className="soft">
+                  {Math.round(r.landed * r.runs.length)} of {r.runs.length} runs
+                  {Object.keys(r.landingLosses).length > 0
+                    ? `; lost to ${Object.entries(r.landingLosses)
+                        .map(([k, n]) => `${RECOVERY_CAUSE_LABELS[k as RecoveryCause]} ×${n}`)
+                        .join(", ")}`
+                    : ""}
                   .
                 </span>
               </li>

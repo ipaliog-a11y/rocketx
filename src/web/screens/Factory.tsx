@@ -1,7 +1,8 @@
 import { LINE_COSTS, type Company } from "../../sim/company.ts";
+import { REFURB, restackCost, type BoosterUnit } from "../../sim/fleet.ts";
 import { Chip } from "../components/Bits.tsx";
 import { game } from "../game.ts";
-import { lineJob } from "../jobs.ts";
+import { lineJob, refurbJob, restackJob, retireJob } from "../jobs.ts";
 import { money } from "../format.ts";
 
 /** The production lines: what each is building, what is queued, and what is ready on the ground. */
@@ -66,6 +67,7 @@ export function Factory({ company }: { company: Company }) {
             </div>
           );
         })}
+        {(company.boosters ?? []).length > 0 && <Boosters company={company} />}
       </section>
       <aside className="side stack">
         <div className="card">
@@ -77,7 +79,10 @@ export function Factory({ company }: { company: Company }) {
                 <span className="mono" style={{ flex: "0 0 36px" }}>
                   {n} ×
                 </span>
-                <span>{company.designs[key]?.name ?? key}</span>
+                <span>
+                  {company.designs[key]?.name ?? key}
+                  {(company.stacked?.[key]?.length ?? 0) > 0 && <span className="muted"> · on {company.stacked![key]!.join(", ")}</span>}
+                </span>
               </li>
             ))}
           </ul>
@@ -99,6 +104,79 @@ export function Factory({ company }: { company: Company }) {
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+const STATUS: Record<BoosterUnit["status"], { label: string; tone: "good" | "warn" | "bad" | "muted" }> = {
+  flown: { label: "FLOWN · NEEDS THE HANGAR", tone: "warn" },
+  refurbishing: { label: "IN THE HANGAR", tone: "muted" },
+  ready: { label: "READY TO STACK", tone: "good" },
+  stacked: { label: "STACKED", tone: "muted" },
+  lost: { label: "LOST", tone: "bad" },
+  retired: { label: "RETIRED", tone: "muted" },
+};
+
+/** The recoverable boosters: each serial, what it has flown, and what it needs next. */
+function Boosters({ company }: { company: Company }) {
+  const fleet = [...(company.boosters ?? [])].sort((a, b) => Number(a.status === "lost" || a.status === "retired") - Number(b.status === "lost" || b.status === "retired"));
+  return (
+    <div className="card stack" aria-label="Boosters">
+      <strong style={{ fontSize: 18 }}>Boosters</strong>
+      <span className="muted" style={{ fontSize: 14 }}>
+        A booster that lands comes back here. Turn it around ({Math.round(REFURB.turnaround.share * 100)}% of its cost, {REFURB.turnaround.days} days) or overhaul it ({Math.round(REFURB.overhaul.share * 100)}%, {REFURB.overhaul.days} days, and you learn how worn it is), then stack a new upper stage on it.
+      </span>
+      <ul className="list" style={{ gap: 12 }}>
+        {fleet.map((b) => {
+          const design = company.designs[b.design];
+          const booked = company.tasks.find((t) => t.spec.kind === "refurb" && t.spec.serial === b.serial);
+          const status = booked ? STATUS.refurbishing : STATUS[b.status];
+          const gone = b.status === "lost" || b.status === "retired";
+          return (
+            <li key={b.serial} className="stack" style={{ gap: 6, opacity: gone ? 0.6 : 1 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                <strong className="mono">{b.serial}</strong>
+                <span>{design?.name ?? b.design}</span>
+                <span className="mono muted" style={{ fontSize: 13 }}>
+                  {b.flights} flight{b.flights === 1 ? "" : "s"} · last day {b.lastFlight}
+                </span>
+                <span style={{ marginLeft: "auto" }}>
+                  <Chip tone={status.tone}>{booked?.endDay !== undefined ? `HANGAR · DAY ${booked.endDay}` : status.label}</Chip>
+                </span>
+              </div>
+              {b.inspected && !gone && (
+                <span className="mono" style={{ fontSize: 13 }}>
+                  Wear at overhaul, day {b.inspected.day}: {Math.round(b.inspected.share * 100)}% of its life{b.inspected.share >= 0.75 ? " ▲ NEAR THE END" : ""}
+                </span>
+              )}
+              {!gone && !booked && design && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {b.status === "ready" && (
+                    <button type="button" className="btn primary" onClick={() => game.schedule(restackJob(company, b.design, b.serial))}>
+                      Stack a {design.name} · {money(restackCost(design).cost)}
+                    </button>
+                  )}
+                  {b.status === "flown" && (
+                    <button type="button" className="btn primary" onClick={() => game.schedule(refurbJob(company, b.serial, "turnaround"))}>
+                      Turn around · {money(refurbJob(company, b.serial, "turnaround").cost)}
+                    </button>
+                  )}
+                  {(b.status === "flown" || b.status === "ready") && (
+                    <button type="button" className="btn" onClick={() => game.schedule(refurbJob(company, b.serial, "overhaul"))}>
+                      Overhaul · {money(refurbJob(company, b.serial, "overhaul").cost)}
+                    </button>
+                  )}
+                  {(b.status === "flown" || b.status === "ready") && (
+                    <button type="button" className="btn" onClick={() => game.schedule(retireJob(b.serial))}>
+                      Retire
+                    </button>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

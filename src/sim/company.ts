@@ -623,6 +623,8 @@ export type FlightReport = ActionResult & {
   debrief: string;
   /** What the customer made of it, for contract flights. */
   settlement: Settlement | null;
+  /** What became of a recoverable booster. */
+  booster: string | null;
 };
 
 /**
@@ -719,6 +721,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
   const written = debrief(result, vehicle, mission, company.campaign);
   const lines = abortText ? [written, "", abortText] : [written];
   let landed = false;
+  let boosterText: string | null = null;
   if (unit) {
     unit.flights += 1;
     unit.lastFlight = company.day;
@@ -726,7 +729,8 @@ export function fly(company: Company, key: string, target: { contract: string } 
     landed = home?.outcome === "landed";
     unit.status = landed ? "flown" : "lost";
     if (landed && boosterTruth) boosterTruth.wear += flightWear(home!);
-    lines.push("", boosterLine(unit, home, worn !== null));
+    boosterText = boosterLine(unit, home, worn !== null);
+    lines.push("", boosterText);
   }
   let settlement: Settlement | null = null;
   const orbitedBefore = (company.experience[key]?.orbits ?? 0) > 0;
@@ -784,7 +788,7 @@ export function fly(company: Company, key: string, target: { contract: string } 
     ...(unit ? { booster: { serial: unit.serial, flight: unit.flights, landed } } : {}),
   });
   notices.push(...tick(company));
-  return { text: lines.join("\n"), notices, result, debrief: written, settlement };
+  return { text: lines.join("\n"), notices, result, debrief: written, settlement, booster: boosterText };
 }
 
 /** What became of the booster, for the flight report. */

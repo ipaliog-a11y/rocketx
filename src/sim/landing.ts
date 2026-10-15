@@ -34,8 +34,9 @@ export function landingMargin(vehicle: Vehicle, mission: Mission, options: Ascen
   const home = r.recovery ?? null;
   const b = vehicle.stages[0]!;
   const ve = thrustAt(b.engine, 101_325) / massFlow(b.engine);
-  let propellant = home?.propellantLeft ?? 0;
-  if (home && home.cause === "out-of-propellant") {
+  let propellant = home?.outcome === "landed" ? home.propellantLeft : 0;
+  if (home && home.outcome === "lost") {
+    // Short, whatever lost it: run dry, or saved what it had for the landing and burned up on the way in.
     // Fly it again with more, and see what it would have used. Too much more and it's too heavy to slow: step up.
     const sep = home.separation;
     propellant = -b.propellantMass * 0.35;

@@ -4,7 +4,7 @@ import { newCompany } from "../src/sim/company.ts";
 import { specOf } from "../src/sim/builder.ts";
 import { generateBoard } from "../src/contracts.ts";
 import { ENGINES, VEHICLES } from "../src/vehicles.ts";
-import { drawQuote, nextRevisionName, readParam, revisionOf, vDraft, vehicleParts, vReadouts, writeParam } from "../src/web/vehicleDesign.ts";
+import { drawQuote, nextRevisionName, readParam, revisionOf, vDraft, vehicleParts, vReadouts, withRecovery, writeParam } from "../src/web/vehicleDesign.ts";
 
 const company = () => newCompany(3, 30_000, VEHICLES, Object.values(ENGINES), generateBoard(3));
 const meridianOf = (c: ReturnType<typeof company>) => Object.values(c.designs).find((v) => v.name === "Meridian")!;
@@ -27,8 +27,12 @@ const withG = (s: ReturnType<typeof specOf>) => writeParam(s, "payload", s.paylo
 test("the part tree follows the stack; parameters round-trip", () => {
   const c = company();
   const spec = specOf(meridianOf(c));
-  assert.deepEqual(vehicleParts(spec).map((p) => p.tag), ["FRG-1", ...spec.stages.map((_, i) => `S${spec.stages.length - i}`), "FIN-1", "GNC-1", "PL-1"]);
+  assert.deepEqual(vehicleParts(spec).map((p) => p.tag), ["FRG-1", ...spec.stages.map((_, i) => `S${spec.stages.length - i}`), "FIN-1", "GNC-1", "REC-1", "PL-1"]);
   const s = writeParam(spec, "p0", 2.4);
+  // The booster comes back at the reserve set; expended again, the recovery is gone.
+  const back = writeParam(spec, "r:reserve", 15);
+  assert.equal(readParam(back, "r:reserve"), 15);
+  assert.equal(withRecovery(back, null).geometry?.recovery, undefined);
   assert.equal(readParam(s, "p0"), 2.4);
   assert.equal(readParam(writeParam(spec, "jettison", 120), "jettison"), 120);
 });
