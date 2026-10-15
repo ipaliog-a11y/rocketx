@@ -121,11 +121,24 @@ Since engines share parts, testing one Harrier teaches about the other, so caref
 | careful (preset Meridian) | 6 | 6 | day 282 | $49.9M | 74 | 0 |
 | designer | 6 | 6 | day 405 | $26.2M | 52 | 1 (buckled) |
 | designer-fast | 5 | 6 | day 370 | $29.3M | 51 | 2 (buckled) |
-| designer-reuse | 6 | 6 | day 411 | $26.6M | 58 | 1 (buckled) |
+| designer-reuse | 6 | 6 | day 405 | $26.2M | 49 | 0 |
 
 Drawing a new rocket costs about four months (drawing office, new tooling, proving its engines and shape) and the proof and GNC tests about $445k, so a company that only needs Meridian's job is better off flying Meridian; the drawing board pays for jobs the presets can't do. Skipping the proof and GNC tests saves money and a month, and costs rockets: two buckled, and one of the six companies went under. Getting here took three fixes the bots found: the guide's shortlist dropped the cheap stacks that still cleared its margin bar after redrawing (it suggested $7M rockets where a $4.9M one would do); its shells weren't sized for wind (the guide now flies six days of weather and pressurises the tanks for the worst side load at the weakest knock-down, plus a quarter); and the first orbital flight could miss because a fixed steering programme is very sensitive to the one drag figure nobody can measure before flying. Guided vehicles' last stages now steer closed-loop to the target orbit, as a flight computer does; preset rockets keep their open programmes, so the table above is unchanged.
 
-**Reusable boosters.** `designer-reuse` tests like `designer` but lands its booster on a drone ship. It turns landed boosters around, overhauls them every fifth flight, retires them when worn, and stacks new upper stages on them. The guide's picks leave only 1–3% of the last stage's propellant at orbit, too little to spare a landing reserve, so the bot sizes the stack for up to twice the payload. It needs a stack that keeps 2% at orbit and lands with 100 m/s to spare on paper. That rocket builds for about $6.5M against $5M, so the bot only draws it with the build cost plus $6M in hand; otherwise it flies expendable. Two of the six seeds could afford it. Their boosters landed 17 of 19 times (two missed the deck), and 13 flights went on a flown booster. They ended with $41.1M and $40.6M, against $30.5M and $19.4M for `designer` on the same seeds. The other four flew expendable and match `designer`. Reuse pays once a company can afford the bigger rocket; before that, the cheaper expendable gets it to orbit. Getting here took three fixes the bot found:
+**Reusable boosters.** The sizing guide can size a reusable rocket: choose a drone ship or the pad and it fits the stack and its landing reserve together. The pick must land with 100 m/s to spare on paper and keep the usual 4% Δv margin, on typical engines. Each pick shows what a reflight costs (a new upper stage plus a turnaround) and the flight on which it pays back against expending. For a 150 kg LEO job:
+
+| | Expendable | Reusable |
+|---|---|---|
+| Build cost | $4.50M | $7.94M |
+| Landing reserve | — | 12% |
+| Reflight cost | — | $2.13M |
+| Pays back | — | on the 3rd flight, if every booster lands |
+
+Back to the pad, nothing that size flies: the reserve stages the booster at 11 kPa and the upper stage can't hold attitude. The guide says so.
+
+`designer-reuse` tests like `designer` and flies the guide's reusable pick once it holds the rocket's cost plus $6M: from the start if it can, otherwise after first orbit with at least a year left. It keeps the expendable rocket for jobs the reusable one can't carry. It turns landed boosters around, overhauls them every fifth flight, retires them when worn, and stacks new upper stages on them.
+
+With $10–14M in hand when they draw their orbital rocket, none of the six can afford the reusable one at the start. Only one gets there with a year to go, so over two years the bot ends level with `designer` (one seed $1.2M behind). An earlier, bolder version sized against ideal engines and drew a $6.5M reusable rocket. Two companies that could afford it from the start ended with $41M against $30M and $19M for `designer`, and two that couldn't afford it went under. Reuse pays for a company that can afford it early; the guide's careful sizing makes it a mid-game investment. Getting here took three fixes the bot found:
 - The pitch re-tune lofted reusable ascents. The booster fell back almost vertically at 1.75 km/s and burned up. The re-tune now counts a lost booster against a steering.
 - The entry burn lit three engines whatever the booster. It now lights a third of them.
 - The bot sized its reserve against a razor-thin ascent margin, so the paper ascent reached orbit and the real one fell short.
