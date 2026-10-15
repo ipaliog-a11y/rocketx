@@ -22,7 +22,7 @@ import {
   type Company,
 } from "./sim/company.ts";
 import type { Contract } from "./sim/contracts.ts";
-import { COSTS } from "./sim/cost.ts";
+import { COSTS, vehicleCost } from "./sim/cost.ts";
 import { holds, nextLicence, ORBITAL_FLIGHTS_NEEDED, requiredLicence, safeSpaceFlights } from "./sim/licence.ts";
 import type { Engine } from "./sim/engine.ts";
 import { FIXES, believedHardware, type Facility } from "./sim/teststand.ts";
@@ -70,6 +70,8 @@ const LANDING_MARGIN = 100;
 /** What lost each booster, over every run of a policy. */
 const boosterLosses = new Map<string, number>();
 const ASCENT_MARGIN = 0.02;
+/** Cash beyond the reusable rocket's build cost the bot wants before drawing one, $k: drawing, tests and slack. */
+const REUSE_CUSHION = 6_000;
 /** The reuse bot overhauls a booster every this many flights, and retires it this worn. */
 const OVERHAUL_EVERY = 5;
 const RETIRE_AT = 0.85;
@@ -254,13 +256,15 @@ function drawOrbiter(company: Company, policy: Policy, job: Contract): string | 
   const balanced = picks.find((p) => p.label === "Balanced") ?? picks[0];
   if (!balanced) return null;
   let spec: VehicleSpec = balanced.spec;
+  if (policy === "designer-reuse" && trace) console.log(`    reuse sizing: cash $${(company.cash / 1000).toFixed(2)}M, balanced builds for $${(balanced.build.cost / 1000).toFixed(2)}M`);
   if (policy === "designer-reuse") {
     // The guide sizes for the payload with little to spare: ask it for more payload until a stack can spare the reserve.
     for (const scale of [1, 1.5, 2]) {
       const sized = scale === 1 ? picks : suggestBuilds({ mission: job.mission, payloadMass: Math.round(job.payloadMass * scale) }, company.campaign.engines, Object.values(company.designs), "Orbiter");
       const first = sized.find((p) => p.label === "Balanced") ?? sized[0];
       const fits = [first, ...sized.filter((p) => p !== first)].filter((p) => p !== undefined).map((p) => withLanding(company, p.spec, job)).find((s) => s !== null);
-      if (fits) {
+      // A bigger rocket is only worth it with the cash to draw, test and build it, and some to spare.
+      if (fits && company.cash >= vehicleCost(assembleVehicle(fits, company.campaign.engines)).cost + REUSE_CUSHION) {
         spec = fits;
         break;
       }
