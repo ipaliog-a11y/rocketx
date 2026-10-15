@@ -42,6 +42,13 @@ export type GuidanceInput = {
   stage: number;
   /** Share of the current stage's propellant already burned, 0–1. */
   stageBurnFraction: number;
+  /**
+   * Seconds since this stage lit, and how long a guided vehicle takes to
+   * swing from the flight path onto an upper stage's programme. Left out,
+   * the programme is commanded at once, as the hand-tuned rockets fly it.
+   */
+  stageElapsed?: number;
+  blend?: number;
 };
 
 /** Commanded pitch above the local horizon, rad. */
@@ -52,7 +59,14 @@ export function commandedPitch(program: PitchProgram, input: GuidanceInput): num
     case "gravity-turn": {
       const ramp = program.upperStage;
       if (ramp && input.stage > 0) {
-        return (ramp.startPitch + (ramp.endPitch - ramp.startPitch) * input.stageBurnFraction) * DEG;
+        const target = (ramp.startPitch + (ramp.endPitch - ramp.startPitch) * input.stageBurnFraction) * DEG;
+        // An attitude loop eases onto the programme instead of snapping to it: in thick air a step is a side load.
+        if (input.blend && input.stageElapsed !== undefined && input.stageElapsed < input.blend) {
+          const x = input.stageElapsed / input.blend;
+          const w = x * x * (3 - 2 * x);
+          return input.flightPathAngle + (target - input.flightPathAngle) * w;
+        }
+        return target;
       }
       if (input.kickStart === null) return 90 * DEG;
       const held = (90 - program.kickAngle) * DEG;

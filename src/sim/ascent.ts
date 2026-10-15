@@ -224,6 +224,8 @@ const X = 0, Y = 1, VX = 2, VY = 3, M = 4;
 const DEG = 180 / Math.PI;
 /** Dynamic pressure above which the air's moments are the attitude loop's to fight, Pa. Thinner than this, thrust alone points the vehicle. */
 const CONTROL_Q = 5_000;
+/** Seconds a guided vehicle's loop takes to swing an upper stage onto its programme. */
+const UPPER_STAGE_BLEND = 15;
 /** Share of the mean wind left after day-of-launch trajectory biasing. */
 const WIND_BIAS_RESIDUAL = 0.1;
 
@@ -309,6 +311,7 @@ function snapshot(ctx: Context, phase: Phase, t: number, s: State): Snapshot {
           flightPathAngle,
           stage: phase.stageIndex,
           stageBurnFraction,
+          ...(ctx.wind ? { stageElapsed: t - phase.ignitedAt, blend: UPPER_STAGE_BLEND } : {}),
         })) + ctx.drift * t;
   const thrustDir: [number, number] = [
     Math.cos(pitch) * horizontal[0] + Math.sin(pitch) * up[0],

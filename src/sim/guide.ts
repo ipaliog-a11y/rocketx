@@ -269,8 +269,21 @@ export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, exist
   // Coasts, relights and long low-thrust upper burns cost more than the fit
   // for direct ascents knows about: ask for more margin when they're involved.
   // Re-draw the most promising on the real shape and build before picking.
-  const shortlist = [...new Set([...[...pool].sort((a, b) => a.firstCost - b.firstCost).slice(0, 40), ...[...pool].sort((a, b) => b.margin - a.margin).slice(0, 20)])].map((c) => asBuilt(c, engines));
-  return pick(shortlist, existing, relights ? 0.08 : 0.04, (c) => {
+  // Drawn on the real shape, build and avionics, a stack loses a couple of
+  // points of margin; the cheapest that still clear the bar with that to
+  // spare are the ones worth re-drawing, alongside the cheapest outright and
+  // the most capable.
+  const minMargin = relights ? 0.1 : 0.04;
+  const byCost = [...pool].sort((a, b) => a.firstCost - b.firstCost);
+  const shortlist = [
+    ...new Set([
+      ...byCost.slice(0, 20),
+      ...byCost.filter((c) => c.margin >= minMargin + 0.02).slice(0, 30),
+      ...byCost.filter((c) => c.margin >= minMargin + 0.05).slice(0, 15),
+      ...[...pool].sort((a, b) => b.margin - a.margin).slice(0, 15),
+    ]),
+  ].map((c) => asBuilt(c, engines));
+  return pick(shortlist, existing, minMargin, (c) => {
     const engines = [...new Set(c.vehicle.stages.map((st) => st.engine.name))];
     const restart = relights ? ` Restart-test the ${c.vehicle.stages.at(-1)!.engine.name} in the altitude cell: this mission relights it after a coast.` : "";
     return `${(c.figures.totalDeltaV / 1000).toFixed(2)} km/s on paper against about ${(needed / 1000).toFixed(2)} needed. Test the ${engines.join(", ")}, run the shape in the tunnel, and re-tune before trusting a forecast.${restart}`;
