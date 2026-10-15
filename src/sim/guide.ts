@@ -6,7 +6,9 @@ import { flowSeparates, type Engine } from "./engine.ts";
 import type { HardwareTruth } from "./hardware.ts";
 import { MU_EARTH, R_EARTH } from "./constants.ts";
 import { missionPlan, type Mission } from "./mission.ts";
-import { defaultFins, defaultGeometry } from "./geometry.ts";
+import { defaultFins, defaultGeometry, GEOMETRY_RANGES, MATERIALS } from "./geometry.ts";
+import { hashSeed } from "./random.ts";
+import { rollWind } from "./wind.ts";
 import { unguidedProblems } from "./stability.ts";
 import { burnTime, type Vehicle } from "./vehicle.ts";
 
@@ -312,5 +314,33 @@ function flightFit(c: Candidate, mission: Mission, engines: Record<string, Engin
     spec = { ...spec, geometry: { ...spec.geometry, control: { ...vehicle.control.design, bandwidth: next } } };
     vehicle = { ...assembleVehicle(spec, engines), pitchProgram: vehicle.pitchProgram };
   }
-  return spec === c.spec ? c : { ...c, spec, vehicle, figures: figures(vehicle) };
+  // Shells for the wind: fly a few days' weather and pressurise the tanks
+  // until the drawing carries the worst side load even if the real shell
+  // turns out at the weak end of its material's knock-down.
+  if (vehicle.control && spec.geometry) {
+    let worst = 0;
+    for (let i = 1; i <= WIND_DAYS; i++) {
+      const r = simulateAscent(vehicle, mission, { structuralFailures: false, wind: rollWind(hashSeed(`guide:${i}`)) });
+      worst = Math.max(worst, r.summary.maxQAlpha.value);
+    }
+    const weakest = Math.min(...spec.geometry.stages.map((g) => MATERIALS[g.material].knockdown[0]));
+    // A re-tuned steering programme and a worse day load it more than these few: a quarter on top.
+    const needed = (WIND_ALLOWANCE * worst) / weakest;
+    for (let i = 0; i < 16 && spec.geometry && (vehicle.limits.maxQAlpha ?? Infinity) < needed; i++) {
+      const g = spec.geometry;
+      const stages = g.stages.map((st) =>
+        st.ullage < GEOMETRY_RANGES.ullage[1] ? { ...st, ullage: Math.min(GEOMETRY_RANGES.ullage[1], st.ullage + 0.5) } : { ...st, safetyFactor: Math.min(GEOMETRY_RANGES.safetyFactor[1], st.safetyFactor + 0.1) },
+      );
+      if (stages.every((st, k) => st.ullage === g.stages[k]!.ullage && st.safetyFactor === g.stages[k]!.safetyFactor)) break;
+      spec = { ...spec, geometry: { ...g, stages } };
+      vehicle = { ...assembleVehicle(spec, engines), pitchProgram: vehicle.pitchProgram };
+    }
+  }
+  if (spec === c.spec) return c;
+  const f = figures(vehicle);
+  return { ...c, spec, vehicle, figures: f, margin: (1 + c.margin) * (f.totalDeltaV / c.figures.totalDeltaV) - 1 };
 }
+
+const WIND_ALLOWANCE = 1.25;
+/** Days of weather the guide sizes a guided pick's shells for. */
+const WIND_DAYS = 6;
