@@ -6,7 +6,9 @@ import { flowSeparates, type Engine } from "./engine.ts";
 import type { HardwareTruth } from "./hardware.ts";
 import { MU_EARTH, R_EARTH } from "./constants.ts";
 import { missionPlan, type Mission } from "./mission.ts";
-import { defaultFins, defaultGeometry } from "./geometry.ts";
+import { defaultFins, defaultGeometry, GEOMETRY_RANGES, MATERIALS } from "./geometry.ts";
+import { hashSeed } from "./random.ts";
+import { rollWind } from "./wind.ts";
 import { unguidedProblems } from "./stability.ts";
 import { burnTime, type Vehicle } from "./vehicle.ts";
 
@@ -138,15 +140,23 @@ export function asBuilt(c: Candidate, engines: Record<string, Engine>): Candidat
 
 /** Three picks from the candidates that clear the bar: cheapest, a comfortable margin, and the most margin for the money. */
 function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, note: (c: Candidate) => string, fit: (c: Candidate) => Candidate = (c) => c): Suggestion[] {
+  // Sized for flight (loop speed, shells for the wind), a pick can lose margin: re-check it, and fall through to the next.
+  const fitted = new Map<Candidate, Candidate>();
+  const sized = (c: Candidate) => {
+    if (!fitted.has(c)) fitted.set(c, fit(c));
+    return fitted.get(c)!;
+  };
   const ok = candidates.filter((c) => c.margin >= minMargin).sort((a, b) => a.firstCost - b.firstCost);
-  if (ok.length === 0) return [];
-  const cheapest = ok[0]!;
-  const balanced = ok.find((c) => c.margin >= minMargin * 2 && c !== cheapest);
-  const most = ok.filter((c) => c.firstCost <= cheapest.firstCost * 1.5 && c !== cheapest && c !== balanced).sort((a, b) => b.margin - a.margin)[0];
+  const first = (pool: Candidate[], bar: number) => pool.slice(0, 6).map(sized).find((c) => c.margin >= bar);
+  const cheapest = first(ok, minMargin);
+  if (!cheapest) return [];
+  const raw = [...fitted].find(([, v]) => v === cheapest)![0];
+  const balanced = first(ok.filter((c) => c !== raw && c.margin >= minMargin * 2), minMargin * 2);
+  const used = new Set([raw, ...[...fitted].filter(([, v]) => v === balanced).map(([k]) => k)]);
+  const most = first(ok.filter((c) => !used.has(c) && c.firstCost <= raw.firstCost * 1.5).sort((a, b) => b.margin - a.margin), minMargin);
   const out: Suggestion[] = [];
-  const add = (label: Suggestion["label"], picked: Candidate | undefined) => {
-    if (!picked) return;
-    const c = fit(picked);
+  const add = (label: Suggestion["label"], c: Candidate | undefined) => {
+    if (!c) return;
     out.push({ label, spec: c.spec, vehicle: c.vehicle, figures: c.figures, margin: c.margin, build: vehicleCost(c.vehicle), design: designQuote(c.spec, existing), note: note(c) });
   };
   add("Cheapest", cheapest);
@@ -269,8 +279,21 @@ export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, exist
   // Coasts, relights and long low-thrust upper burns cost more than the fit
   // for direct ascents knows about: ask for more margin when they're involved.
   // Re-draw the most promising on the real shape and build before picking.
-  const shortlist = [...new Set([...[...pool].sort((a, b) => a.firstCost - b.firstCost).slice(0, 40), ...[...pool].sort((a, b) => b.margin - a.margin).slice(0, 20)])].map((c) => asBuilt(c, engines));
-  return pick(shortlist, existing, relights ? 0.08 : 0.04, (c) => {
+  // Drawn on the real shape, build and avionics, a stack loses a couple of
+  // points of margin; the cheapest that still clear the bar with that to
+  // spare are the ones worth re-drawing, alongside the cheapest outright and
+  // the most capable.
+  const minMargin = relights ? 0.1 : 0.04;
+  const byCost = [...pool].sort((a, b) => a.firstCost - b.firstCost);
+  const shortlist = [
+    ...new Set([
+      ...byCost.slice(0, 20),
+      ...byCost.filter((c) => c.margin >= minMargin + 0.02).slice(0, 30),
+      ...byCost.filter((c) => c.margin >= minMargin + 0.05).slice(0, 15),
+      ...[...pool].sort((a, b) => b.margin - a.margin).slice(0, 15),
+    ]),
+  ].map((c) => asBuilt(c, engines));
+  return pick(shortlist, existing, minMargin, (c) => {
     const engines = [...new Set(c.vehicle.stages.map((st) => st.engine.name))];
     const restart = relights ? ` Restart-test the ${c.vehicle.stages.at(-1)!.engine.name} in the altitude cell: this mission relights it after a coast.` : "";
     return `${(c.figures.totalDeltaV / 1000).toFixed(2)} km/s on paper against about ${(needed / 1000).toFixed(2)} needed. Test the ${engines.join(", ")}, run the shape in the tunnel, and re-tune before trusting a forecast.${restart}`;
@@ -299,5 +322,33 @@ function flightFit(c: Candidate, mission: Mission, engines: Record<string, Engin
     spec = { ...spec, geometry: { ...spec.geometry, control: { ...vehicle.control.design, bandwidth: next } } };
     vehicle = { ...assembleVehicle(spec, engines), pitchProgram: vehicle.pitchProgram };
   }
-  return spec === c.spec ? c : { ...c, spec, vehicle, figures: figures(vehicle) };
+  // Shells for the wind: fly a few days' weather and pressurise the tanks
+  // until the drawing carries the worst side load even if the real shell
+  // turns out at the weak end of its material's knock-down.
+  if (vehicle.control && spec.geometry) {
+    let worst = 0;
+    for (let i = 1; i <= WIND_DAYS; i++) {
+      const r = simulateAscent(vehicle, mission, { structuralFailures: false, wind: rollWind(hashSeed(`guide:${i}`)) });
+      worst = Math.max(worst, r.summary.maxQAlpha.value);
+    }
+    const weakest = Math.min(...spec.geometry.stages.map((g) => MATERIALS[g.material].knockdown[0]));
+    // A re-tuned steering programme and a worse day load it more than these few: a quarter on top.
+    const needed = (WIND_ALLOWANCE * worst) / weakest;
+    for (let i = 0; i < 16 && spec.geometry && (vehicle.limits.maxQAlpha ?? Infinity) < needed; i++) {
+      const g = spec.geometry;
+      const stages = g.stages.map((st) =>
+        st.ullage < GEOMETRY_RANGES.ullage[1] ? { ...st, ullage: Math.min(GEOMETRY_RANGES.ullage[1], st.ullage + 0.5) } : { ...st, safetyFactor: Math.min(GEOMETRY_RANGES.safetyFactor[1], st.safetyFactor + 0.1) },
+      );
+      if (stages.every((st, k) => st.ullage === g.stages[k]!.ullage && st.safetyFactor === g.stages[k]!.safetyFactor)) break;
+      spec = { ...spec, geometry: { ...g, stages } };
+      vehicle = { ...assembleVehicle(spec, engines), pitchProgram: vehicle.pitchProgram };
+    }
+  }
+  if (spec === c.spec) return c;
+  const f = figures(vehicle);
+  return { ...c, spec, vehicle, figures: f, margin: (1 + c.margin) * (f.totalDeltaV / c.figures.totalDeltaV) - 1 };
 }
+
+const WIND_ALLOWANCE = 1.25;
+/** Days of weather the guide sizes a guided pick's shells for. */
+const WIND_DAYS = 6;

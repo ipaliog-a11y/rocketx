@@ -7,7 +7,7 @@ import { missionPlan, type Mission } from "./mission.ts";
 import { INJECTORS, NOZZLES, partKeys } from "./parts.ts";
 import { believedHardware, FIXES, flightUnknowns, seenAt, type Campaign, type Unknown } from "./teststand.ts";
 import { believedAero } from "./tunnel.ts";
-import { retunePitch } from "./tuning.ts";
+import { retunePitch, supersonicSpread } from "./tuning.ts";
 import { burnTime, idealDeltaV, type Vehicle } from "./vehicle.ts";
 import { believedGnc, CAUSE_LABELS } from "./control.ts";
 
@@ -180,6 +180,15 @@ function warningsFor(campaign: Campaign, vehicle: Vehicle, mission: Mission, res
   if (limits.maxQAlpha !== undefined && s.maxQAlpha.value > limits.maxQAlpha) out.push("The side load at max-q is over the airframe's budget: the steering turns too hard in thick air.");
   if (s.maxBuffetLoad.value > limits.maxDynamicPressure) out.push(`Known transonic buffet peaks at ${(s.maxBuffetLoad.value / 1000).toFixed(1)} kPa, over the ${(limits.maxDynamicPressure / 1000).toFixed(0)} kPa budget: the real flight breaks up near Mach ${s.maxBuffetLoad.mach.toFixed(1)}.`);
   if (result.events.some((e) => e.kind === "flow-separation")) out.push("A nozzle separates in thick air on this flight.");
+  // An upper stage that lights in thick air and swings onto its programme takes the side load on its own short stack.
+  for (const staging of result.events.filter((e) => e.kind === "staging")) {
+    const after = result.samples.filter((x) => x.t >= staging.t && x.t <= staging.t + 20);
+    const peak = Math.max(0, ...after.map((x) => x.dynamicPressure * x.angleOfAttack));
+    if (limits.maxQAlpha !== undefined && peak > 0.8 * limits.maxQAlpha) {
+      out.push(`Right after staging at ${(staging.altitude / 1000).toFixed(0)} km the side load reaches ${(peak / 1000).toFixed(1)} kPa·°, near or over the ${(limits.maxQAlpha / 1000).toFixed(1)} kPa·° the shells were drawn for: stage higher, or re-tune for a gentler upper-stage start.`);
+      break;
+    }
+  }
   const c = s.control;
   if (c) {
     if (c.maxEffort.value > 0.8) out.push(`The engines swing ${Math.round(c.maxEffort.value * 100)}% of their gimbal range near Mach ${c.maxEffort.mach.toFixed(1)} in calm air: little left for gusts.`);
@@ -193,7 +202,8 @@ function warningsFor(campaign: Campaign, vehicle: Vehicle, mission: Mission, res
 export function bestSteering(campaign: Campaign, vehicle: Vehicle, mission: Mission): Vehicle {
   const isp = enginesOf(vehicle).map((e) => ispKnowledge(campaign, e));
   const shape = aeroShape(vehicle).key;
-  const result = retunePitch(vehicle, mission, { hardware: cleanHardware(isp, (k) => k.model), aero: { [shape]: dragKnowledge(campaign, vehicle).model } });
+  const aero = { [shape]: dragKnowledge(campaign, vehicle).model };
+  const result = retunePitch(vehicle, mission, { hardware: cleanHardware(isp, (k) => k.model), aero, spread: supersonicSpread(campaign, vehicle, aero) });
   return { ...vehicle, pitchProgram: result.program };
 }
 

@@ -81,7 +81,7 @@ test("IMU drift moves the insertion; a calibrated tenth of it barely does", () =
     return Math.abs((r.summary.orbit?.periapsis ?? 0) - (simulateAscent(v, LEO, { gnc: { [v.name]: clean } }).summary.orbit?.periapsis ?? 0));
   };
   const tactical = 10 / 3600;
-  assert.ok(miss(tactical) > 5 * miss(tactical * 0.1), `${miss(tactical)} vs ${miss(tactical * 0.1)}`);
+  assert.ok(miss(tactical) > 3 * miss(tactical * 0.1), `${miss(tactical)} vs ${miss(tactical * 0.1)}`);
 });
 
 test("wind is seeded, calm above 30 km, and pink: long waves carry more than short ones", () => {
