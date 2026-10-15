@@ -9,6 +9,7 @@ import { designEngine, sameDesign, type EngineDesign } from "./enginePhysics.ts"
 import { proofQuote, rollStructureTruths } from "./structures.ts";
 import { MATERIALS } from "./geometry.ts";
 import { rollGncTruth } from "./control.ts";
+import { boosterCost, REFURB, type RefurbDepth } from "./fleet.ts";
 import { GNC_TEST_LABELS, gncTestBlocked, gncTestQuote, runGncTest, type GncTest } from "./gncTests.ts";
 import { assembleEngine, developmentCost, INJECTORS, NOZZLES, OWNER, parsePartKey, partKeys, partLabel, partsProblems, type EngineParts, type InjectorOption, type NozzleOption } from "./parts.ts";
 import {
@@ -45,7 +46,7 @@ import { developedParts, REFINE, reputation, settleDays, type ActionResult, type
  * firings of those parts booked before it.
  */
 
-export type Track = "stand" | "cell" | "office" | "tunnel" | "range" | "regulator" | "lab";
+export type Track = "stand" | "cell" | "office" | "tunnel" | "range" | "regulator" | "lab" | "hangar";
 
 export type TrackSpec = {
   name: string;
@@ -67,9 +68,10 @@ export const TRACKS: Record<Track, TrackSpec> = {
   range: { name: "Test range", extra: [] },
   regulator: { name: "Regulator", extra: [] },
   lab: { name: "GNC lab", extra: [] },
+  hangar: { name: "Booster hangar", extra: [{ cost: 1_500, days: 30, name: "a second hangar bay" }] },
 };
 
-export const TRACK_ORDER: Track[] = ["stand", "cell", "office", "tunnel", "lab", "range", "regulator"];
+export const TRACK_ORDER: Track[] = ["stand", "cell", "office", "tunnel", "lab", "hangar", "range", "regulator"];
 
 export type TaskSpec =
   | { kind: "fire"; engine: string; seconds: number; facility: Facility; restart: boolean }
@@ -86,7 +88,8 @@ export type TaskSpec =
   | { kind: "pad-abort" }
   | { kind: "proof"; design: string }
   | { kind: "gnc"; design: string; test: GncTest }
-  | { kind: "fix-abort"; flaw: AbortFlaw };
+  | { kind: "fix-abort"; flaw: AbortFlaw }
+  | { kind: "refurb"; serial: string; depth: RefurbDepth };
 
 export type Task = {
   id: number;
@@ -123,6 +126,9 @@ export function upgradeCompany(company: Company): void {
   company.units ??= newUnits();
   company.units.range ??= [0];
   company.units.lab ??= [0];
+  company.units.hangar ??= [0];
+  company.boosters ??= [];
+  company.stacked ??= {};
   // Test-flight failures used to cost reputation. They no longer do.
   for (const r of company.record) {
     if (r.note.endsWith(" test flight") && r.tag !== "demonstrated") {
@@ -132,7 +138,7 @@ export function upgradeCompany(company: Company): void {
   }
 }
 
-export const newUnits = (): Record<Track, number[]> => ({ stand: [0], cell: [0], office: [0], tunnel: [0], range: [0], regulator: [0], lab: [0] });
+export const newUnits = (): Record<Track, number[]> => ({ stand: [0], cell: [0], office: [0], tunnel: [0], range: [0], regulator: [0], lab: [0], hangar: [0] });
 
 // ── What a job is ───────────────────────────────────────────────────────
 
@@ -253,6 +259,14 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       const widest = Math.max(...design.stages.map((s) => s.diameter));
       const q = proofQuote(widest);
       return { track: "stand", title: `Proof test · ${design.name}`, cost: q.cost * untested.length, days: q.days, reads: untested.map((k) => `struct:${k}`), writes: untested.map((k) => `struct:${k}`) };
+    }
+    case "refurb": {
+      const unit = company.boosters?.find((b) => b.serial === spec.serial);
+      if (!unit) throw new Error(`No booster ${spec.serial}.`);
+      if (unit.status !== "flown" && !(spec.depth === "overhaul" && unit.status === "ready")) throw new Error(`${spec.serial} is ${unit.status}: nothing for the hangar to do.`);
+      if (pendingOf(company, "refurb").some((t) => t.spec.serial === spec.serial)) throw new Error(`${spec.serial} is already booked into the hangar.`);
+      const r = REFURB[spec.depth];
+      return { track: "hangar", title: `${r.label} · ${spec.serial}`, cost: Math.round((r.share * boosterCost(designOf(company, unit.design))) / 5) * 5, days: r.days, reads: [`booster:${spec.serial}`], writes: [`booster:${spec.serial}`] };
     }
     case "gnc": {
       const design = designOf(company, spec.design);
@@ -388,6 +402,8 @@ function categoryOf(spec: TaskSpec): Category {
       return "analysis";
     case "licence":
       return "licence";
+    case "refurb":
+      return "build";
     default:
       return "rnd";
   }
@@ -567,6 +583,20 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
     case "gnc": {
       const r = runGncTest(spec.test, campaign, designOf(company, spec.design), company.seed);
       return { summary: `${GNC_TEST_LABELS[spec.test]}: ${r.bad ? "problems found" : "done"}.`, text: r.text, tone: r.bad ? "bad" : "good" };
+    }
+    case "refurb": {
+      const unit = company.boosters!.find((b) => b.serial === spec.serial)!;
+      if (unit.status !== "flown" && unit.status !== "ready") throw new Error(`${spec.serial} is ${unit.status} now.`);
+      unit.status = "ready";
+      const truth = campaign.boosterTruth?.[spec.serial];
+      if (spec.depth === "overhaul" && truth) {
+        truth.wear *= 1 - REFURB.overhaul.restores!;
+        const share = truth.wear / truth.life;
+        unit.inspected = { day: company.day, share };
+        const verdict = share < 0.4 ? "plenty of life left" : share < 0.75 ? "wearing, but sound" : "near the end of its life: retire it, or fly it knowing the engines may go";
+        return { summary: `${spec.serial} overhauled: ${Math.round(share * 100)}% worn.`, text: `${spec.serial} stripped down, inspected and rebuilt after ${unit.flights} flight${unit.flights === 1 ? "" : "s"}: ${Math.round(share * 100)}% of its life used, ${verdict}. Ready to stack.`, tone: share < 0.75 ? "good" : "bad" };
+      }
+      return { summary: `${spec.serial} turned around: ready to stack.`, text: `${spec.serial} cleaned, inspected on the outside and re-certified after ${unit.flights} flight${unit.flights === 1 ? "" : "s"}. What's inside nobody measured. Ready to stack.`, tone: "good" };
     }
     case "pad-abort": {
       const text = padAbort(company.capsule!, company.day);

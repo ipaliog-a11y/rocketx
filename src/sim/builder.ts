@@ -4,6 +4,7 @@ import { REFERENCE_PC } from "./enginePhysics.ts";
 import { finArea, GEOMETRY_RANGES, MATERIALS, noseWetted, type Material, type VehicleGeometry } from "./geometry.ts";
 import { BAFFLE_MASS, BENDING_LIMIT, controlDesignOf, defaultControl, controlModel, designPoint, DIVERGENCE_LIMIT, IMU } from "./control.ts";
 import { stabilityOf, unguidedProblems } from "./stability.ts";
+import { RECOVERY_RANGES, recoveryMass } from "./recovery.ts";
 import { structureLimits, structureModel, tankMass } from "./structures.ts";
 import { G0, P_SEA_LEVEL } from "./constants.ts";
 import { flowSeparates, type Engine } from "./engine.ts";
@@ -147,7 +148,9 @@ function assembleGeometric(spec: VehicleSpec, geometry: VehicleGeometry, engines
     const base = two && i > 0 ? 15 + 25 * s.diameter * s.diameter : 40 + 60 * s.diameter * s.diameter;
     // A guided stage carries gimbal actuators on every engine; the top stage carries the inertial unit.
     const avionics = guided ? (actuatorMass(guided) - actuatorMass(DEFAULT_LOOP)) * s.engineCount + (i === spec.stages.length - 1 ? IMU[guided.imu].mass - IMU[DEFAULT_LOOP.imu].mass : 0) : 0;
-    const dry = engineMass(engine) * s.engineCount + tanks + base + avionics + (i === 0 ? finMass(geometry) : 0);
+    const bare = engineMass(engine) * s.engineCount + tanks + base + avionics + (i === 0 ? finMass(geometry) : 0);
+    // A booster drawn to come back carries legs, grid fins and a heat shield on its base.
+    const dry = bare + (i === 0 && two && geometry.recovery ? recoveryMass(geometry.recovery, bare, s.diameter) : 0);
     return { s, engine, propellantMass, dryMass: Math.round(dry) };
   });
   const stages: Stage[] = built.map(({ s, engine, propellantMass, dryMass }, i) => ({
@@ -323,6 +326,12 @@ export function checkVehicle(spec: VehicleSpec, engines: Record<string, Engine>,
   if (g) {
     if (g.jettisonAltitude < 100_000) problems.push(`Fairing jettison at ${Math.round(g.jettisonAltitude / 1000)} km: the air would still heat the payload. Jettison above 100 km.`);
     if (g.fins && booster && g.fins.span > 1.5 * booster.diameter) problems.push("Fins spanning more than 1.5 booster diameters would flutter.");
+    if (g.recovery) {
+      if (spec.stages.length < 2) problems.push("A single stage goes all the way: there's no booster to bring back.");
+      if (!g.recovery.legs) problems.push("A booster that comes back needs legs to land on.");
+      const [lo, hi] = RECOVERY_RANGES.reserve;
+      if (g.recovery.reserve < lo || g.recovery.reserve > hi) problems.push(`The landing reserve runs from ${Math.round(lo * 100)}% to ${Math.round(hi * 100)}% of the booster's propellant.`);
+    }
   }
   if (problems.length > 0) return { problems, warnings };
 

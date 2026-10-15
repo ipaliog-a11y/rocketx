@@ -4,7 +4,9 @@ import { posted, type Company } from "../../sim/company.ts";
 import { defaultFins, MATERIALS, NOSE_LABELS, type FinSection, type Material, type NoseShape } from "../../sim/geometry.ts";
 import { suggestBuilds, type Goal, type Suggestion } from "../../sim/guide.ts";
 import { UNGUIDED_MARGIN } from "../../sim/stability.ts";
-import { circular, escape, gto, highCircular, lunar, SSO_500, SUBORBITAL_TEST } from "../../missions.ts";
+import { circular, escape, gto, highCircular, LEO_300, lunar, SSO_500, SUBORBITAL_TEST } from "../../missions.ts";
+import { landingMargin, type LandingMargin } from "../../sim/landing.ts";
+import { recoveryMass, type RecoveryMode } from "../../sim/recovery.ts";
 import { CurveSlider, PanelHeader, Readout, Stamp, TitleBlock, Verb } from "../design/kit.tsx";
 import { money } from "../format.ts";
 import { game } from "../game.ts";
@@ -18,6 +20,8 @@ import {
   nextRevisionName,
   controlOf,
   readParam,
+  recoveryOf,
+  withRecovery,
   revisionOf,
   SYSTEMS,
   vCurve,
@@ -105,6 +109,24 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
     }
     return c;
   }, [d.spec, param.key, current.id]);
+  // The booster's paper flight home: a whole ascent and landing, so it runs a beat after the last change.
+  const [landing, setLanding] = useState<LandingMargin | null>(null);
+  const flyKey = d.vehicle && recoveryOf(d.spec) ? JSON.stringify(d.spec) : null;
+  useEffect(() => {
+    if (!flyKey || !d.vehicle) {
+      setLanding(null);
+      return;
+    }
+    const v = d.vehicle;
+    const t = setTimeout(() => {
+      try {
+        setLanding(landingMargin(v, LEO_300));
+      } catch {
+        setLanding(null);
+      }
+    }, 150);
+    return () => clearTimeout(t);
+  }, [flyKey]);
   const quote = drawQuote(company, d, drawName);
   const pending = company.tasks.find((t) => t.spec.kind === "design" && base && t.spec.vehicle.name === base.name);
   const proofTask = company.tasks.find((t) => t.spec.kind === "proof" && t.spec.design === sel);
@@ -114,6 +136,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
     fins: d.problems.some((p) => /Static margin|Fins/i.test(p)),
     payload: false,
     gnc: d.problems.some((p) => /gimbal|diverges|bending mode|loop/i.test(p)),
+    rec: d.problems.some((p) => /legs|landing reserve|bring back/i.test(p)) || (landing !== null && (landing.deltaV < 0 || landing.ascent === "failure")),
     ...Object.fromEntries(d.spec.stages.map((_, i) => [`stage-${i}`, d.problems.some((p) => p.toLowerCase().startsWith(stageRole(d.spec.stages.length, i)))])),
   };
   const rev = base ? revisionOf(base.name) : "A";
@@ -329,6 +352,10 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
             <span className="mono muted" style={{ fontSize: 13 }}>
               UNGUIDED: IT FLIES ON ITS FINS. GUIDE IT TO GIMBAL THE ENGINES.
             </span>
+          ) : current.id === "rec" && !recoveryOf(d.spec) ? (
+            <span className="mono muted" style={{ fontSize: 13 }}>
+              EXPENDED: THE BOOSTER FALLS IN THE SEA. BRING IT BACK TO FLY IT AGAIN.
+            </span>
           ) : curve && (
             <CurveSlider
               curve={curve}
@@ -474,6 +501,48 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
               </>
             );
           })()}
+          {current.id === "rec" && (() => {
+            const r = recoveryOf(d.spec);
+            const setRecovery = (change: Parameters<typeof withRecovery>[1], what: string) => {
+              setSpec((s) => withRecovery(s, change));
+              setLog(`> set rec-1.${what}`);
+            };
+            const modes: Array<[RecoveryMode | null, string, string]> = [
+              [null, "EXPENDED", "FULL PAYLOAD"],
+              ["drone-ship", "DRONE SHIP DOWNRANGE", "LESS RESERVE"],
+              ["rtls", "BACK TO THE PAD", "BOOSTBACK BURN"],
+            ];
+            const d0 = d.spec.stages[0]!.diameter;
+            return (
+              <>
+                <fieldset className="ed-choice">
+                  <legend className="lbl">BOOSTER</legend>
+                  {modes.map(([mode, label, note]) => (
+                    <label key={label}>
+                      <input type="radio" name="vd-rec" checked={(r?.mode ?? null) === mode} onChange={() => setRecovery(mode ? { mode } : null, mode ?? "expended")} />
+                      <span>{label}</span>
+                      <span className="note">{note}</span>
+                    </label>
+                  ))}
+                </fieldset>
+                {r && (
+                  <fieldset className="ed-choice">
+                    <legend className="lbl">HARDWARE</legend>
+                    <label>
+                      <input type="checkbox" checked={r.legs} onChange={() => setRecovery({ legs: !r.legs }, `legs ${!r.legs ? "on" : "off"}`)} />
+                      <span>LANDING LEGS</span>
+                      <span className="note">+6% BOOSTER DRY</span>
+                    </label>
+                    <label>
+                      <input type="checkbox" checked={r.gridFins} onChange={() => setRecovery({ gridFins: !r.gridFins }, `grid fins ${!r.gridFins ? "on" : "off"}`)} />
+                      <span>GRID FINS</span>
+                      <span className="note">+{Math.round(recoveryMass({ ...r, legs: false }, 0, d0))} KG · METRES, NOT A HUNDRED</span>
+                    </label>
+                  </fieldset>
+                )}
+              </>
+            );
+          })()}
           {current.id === "fins" && (
             <>
               <fieldset className="ed-choice">
@@ -505,7 +574,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
             <span className="t">{param.info}</span>
           </div>
           <div className="specs">
-            {vSpecRows(current.id, d).map(([k, v]) => (
+            {vSpecRows(current.id, d, landing).map(([k, v]) => (
               <div key={k}>
                 <span>{k}</span>
                 <span>{v}</span>
@@ -515,7 +584,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
         </div>
 
         <div className="ed-readouts" role="group" aria-label="Predicted figures">
-          {vReadouts(d, engines).map((r) => (
+          {vReadouts(d, engines, landing).map((r) => (
             <Readout key={r.key} r={r} rev={rev} />
           ))}
         </div>

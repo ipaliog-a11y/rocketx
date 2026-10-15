@@ -96,6 +96,8 @@ A re-tune is only as good as the testing behind it. Tuned on the drawings and fl
 - An engine identical to one the company already has (same parts, same size) can't be developed again
 - Engine work scales with the chamber. Developing a part, fixing it, the propellant a firing burns and the test engine a failure destroys all cost less on a 9 kN chamber than on a 250 kN one (a 35 kN chamber is the reference). A destroyed test engine costs 60% of its build price (pumps and valves are salvaged) and 12–18 days on its stand. At 35 kN a fix is $90–220k and 12–25 days: about half what it was. Developing a new engine with one new part takes about two to three weeks
 - Achievements worked out from the record: first firing, first flight above 100 km, first orbit, the orbital licence, a fleet of five, $10M earned, a completed series and so on
+- Reusable boosters. A two-stage design on the drawing board can bring its booster back, to a drone ship downrange or to the pad, with landing legs (+6% of the booster's dry mass), grid fins and a base heat shield. The booster cuts off with a reserve of its propellant still in the tanks; the upper stage flies on without it. After separation the booster flies its own path home on the same Earth, gravity and air. It flips, then (to the pad) burns back until its predicted landing, drag included, is the pad. It burns again on the way down until it's slow enough to meet the air at the shield's limit: the Allen–Eggers peak-heating estimate from its mass and flight-path angle. Grid fins steer it toward the pad, and a last burn lands it, leaning to close the gap. Every burn after the first is a relight, so an engine whose relight truth fails can't come home. It is lost if it runs dry, burns up, lands harder than 6 m/s or misses the pad or the heaving deck. A drone ship landing needs about 12% of the booster's propellant, the pad about 20%. On a small rocket that much reserve stages it so low and slow that the upper stage can't hold attitude in the air. The board plots the paper landing margin against the reserve, with both redlines
+- A booster that lands keeps its serial (B1001…), its flights and wear nobody sees. A hot entry or a hard touchdown wears it faster. The new booster hangar turns it around (12% of its build cost, 20 days) or overhauls it (30%, 45 days, takes out a third of the wear and measures what's left). Then a new upper stage is stacked on it for the upper stage's cost plus $100k of integration. Every booster has a hidden life of about ten flights, ±35%; past three-quarters of it, its engines can fail on the way up. Crew and series customers won't fly on a booster that has flown until the company has three clean reflights
 
 ## Balance
 
@@ -119,8 +121,14 @@ Since engines share parts, testing one Harrier teaches about the other, so caref
 | careful (preset Meridian) | 6 | 6 | day 282 | $49.9M | 74 | 0 |
 | designer | 6 | 6 | day 405 | $26.2M | 52 | 1 (buckled) |
 | designer-fast | 5 | 6 | day 370 | $29.3M | 51 | 2 (buckled) |
+| designer-reuse | 6 | 6 | day 411 | $26.6M | 58 | 1 (buckled) |
 
 Drawing a new rocket costs about four months (drawing office, new tooling, proving its engines and shape) and the proof and GNC tests about $445k, so a company that only needs Meridian's job is better off flying Meridian; the drawing board pays for jobs the presets can't do. Skipping the proof and GNC tests saves money and a month, and costs rockets: two buckled, and one of the six companies went under. Getting here took three fixes the bots found: the guide's shortlist dropped the cheap stacks that still cleared its margin bar after redrawing (it suggested $7M rockets where a $4.9M one would do); its shells weren't sized for wind (the guide now flies six days of weather and pressurises the tanks for the worst side load at the weakest knock-down, plus a quarter); and the first orbital flight could miss because a fixed steering programme is very sensitive to the one drag figure nobody can measure before flying. Guided vehicles' last stages now steer closed-loop to the target orbit, as a flight computer does; preset rockets keep their open programmes, so the table above is unchanged.
+
+**Reusable boosters.** `designer-reuse` tests like `designer` but lands its booster on a drone ship. It turns landed boosters around, overhauls them every fifth flight, retires them when worn, and stacks new upper stages on them. The guide's picks leave only 1–3% of the last stage's propellant at orbit, too little to spare a landing reserve, so the bot sizes the stack for up to twice the payload. It needs a stack that keeps 2% at orbit and lands with 100 m/s to spare on paper. That rocket builds for about $6.5M against $5M, so the bot only draws it with the build cost plus $6M in hand; otherwise it flies expendable. Two of the six seeds could afford it. Their boosters landed 17 of 19 times (two missed the deck), and 13 flights went on a flown booster. They ended with $41.1M and $40.6M, against $30.5M and $19.4M for `designer` on the same seeds. The other four flew expendable and match `designer`. Reuse pays once a company can afford the bigger rocket; before that, the cheaper expendable gets it to orbit. Getting here took three fixes the bot found:
+- The pitch re-tune lofted reusable ascents. The booster fell back almost vertically at 1.75 km/s and burned up. The re-tune now counts a lost booster against a steering.
+- The entry burn lit three engines whatever the booster. It now lights a third of them.
+- The bot sized its reserve against a razor-thin ascent margin, so the paper ascent reached orbit and the real one fell short.
 
 Not modelled yet: loans or investors, and the rest of DESIGN.md's later domains (thermal, manufacturing, ground systems).
 
@@ -133,7 +141,8 @@ Not modelled yet: loans or investors, and the rest of DESIGN.md's later domains 
 5. ~~New regimes, part b: crew~~ (done)
 6. ~~Mobile-first UI overhaul~~ (done)
 7. ~~Design physics: continuous engines (A), vehicles with built-up drag, Barrowman stability and shells (B), guidance and control with wind, GNC tests and Monte Carlo (C)~~ (done)
-8. After that: reusable boosters (land and refurbish), the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
+8. ~~Reusable boosters: the flight home, landing, the fleet, the hangar and re-stacking~~ (done)
+9. After that: the company's own constellation, and market eras where customers move to heavier payloads as reputation grows
 
 ## Playing in the browser
 

@@ -39,6 +39,9 @@ export type Dispersions = {
   orbital: boolean;
   /** Losses by what caused them. */
   losses: Record<string, number>;
+  /** A recoverable booster: share of the runs it landed in, and what lost it in the rest. Null if it's expended. */
+  landed: number | null;
+  landingLosses: Record<string, number>;
 };
 
 /** One run's sampled situation: what testing hasn't measured, drawn from its range. */
@@ -88,7 +91,8 @@ export function* runDispersions(campaign: Campaign, vehicle: Vehicle, mission: M
   for (let i = 0; i < n; i++) {
     const seed = hashSeed(`${options.seed ?? 0}:mc:${vehicle.name}:${i}`);
     const s = sample(campaign, vehicle, seed);
-    const result = simulateAscent(vehicle, mission, { hardware, aero, structure: s.structure, ...(s.gnc ? { gnc: s.gnc, wind: rollWind(seed) } : {}) });
+    // A booster coming home meets the day's scatter and sea state too.
+    const result = simulateAscent(vehicle, mission, { hardware, aero, structure: s.structure, ...(s.gnc ? { gnc: s.gnc, wind: rollWind(seed) } : {}), ...(vehicle.geometry?.recovery ? { landingSeed: seed } : {}) });
     const lost = result.events.find((e) => e.kind === "loss-of-control" || e.kind === "structural-failure" || e.kind === "engine-failure");
     const run: DispersionRun = { index: i, result, delivers: delivers(result, options.minApogee), lost: lost ? (lost.cause ?? lost.mode ?? lost.kind) : null };
     runs.push(run);
@@ -97,6 +101,9 @@ export function* runDispersions(campaign: Campaign, vehicle: Vehicle, mission: M
   const losses: Record<string, number> = {};
   for (const r of runs) if (r.lost) losses[r.lost] = (losses[r.lost] ?? 0) + 1;
   const orbital = mission.target !== undefined && options.minApogee === undefined;
+  const homes = runs.map((r) => r.result.recovery).filter((h) => h !== undefined);
+  const landingLosses: Record<string, number> = {};
+  for (const h of homes) if (h.outcome === "lost") landingLosses[h.cause!] = (landingLosses[h.cause!] ?? 0) + 1;
   return {
     runs,
     success: runs.filter((r) => r.delivers).length / Math.max(1, runs.length),
@@ -106,6 +113,8 @@ export function* runDispersions(campaign: Campaign, vehicle: Vehicle, mission: M
     reach: percentiles(runs.filter((r) => !r.lost).map((r) => (orbital ? (r.result.summary.orbit?.periapsis ?? 0) : r.result.summary.apogee))),
     orbital,
     losses,
+    landed: vehicle.geometry?.recovery && vehicle.stages.length > 1 ? homes.filter((h) => h.outcome === "landed").length / Math.max(1, runs.length) : null,
+    landingLosses,
   };
 }
 

@@ -1,4 +1,5 @@
 import type { ControlDesign } from "./control.ts";
+import type { RecoveryDesign } from "./recovery.ts";
 import type { Engine } from "./engine.ts";
 
 /**
@@ -45,6 +46,8 @@ export type VehicleGeometry = {
   stages: StageGeometry[];
   /** Guidance and control. Left out, the default for the stage count (control.ts). */
   control?: ControlDesign;
+  /** Bring the booster back. Left out, it's expended. */
+  recovery?: RecoveryDesign;
 };
 
 export const NOSE_LABELS: Record<NoseShape, string> = { cone: "Cone", ogive: "Tangent ogive", "power-half": "Power series ½", "von-karman": "Von Kármán (LD-Haack)" };

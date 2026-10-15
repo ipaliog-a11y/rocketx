@@ -8,6 +8,9 @@ import type { Engine } from "../sim/engine.ts";
 import { defaultFins, defaultGeometry, GEOMETRY_RANGES, type FinSet, type VehicleGeometry } from "../sim/geometry.ts";
 import { UNGUIDED_MARGIN } from "../sim/stability.ts";
 import type { Vehicle } from "../sim/vehicle.ts";
+import { landingMargin, type LandingMargin } from "../sim/landing.ts";
+import { defaultRecovery, RECOVERY_RANGES, recoveryMass, type RecoveryDesign } from "../sim/recovery.ts";
+import { LEO_300 } from "../missions.ts";
 
 /**
  * The vehicle Design screen's working: the parts of a stack, their
@@ -26,6 +29,7 @@ export function vehicleParts(spec: VehicleSpec): VPart[] {
       .reverse(),
     { id: "fins", tag: "FIN-1", name: "FINS" },
     { id: "gnc", tag: "GNC-1", name: "GUIDANCE & CONTROL" },
+    ...(spec.stages.length > 1 ? [{ id: "rec", tag: "REC-1", name: "BOOSTER RECOVERY" }] : []),
     { id: "payload", tag: "PL-1", name: "PAYLOAD" },
   ];
 }
@@ -73,6 +77,10 @@ export function vehicleParams(part: string, spec: VehicleSpec): VParam[] {
       { key: "g:rate", sym: "δ̇", name: "ACTUATOR RATE", unit: "°/s", min: r.actuatorRate[0], max: r.actuatorRate[1], step: 1, dec: 0, info: "How fast the actuators slew. Too slow and they fall behind the loop in a gust." },
     ];
   }
+  if (part === "rec") {
+    const [lo, hi] = RECOVERY_RANGES.reserve;
+    return [{ key: "r:reserve", sym: "R", name: "LANDING RESERVE", unit: "%", min: lo * 100, max: hi * 100, step: 1, dec: 0, info: "Booster propellant held back to fly home on: payload given up for a landing. Short, the booster is lost; too much, it stages low and slow." }];
+  }
   return [{ key: "payload", sym: "M", name: "DESIGN PAYLOAD", unit: "kg", min: 0, max: 20_000, step: 10, dec: 0, info: "The payload the design is drawn around; contracts load their own." }];
 }
 
@@ -104,6 +112,22 @@ export function withControl(spec: VehicleSpec, change: Partial<ControlDesign>): 
   return { ...w, geometry: { ...w.geometry, control: { ...controlOf(w), ...change } } };
 }
 
+/** How the booster comes back, or undefined if it's expended. */
+export const recoveryOf = (spec: VehicleSpec): RecoveryDesign | undefined => (spec.stages.length > 1 ? spec.geometry?.recovery : undefined);
+
+/** Change how the booster comes back; null expends it. */
+export function withRecovery(spec: VehicleSpec, change: Partial<RecoveryDesign> | null): VehicleSpec {
+  const w = withGeometry(spec);
+  if (change === null) {
+    const { recovery: _, ...rest } = w.geometry;
+    return { ...w, geometry: rest };
+  }
+  const now = w.geometry.recovery ?? defaultRecovery(change.mode);
+  // A new mode starts from its own typical reserve.
+  const reserve = change.mode && change.mode !== now.mode && change.reserve === undefined ? defaultRecovery(change.mode).reserve : now.reserve;
+  return { ...w, geometry: { ...w.geometry, recovery: { ...now, reserve, ...change } } };
+}
+
 /** Read a parameter's value from a spec. */
 export function readParam(spec: VehicleSpec, key: string): number {
   const g = withGeometry(spec).geometry;
@@ -118,6 +142,7 @@ export function readParam(spec: VehicleSpec, key: string): number {
   if (key === "g:bw") return controlOf(spec).bandwidth;
   if (key === "g:gimbal") return controlOf(spec).gimbal;
   if (key === "g:rate") return controlOf(spec).actuatorRate;
+  if (key === "r:reserve") return (recoveryOf(spec)?.reserve ?? defaultRecovery().reserve) * 100;
   const i = Number(key.replace(/^\D+/, ""));
   if (key.startsWith("d")) return spec.stages[i]!.diameter;
   if (key.startsWith("l")) return spec.stages[i]!.tankLength;
@@ -133,6 +158,7 @@ export function writeParam(specIn: VehicleSpec, key: string, value: number): Veh
   if (key === "g:bw") return withControl(specIn, { bandwidth: round(value, 0.1) });
   if (key === "g:gimbal") return withControl(specIn, { gimbal: round(value, 0.5) });
   if (key === "g:rate") return withControl(specIn, { actuatorRate: Math.round(value) });
+  if (key === "r:reserve") return withRecovery(specIn, { reserve: Math.round(value) / 100 });
   const spec = withGeometry(specIn);
   const g = { ...spec.geometry, stages: spec.geometry.stages.map((s) => ({ ...s })) };
   const fins = (): FinSet => g.fins ?? { ...defaultFins(spec.stages[0]!.diameter), span: 0 };
@@ -186,7 +212,7 @@ export type VReadout = { key: string; label: string; value: number; dec: number;
 const cd12 = (v: Vehicle) => dragCoefficient(v.dragCurve, 1.2);
 
 /** The bottom row: what the draft does, against the base revision. */
-export function vReadouts(d: VDraft, engines: Record<string, Engine>): VReadout[] {
+export function vReadouts(d: VDraft, engines: Record<string, Engine>, landing: LandingMargin | null = null): VReadout[] {
   const v = d.vehicle;
   if (!v) return [];
   // Against a design drawn before the model, compare with the model at its default geometry: Δ is what the change does.
@@ -209,6 +235,9 @@ export function vReadouts(d: VDraft, engines: Record<string, Engine>): VReadout[
           const e = controlEffort(v);
           return { key: "gnc", label: "CTRL EFFORT", value: e * 100, dec: 0, unit: "%", lo: 0, hi: 120, delta: b?.control ? e * 100 - controlEffort(b) * 100 : null, tag: e > 1 ? "▲ AUTHORITY" : undefined };
         })()]
+      : []),
+    ...(landing
+      ? [{ key: "land", label: "LANDING MARGIN", value: landing.deltaV, dec: 0, unit: "m/s", lo: -500, hi: 1_500, delta: null, tag: landing.ascent === "failure" ? "▲ ASCENT LOST" : landing.deltaV < 0 ? "▲ NO MARGIN" : undefined }]
       : []),
     { key: "cost", label: "BUILD COST", value: vehicleCost(v).cost / 1000, dec: 2, unit: "$M", lo: 0, hi: Math.max(1, (vehicleCost(v).cost / 1000) * 1.6), delta: delta(vehicleCost(v).cost / 1000, b ? vehicleCost(b).cost / 1000 : undefined) },
   ];
@@ -298,6 +327,35 @@ export function vCurve(company: Company, spec: VehicleSpec, p: VParam): VCurve |
     if (r !== null) curve.redlines = [{ x: r, label: "RATE LIMIT" }];
     return curve;
   }
+  if (p.key === "r:reserve") {
+    // Each point is a whole paper flight up and home: fewer of them.
+    const xr = Array.from({ length: 9 }, (_, i) => p.min + ((p.max - p.min) * i) / 8);
+    const flown = xr.map((x) => {
+      try {
+        const v = assembleVehicle(withGeometry(writeParam(spec, p.key, x)), engines);
+        return { v, m: landingMargin(v, LEO_300) };
+      } catch {
+        return null;
+      }
+    });
+    // What the ascent has without the reserve: the booster's Δv with it held back.
+    const toOrbit = (v: Vehicle) => {
+      const r = v.geometry?.recovery;
+      const s0 = v.stages[0]!;
+      const held = r ? s0.propellantMass * r.reserve : 0;
+      return figures({ ...v, stages: [{ ...s0, propellantMass: s0.propellantMass - held, dryMass: s0.dryMass + held }, ...v.stages.slice(1)] }).totalDeltaV / 1000;
+    };
+    const curve: VCurve = {
+      xs: xr,
+      a: { label: "LANDING MARGIN m/s ÷100", ys: flown.map((f) => (f?.m ? f.m.deltaV / 100 : NaN)) },
+      b: { label: "Δv TO ORBIT km/s", ys: flown.map((f) => (f ? toOrbit(f.v) : NaN)) },
+      redlines: [],
+    };
+    const r1 = crossing(curve, 0, "a");
+    const lost = flown.findIndex((f) => f?.m?.ascent === "failure");
+    curve.redlines = [...(r1 !== null ? [{ x: r1, label: "NO MARGIN" }] : []), ...(lost >= 0 ? [{ x: xr[lost]!, label: "ASCENT LOST", dotted: true }] : [])];
+    return curve;
+  }
   if (p.key === "span" || p.key === "chord" || p.key === "sweep") {
     return {
       xs,
@@ -322,7 +380,7 @@ export function engineChoices(company: Company, diameter: number): Array<{ engin
 }
 
 /** Spec rows for a part. */
-export function vSpecRows(part: string, d: VDraft): Array<[string, string]> {
+export function vSpecRows(part: string, d: VDraft, landing: LandingMargin | null = null): Array<[string, string]> {
   const v = d.vehicle;
   if (!v) return [];
   const g = d.spec.geometry;
@@ -362,6 +420,27 @@ export function vSpecRows(part: string, d: VDraft): Array<[string, string]> {
       ["BENDING", `${m.dp.bendingHz.toFixed(2)} Hz drawn${c.design.notch ? " · notch" : ""}`],
       ["SLOSH", `${m.dp.sloshHz.map((f) => f.toFixed(1)).join(" / ")} Hz${c.design.baffles ? " · baffled" : ""}`],
       ["IMU", `${IMU[c.design.imu].label.toUpperCase()} · ${IMU[c.design.imu].drift}°/h`],
+    ];
+  }
+  if (part === "rec") {
+    const r = recoveryOf(d.spec);
+    if (!r) return [["BOOSTER", "EXPENDED · FALLS IN THE SEA"]];
+    const s0 = v.stages[0]!;
+    // The hardware scales with the bare booster: undo it from the dry mass it's part of.
+    const fins = recoveryMass({ ...r, legs: false }, 0, s0.diameter);
+    const bare = (s0.dryMass - fins) / (1 + recoveryMass({ ...r, gridFins: false }, 1, 0));
+    const flight = !landing
+      ? "—"
+      : landing.ascent === "failure"
+        ? `ASCENT LOST AT STAGING · ${(landing.stagingQ / 1000).toFixed(1)} kPa`
+        : landing.recovery?.outcome === "landed"
+          ? `LANDS · ${Math.round(landing.propellant)} kg SPARE`
+          : `SHORT ${Math.round(-landing.propellant)} kg`;
+    return [
+      ["MODE", r.mode === "rtls" ? "BACK TO THE PAD" : "DRONE SHIP DOWNRANGE"],
+      ["RESERVE", `${Math.round(s0.propellantMass * r.reserve)} kg · ${Math.round(r.reserve * 100)}%`],
+      ["HARDWARE", `${Math.round(s0.dryMass - bare)} kg${r.legs ? " · LEGS" : ""}${r.gridFins ? " · GRID FINS" : ""}`],
+      ["PAPER FLIGHT", flight],
     ];
   }
   return [

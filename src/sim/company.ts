@@ -15,9 +15,12 @@ import { learnFromFlight } from "./telemetry.ts";
 import { believedHardware, flightUnknowns, newCampaign, type Campaign, type Facility, type Unknown } from "./teststand.ts";
 import { retuneFromTests } from "./tuning.ts";
 import { believedAero, type AeroFacility } from "./tunnel.ts";
-import type { Vehicle } from "./vehicle.ts";
 import { believedGnc, flownGnc } from "./control.ts";
 import { flightWindSeed, rollWind } from "./wind.ts";
+import { FLIGHT_PROVEN_TRUST, flightWear, nextSerial, restackCost, rollBoosterTruth, wearFailure, type BoosterUnit } from "./fleet.ts";
+import { ENTRY_HEATING, RECOVERY_CAUSE_LABELS } from "./recovery.ts";
+import { hashSeed } from "./random.ts";
+import { burnTime, type Vehicle } from "./vehicle.ts";
 
 /**
  * The company: the pressure around the engineering. Cash, a calendar,
@@ -32,7 +35,7 @@ import { flightWindSeed, rollWind } from "./wind.ts";
 export type Category = "test" | "fix" | "rnd" | "analysis" | "build" | "facility" | "launch" | "licence" | "overhead" | "payout" | "penalty";
 
 /** A vehicle on a production line, paid for, rolling out on its ready day. */
-export type Order = { design: string; line: number; startDay: number; readyDay: number };
+export type Order = { design: string; line: number; startDay: number; readyDay: number; /** A re-stack: the flown booster it's built on. */ booster?: string };
 
 /** How a contract ended. "withdrawn" is a series instance the customer pulled after a failure. */
 export type Closed = "delivered" | "degraded" | "failed" | "late" | "withdrawn";
@@ -57,6 +60,8 @@ export type FlightLogEntry = {
   apogee: number;
   /** What the customer made of it, for contract flights. */
   settlement: "delivered" | "degraded" | "failed" | null;
+  /** A recoverable booster: its serial, which flight of its this was, and whether it landed. */
+  booster?: { serial: string; flight: number; landed: boolean };
 };
 
 /** What a design has actually flown. A bid that goes past this is a new regime. */
@@ -99,6 +104,10 @@ export type Company = {
   units: Record<Track, number[]>;
   /** The crew capsule, once developed. */
   capsule?: Capsule;
+  /** Every recoverable booster the company has flown, by serial order. */
+  boosters?: BoosterUnit[];
+  /** Built vehicles stacked on a flown booster, by design key: the serials, first to fly first. */
+  stacked?: Record<string, string[]>;
 };
 
 export function newCompany(
@@ -200,6 +209,7 @@ function tick(company: Company): string[] {
   const notices: string[] = [];
   for (const order of company.orders.filter((o) => o.readyDay <= company.day)) {
     company.inventory[order.design] = (company.inventory[order.design] ?? 0) + 1;
+    if (order.booster) ((company.stacked ??= {})[order.design] ??= []).push(order.booster);
     notices.push(`Day ${order.readyDay}: a ${company.designs[order.design]?.name ?? order.design} rolled out of line ${order.line + 1}.`);
   }
   company.orders = company.orders.filter((o) => o.readyDay > company.day);
@@ -510,8 +520,7 @@ export function buildDays(company: Company, key: string, vehicle: Vehicle = desi
 }
 
 /** What the next order on the first free line would look like. */
-export function nextSlot(company: Company, key: string): { line: number; startDay: number; readyDay: number } {
-  const days = buildDays(company, key);
+export function nextSlot(company: Company, key: string, days = buildDays(company, key)): { line: number; startDay: number; readyDay: number } {
   let line = 0;
   company.lines.forEach((free, i) => {
     if (free < company.lines[line]!) line = i;
@@ -532,9 +541,10 @@ export function readyDay(company: Company, key: string): number | null {
  * frees up first; the company keeps working while it is built, and it rolls
  * out on its ready day.
  */
-export function build(company: Company, key: string): ActionResult {
+export function build(company: Company, key: string, options: { booster?: string } = {}): ActionResult {
   alive(company);
   const design = designOf(company, key);
+  if (options.booster) return restack(company, key, options.booster);
   const { cost } = vehicleCost(design);
   const slot = nextSlot(company, key);
   // On the books before the bill lands: a company that spends its last cash
@@ -545,6 +555,50 @@ export function build(company: Company, key: string): ActionResult {
   const notices = charge(company, "build", cost, 0, `${design.name} build`);
   const queued = slot.startDay > company.day ? `, after the line's current job (starts day ${slot.startDay})` : "";
   return { text: `Ordered a ${design.name} on line ${slot.line + 1}${queued}: ${money(cost)}. Ready on day ${slot.readyDay}.`, notices };
+}
+
+export const boosterOf = (company: Company, serial: string): BoosterUnit => {
+  const unit = company.boosters?.find((b) => b.serial === serial);
+  if (!unit) throw new Error(`No booster ${serial}.`);
+  return unit;
+};
+
+/** Boosters back from the hangar and waiting for an upper stage, for a design. */
+export const readyBoosters = (company: Company, key: string): BoosterUnit[] => (company.boosters ?? []).filter((b) => b.design === key && b.status === "ready");
+
+/** Build a new upper stage onto a booster that has flown and been through the hangar. */
+function restack(company: Company, key: string, serial: string): ActionResult {
+  const design = designOf(company, key);
+  const unit = boosterOf(company, serial);
+  if (unit.design !== key) throw new Error(`${serial} was built for another design.`);
+  if (unit.status !== "ready") throw new Error(`${serial} isn't ready to fly: ${unit.status === "flown" ? "it needs the hangar first" : `it's ${unit.status}`}.`);
+  const { cost, days } = restackCost(design);
+  const slot = nextSlot(company, key, days);
+  company.orders.push({ design: key, ...slot, booster: serial });
+  company.lines[slot.line] = slot.readyDay;
+  unit.status = "stacked";
+  const notices = charge(company, "build", cost, 0, `${design.name} on ${serial}`);
+  return { text: `Stacking a new ${design.name} upper stage on ${serial} (flight ${unit.flights + 1} for it): ${money(cost)}. Ready on day ${slot.readyDay}.`, notices };
+}
+
+/** Take a booster out of service for good. */
+export function retireBooster(company: Company, serial: string): ActionResult {
+  alive(company);
+  const unit = boosterOf(company, serial);
+  if (unit.status !== "flown" && unit.status !== "ready") throw new Error(`${serial} can't be retired while it's ${unit.status}.`);
+  if (company.tasks.some((t) => t.spec.kind === "refurb" && t.spec.serial === serial)) throw new Error(`${serial} is booked into the hangar.`);
+  unit.status = "retired";
+  return { text: `${serial} retired after ${unit.flights} flight${unit.flights === 1 ? "" : "s"}.`, notices: [] };
+}
+
+/** Reflights that went cleanly: what cautious customers want to see before they fly on a booster that has flown. */
+export function cleanReflights(company: Company): number {
+  return company.flights.filter((f) => f.booster && f.booster.flight > 1 && (f.outcome === "orbit" || f.outcome === "escape") && f.settlement !== "failed").length;
+}
+
+/** Crew and series customers won't fly on a booster that has flown until the company has shown it works. */
+export function refusesFlightProven(company: Company, contract: Contract): boolean {
+  return (contract.kind === "crew" || contract.seriesId !== undefined) && cleanReflights(company) < FLIGHT_PROVEN_TRUST;
 }
 
 /** Production lines beyond the first: what each costs and how long it takes to set up. */
@@ -569,6 +623,8 @@ export type FlightReport = ActionResult & {
   debrief: string;
   /** What the customer made of it, for contract flights. */
   settlement: Settlement | null;
+  /** What became of a recoverable booster. */
+  booster: string | null;
 };
 
 /**
@@ -605,6 +661,26 @@ export function fly(company: Company, key: string, target: { contract: string } 
   // The capsule rides under its abort tower when people could be aboard, or to prove the tower.
   const vehicle = crewed || abortTest ? withCapsule(design) : { ...design, payloadMass: contract?.payloadMass ?? design.payloadMass };
 
+  // A recoverable booster flies under a serial: one that has flown if one is stacked, unless the customer won't have it.
+  const reusable = !!design.geometry?.recovery && design.stages.length > 1;
+  let unit: BoosterUnit | null = null;
+  if (reusable) {
+    const proven = ((company.stacked ??= {})[key] ??= []);
+    const fresh = (company.inventory[key] ?? 0) - proven.length;
+    const cautious = contract !== null && refusesFlightProven(company, contract);
+    if (proven.length > 0 && !(cautious && fresh > 0)) {
+      if (cautious) throw new Error(`${contract!.customer} won't fly on a booster that has flown until the company has ${FLIGHT_PROVEN_TRUST} clean reflights (it has ${cleanReflights(company)}). Build a new ${design.name}.`);
+      unit = boosterOf(company, proven.shift()!);
+    } else {
+      const fleet = (company.boosters ??= []);
+      unit = { serial: nextSerial(fleet), design: key, flights: 0, status: "stacked", lastFlight: company.day };
+      fleet.push(unit);
+      (company.campaign.boosterTruth ??= {})[unit.serial] = rollBoosterTruth(unit.serial, company.seed);
+    }
+  }
+  const boosterTruth = unit ? company.campaign.boosterTruth?.[unit.serial] : undefined;
+  const worn = unit && boosterTruth && unit.flights > 0 ? wearFailure(boosterTruth, unit.serial, unit.flights + 1, company.seed, burnTime(design.stages[0]!) * (1 - design.geometry!.recovery!.reserve)) : null;
+
   const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`)];
   company.inventory[key]! -= 1;
   // The day's wind, and the attitude loop as built and as testing has corrected it.
@@ -619,6 +695,8 @@ export function fly(company: Company, key: string, target: { contract: string } 
           gnc: { [vehicle.name]: gncTruth ? flownGnc(vehicle.control, gncTruth, company.campaign.gncKnowledge?.[vehicle.name]) : believedGnc(vehicle.control, undefined) },
         }
       : {}),
+    ...(reusable ? { landingSeed: hashSeed(`${company.seed}:landing:${company.flights.length}`) } : {}),
+    ...(worn ? { boosterFailure: worn } : {}),
   });
   // The abort: on purpose at max-q in a test, or because the rocket is failing under a crew.
   let abortText: string | null = null;
@@ -642,6 +720,18 @@ export function fly(company: Company, key: string, target: { contract: string } 
   }
   const written = debrief(result, vehicle, mission, company.campaign);
   const lines = abortText ? [written, "", abortText] : [written];
+  let landed = false;
+  let boosterText: string | null = null;
+  if (unit) {
+    unit.flights += 1;
+    unit.lastFlight = company.day;
+    const home = result.recovery;
+    landed = home?.outcome === "landed";
+    unit.status = landed ? "flown" : "lost";
+    if (landed && boosterTruth) boosterTruth.wear += flightWear(home!);
+    boosterText = boosterLine(unit, home, worn !== null);
+    lines.push("", boosterText);
+  }
   let settlement: Settlement | null = null;
   const orbitedBefore = (company.experience[key]?.orbits ?? 0) > 0;
   learnFromFlight(company.campaign, vehicle, result);
@@ -695,9 +785,23 @@ export function fly(company: Company, key: string, target: { contract: string } 
     outcome: result.outcome,
     apogee: result.summary.apogee,
     settlement: settlement?.status ?? null,
+    ...(unit ? { booster: { serial: unit.serial, flight: unit.flights, landed } } : {}),
   });
   notices.push(...tick(company));
-  return { text: lines.join("\n"), notices, result, debrief: written, settlement };
+  return { text: lines.join("\n"), notices, result, debrief: written, settlement, booster: boosterText };
+}
+
+/** What became of the booster, for the flight report. */
+function boosterLine(unit: BoosterUnit, home: FlightResult["recovery"], worn: boolean): string {
+  const which = `Booster ${unit.serial}${unit.flights > 1 ? `, flight ${unit.flights}` : ""}`;
+  const wear = worn ? " Its engines failed on the way up: wear, on a booster flown past its life." : "";
+  if (!home) return `${which} went down with the vehicle.${wear}`;
+  const where = home.mode === "rtls" ? "back at the launch site" : "on the drone ship";
+  if (home.outcome === "landed") {
+    const hot = home.peakHeating > ENTRY_HEATING ? " A hot entry: the base took some heat." : "";
+    return `${which} landed ${where}, ${Math.round(home.touchdown!.miss)} m off centre, with ${Math.round(home.propellantLeft)} kg to spare.${hot}${wear}`;
+  }
+  return `${which} was lost: ${RECOVERY_CAUSE_LABELS[home.cause!]}.${wear}`;
 }
 
 function recordExperience(company: Company, key: string, vehicle: Vehicle, result: FlightResult): void {

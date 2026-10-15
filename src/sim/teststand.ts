@@ -1,4 +1,5 @@
 import { DEFAULT_RATED_LIFE, massFlow, flowSeparates, ispAt, thrustAt, type Engine } from "./engine.ts";
+import type { BoosterTruth } from "./fleet.ts";
 import { G0, P_SEA_LEVEL } from "./constants.ts";
 import {
   asBuilt,
@@ -179,6 +180,8 @@ export type Campaign = {
   gncTruth?: Record<string, GncTruth>;
   /** What modal surveys, IMU calibration, HITL runs and flights have shown, by design name. */
   gncKnowledge?: Record<string, GncKnowledge>;
+  /** Hidden life and wear of each recoverable booster, by serial. */
+  boosterTruth?: Record<string, BoosterTruth>;
   /** $k spent on firings, lost hardware and fixes. */
   spent: number;
   /** Calendar days used by firings, rebuilds and fixes. */

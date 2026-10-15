@@ -1,4 +1,5 @@
-import { build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { boosterCost, REFURB, restackCost, type RefurbDepth } from "../sim/fleet.ts";
+import { boosterOf, build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, retireBooster, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { EngineDesign } from "../sim/enginePhysics.ts";
 import { proofQuote } from "../sim/structures.ts";
 import { GNC_TEST_LABELS, gncTestQuote, HITL_RUNS, type GncTest } from "../sim/gncTests.ts";
@@ -143,6 +144,50 @@ export function lineJob(company: Company): Job | null {
     caveat: `It takes orders from day ${company.day + next.days}, after ${next.days} days of setting up.`,
     run: (c) => buyLine(c),
   };
+}
+
+/** A flown booster through the hangar: a quick turnaround, or an overhaul that measures its wear. */
+export function refurbJob(company: Company, serial: string, depth: RefurbDepth): Job {
+  const unit = boosterOf(company, serial);
+  const r = REFURB[depth];
+  return trackJob(
+    {
+      title: `${r.label} for ${serial}?`,
+      doing: `${r.label}: ${serial} in the hangar`,
+      verb: depth === "overhaul" ? "Overhaul" : "Turn around",
+      days: r.days,
+      cost: Math.round((r.share * boosterCost(company.designs[unit.design]!)) / 5) * 5,
+      caveat:
+        depth === "overhaul"
+          ? `Stripped down to the engines and rebuilt: it takes out ${Math.round(r.restores! * 100)}% of the wear and measures what's left.`
+          : "Cleaned, inspected on the outside and re-certified. What's worn inside nobody measures.",
+    },
+    () => ({ kind: "refurb", serial, depth }),
+  );
+}
+
+/** A new upper stage on a booster back from the hangar. */
+export function restackJob(company: Company, key: string, serial: string): Job {
+  const v = company.designs[key]!;
+  const { cost, days } = restackCost(v);
+  const slot = nextSlot(company, key, days);
+  const unit = boosterOf(company, serial);
+  return {
+    title: `Stack a ${v.name} on ${serial}?`,
+    doing: `Stacking a ${v.name} on ${serial}`,
+    verb: "Stack",
+    days: 0,
+    cost,
+    alwaysAsk: true,
+    orders: key,
+    caveat: `A new upper stage on a booster that has flown ${unit.flights} time${unit.flights === 1 ? "" : "s"}: ${money(vehicleCost(v).cost - cost)} less than a new ${v.name}. Line ${slot.line + 1}, ready on day ${slot.readyDay}.`,
+    run: (c) => build(c, key, { booster: serial }),
+  };
+}
+
+/** Take a booster out of service. */
+export function retireJob(serial: string): Job {
+  return { title: `Retire ${serial}?`, doing: `Retiring ${serial}`, verb: "Retire", days: 0, cost: 0, alwaysAsk: true, caveat: "It never flies again.", run: (c) => retireBooster(c, serial) };
 }
 
 /** Proof-test a design's shells: a test article loaded until it buckles shows the real knock-down. */

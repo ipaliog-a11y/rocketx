@@ -134,7 +134,8 @@ export type Ghost = { result: FlightResult; color: string; label: string };
  */
 export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], autoplay = true }: { result: FlightResult; budget: number; title: string; skip?: string; onEnd?: () => void; ghosts?: Ghost[]; autoplay?: boolean }) {
   const samples = r.samples;
-  const end = samples[samples.length - 1]?.t ?? 0;
+  // A booster still on its way home keeps the replay running until it's down.
+  const end = Math.max(samples[samples.length - 1]?.t ?? 0, r.recovery?.samples.at(-1)?.t ?? 0);
   // Without autoplay the whole flight shows first, and Play runs it from the pad.
   const [t, setT] = useState(autoplay ? 0 : end);
   const [playing, setPlaying] = useState(autoplay && samples.length > 1);
@@ -185,6 +186,11 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
   const maxAlt = Math.max(...samples.map((s) => s.altitude), ...ghostSamples.map((s) => Math.min(s.altitude, 3 * (shownTarget?.apoapsis ?? s.altitude))), shownTarget?.apoapsis ?? 0) / 1000;
   const xMax = niceMax(turns ? Math.max(maxRange, ...ghostSamples.map((s) => Math.min(s.downrange / 1000, maxRange * 1.5))) : Math.max(end, ...ghosts.map((g) => g.result.samples.at(-1)?.t ?? 0)));
   const yMax = niceMax(maxAlt * 1.08);
+  // A booster coming home: its own trace, which runs back behind the pad on a return to the launch site.
+  const home = turns ? r.recovery : undefined;
+  const xMin = home ? Math.min(0, Math.floor(Math.min(...home.samples.map((s) => s.downrange)) / 10_000) * 10) : 0;
+  const homeFlown = home ? home.samples.filter((s) => s.t <= t).map((s): [number, number] => [s.downrange / 1000, s.altitude / 1000]) : [];
+  const homeLast = home?.samples.at(-1);
   const flown = samples.filter((s) => s.t <= t).map((s): [number, number] => [xOf(s), s.altitude / 1000]);
   const whole = samples.map((s): [number, number] => [xOf(s), s.altitude / 1000]);
 
@@ -198,6 +204,7 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
       return { x: xOf(s), y: s.altitude / 1000, color: lost ? COLORS.bad : COLORS.text, hollow: !lost, label: eventLabel(e) };
     });
   markers.push({ x: xOf(now), y: now.altitude / 1000, color: COLORS.action });
+  if (home && homeLast && t >= homeLast.t) markers.push({ x: home.landedAt / 1000, y: 0, color: home.outcome === "landed" ? COLORS.text : COLORS.bad, hollow: home.outcome === "landed", label: home.outcome === "landed" ? "booster landed" : "booster lost" });
 
   const qMaxT = Math.min(end, Math.max(150, r.summary.maxQ.t * 2.5));
   const qSamples = samples.filter((s) => s.t <= qMaxT);
@@ -237,15 +244,19 @@ export function Replay({ result: r, budget, title, skip, onEnd, ghosts = [], aut
       <div className="row">
         <div className="grow stack">
           <figure className="card" style={{ margin: 0 }}>
-            <figcaption className="label">{turns ? "Altitude against ground track" : "Altitude against time"}</figcaption>
+            <figcaption className="label">
+              {turns ? "Altitude against ground track" : "Altitude against time"}
+              {home ? " · white: the booster coming home" : ""}
+            </figcaption>
             <Plot
               label="Ascent profile"
-              x={{ min: 0, max: xMax, ticks: ticks(xMax), title: turns ? "km downrange" : "seconds" }}
+              x={{ min: xMin, max: xMax, ticks: [...(xMin < 0 ? [xMin] : []), ...ticks(xMax)], title: turns ? "km downrange" : "seconds" }}
               y={{ min: 0, max: yMax, ticks: ticks(yMax, 4), title: "km" }}
               series={[
                 ...ghosts.map((g) => ({ points: g.result.samples.map((s): [number, number] => [xOf(s), s.altitude / 1000]).filter(([x, y]) => x <= xMax && y <= yMax), color: g.color, opacity: 0.55, dash: "3 4" })),
                 { points: whole, color: COLORS.data, opacity: 0.3, dash: "6 5" },
                 { points: flown, color: COLORS.data, width: 3 },
+                ...(home ? [{ points: homeFlown, color: COLORS.text, width: 2, opacity: 0.85 }] : []),
               ]}
               rules={shownTarget ? [{ at: shownTarget.apoapsis / 1000, color: COLORS.action, label: `target ${km(shownTarget.apoapsis, 0)}`, labelAt: "start" }] : []}
               markers={markers}
@@ -384,6 +395,12 @@ function Debrief({ report }: { report: FlightReport }) {
               <span className="muted" style={{ fontSize: 14 }}>
                 {Math.round(ideal)} m/s delivered in total.
               </span>
+            </div>
+          )}
+          {report.booster && (
+            <div className={`card ${report.result.recovery?.outcome === "landed" ? "" : "alert"}`}>
+              <p className="label">The booster</p>
+              <span>{report.booster}</span>
             </div>
           )}
           <details className="card" open>

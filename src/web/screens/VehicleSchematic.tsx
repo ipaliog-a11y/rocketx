@@ -187,6 +187,28 @@ export function VehicleSchematic({
         )}
       </Part>
 
+      {geo.recovery && n > 1 && (() => {
+        const rec = geo.recovery;
+        const top = stageRange(0);
+        const r0 = top.r * s;
+        const legLen = Math.min(0.25 * (top.to - top.from), 3 * top.r) * s;
+        const grid = Math.max(6, 0.3 * top.r * s);
+        return (
+          <Part id="rec" label={`Booster recovery: ${rec.mode === "rtls" ? "back to the pad" : "drone ship"}${rec.legs ? ", legs" : ""}${rec.gridFins ? ", grid fins" : ""}`} on={sel === "rec"} lim={!!lim.rec} pick={pick}>
+            <rect className="hit" x={CX - r0 - grid - 6} y={y(top.from) - 4} width={2 * (r0 + grid) + 12} height={grid + 8} />
+            {/* Grid fins stowed flat at the top of the booster. */}
+            {rec.gridFins &&
+              ([1, -1] as const).map((side) => <rect key={side} className="f" x={side > 0 ? CX + r0 : CX - r0 - grid} y={y(top.from) + 2} width={grid} height={grid * 0.7} style={{ strokeDasharray: "1 2" }} />)}
+            {/* Legs folded up against the tail. */}
+            {rec.legs &&
+              ([1, -1] as const).map((side) => <path key={side} className="f" d={`M${CX + side * r0} ${yTail - legLen} L${CX + side * (r0 + 4)} ${yTail + 2}`} />)}
+            <text className="v" x={labelX} y={y(top.from) + 16}>
+              REC-1
+            </text>
+          </Part>
+        );
+      })()}
+
       {/* Engine bells under the tail, from the engine's own exit area. */}
       {Array.from({ length: shown }, (_, k) => {
         const spacing = (2 * tail.r1 * s) / shown;

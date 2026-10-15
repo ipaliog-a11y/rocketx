@@ -10,6 +10,7 @@ import { isOrbit, orbitFrom, type OrbitElements } from "./orbit.ts";
 import { believedGnc, controlStep, newLoop, type Cause, type GncFlight } from "./control.ts";
 import { trueAxial, trueQAlpha } from "./structures.ts";
 import { CALM, windAt, type WindProfile } from "./wind.ts";
+import { flyHome, type RecoveryResult, type Separation } from "./recovery.ts";
 import { burnTime, stackMass, type Stage, type Vehicle } from "./vehicle.ts";
 
 /**
@@ -125,6 +126,8 @@ export type FlightResult = {
   outcome: Outcome;
   events: FlightEvent[];
   samples: Sample[];
+  /** A recoverable booster's flight home after separation. */
+  recovery?: RecoveryResult;
   summary: {
     apogee: number;
     apogeeTime: number;
@@ -215,6 +218,10 @@ export type AscentOptions = {
    * vehicle name, as flown. Left out, the loop flies as drawn.
    */
   gnc?: Record<string, GncFlight>;
+  /** Seed for a recovered booster's landing scatter and sea state; left out, a calm nominal landing. */
+  landingSeed?: number;
+  /** A worn booster's engines failing, seconds into its burn: on top of whatever the engine's own truth holds. */
+  boosterFailure?: { t: number; mode: FailureMode };
 };
 
 /** [x, y, vx, vy, mass, gravity, drag, back-pressure, steering, ideal Δv] */
@@ -455,7 +462,11 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     ...design,
     stages: design.stages.map((stage) => ({ ...stage, engine: asBuilt(stage.engine, truthOf(stage)) })),
   };
-  const failureOf = (index: number) => firstFailure(truthOf(design.stages[index]!));
+  const failureOf = (index: number) => {
+    const own = firstFailure(truthOf(design.stages[index]!));
+    const worn = index === 0 ? options.boosterFailure : undefined;
+    return worn && (!own || worn.t < own.t) ? worn : own;
+  };
 
   const dt = options.dt ?? 0.05;
   const sampleInterval = options.sampleInterval ?? 1;
@@ -476,6 +487,10 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     target: control && plan.ascent ? plan.ascent.periapsis : null,
   };
   const loop = newLoop();
+  // A booster drawn to come back holds back its reserve and flies home after separation.
+  const recoveryDesign = design.geometry?.recovery && design.stages.length > 1 ? design.geometry.recovery : null;
+  const reserve = recoveryDesign ? vehicle.stages[0]!.propellantMass * recoveryDesign.reserve : 0;
+  let separation: Separation | null = null;
   let liftoffMass = 0;
   const controlSummary: ControlSummary | null = control
     ? { maxEffort: { value: 0, t: 0, mach: 0 }, maxRateUse: 0, maxOscillation: { value: 0, t: 0, cause: null }, maxDivergence: 0, maxBendingGain: 0, maxGust: 0, imuBias: gnc!.imuBias }
@@ -607,7 +622,9 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
 
   while (outcome === "timeout" && t < maxTime) {
     const flow = phase.burning ? phase.stage.engineCount * massFlow(phase.stage.engine) : 0;
-    let step = phase.burning ? Math.min(dt, propellant / flow) : dt;
+    // A recoverable booster stops with its reserve still in the tanks.
+    const held = stageIndex === 0 ? reserve : 0;
+    let step = phase.burning ? Math.min(dt, Math.max(0, propellant - held) / flow) : dt;
     // Land exactly on a scheduled engine failure.
     if (phase.burning && phase.failure) step = Math.min(step, Math.max(0, phase.ignitedAt + phase.failure.t - t));
     const prev = s;
@@ -742,7 +759,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       event("accel-limit-exceeded", k, axialG);
     }
 
-    if (phase.burning && (propellant <= 1e-9 || guidanceCutoff)) {
+    if (phase.burning && (propellant <= (stageIndex === 0 ? reserve : 0) + 1e-9 || guidanceCutoff)) {
       if (guidanceCutoff) event("cutoff", k, propellant);
       else event("meco", k);
       const inertialFpa = Math.asin(Math.max(-1, Math.min(1, verticalSpeed(s) / k.speed)));
@@ -756,7 +773,9 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       };
       const next = guidanceCutoff ? undefined : vehicle.stages[stageIndex + 1];
       if (next) {
-        s[M] -= phase.stage.dryMass;
+        if (stageIndex === 0 && recoveryDesign) separation = { t, x: s[X], y: s[Y], vx: s[VX], vy: s[VY], propellant, dryMass: phase.stage.dryMass, omega: ctx.omega };
+        // The booster takes its reserve with it.
+        s[M] -= phase.stage.dryMass + (stageIndex === 0 ? reserve : 0);
         stageIndex += 1;
         propellant = next.propellantMass;
         phase = {
@@ -949,6 +968,15 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
       ? scoreInsertion(target, finalOrbit, geometry.inclination, outcome === "orbit" || outcome === "escape")
       : null;
   const finalAltitude = Math.hypot(s[X], s[Y]) - R_EARTH;
+  const booster = vehicle.stages[0]!;
+  const recovery =
+    recoveryDesign && separation
+      ? flyHome({ engine: booster.engine, engineCount: booster.engineCount, diameter: booster.diameter, recovery: recoveryDesign }, separation, {
+          relightFails: truthOf(design.stages[0]!).relightFails ?? false,
+          ...(options.landingSeed !== undefined ? { seed: options.landingSeed } : {}),
+          surfaceWind: ctx.wind ? windAt(ctx.wind, 0).mean + windAt(ctx.wind, 0).gust : 0,
+        })
+      : null;
 
   return {
     vehicle: vehicle.name,
@@ -956,6 +984,7 @@ export function simulateAscent(design: Vehicle, mission: Mission, options: Ascen
     outcome,
     events,
     samples,
+    ...(recovery ? { recovery } : {}),
     summary: {
       // An escape has no apogee: report how high it was when the simulation let go.
       apogee: outcome === "orbit" && orbit ? orbit.apoapsis : outcome === "escape" ? finalAltitude : apogee.altitude,
