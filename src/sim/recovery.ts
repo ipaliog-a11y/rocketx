@@ -242,8 +242,8 @@ export function flyHome(b: Booster, sep: Separation, o: RecoveryOptions = {}): R
   const r = b.recovery;
   const p = physics(b, sep);
   const s: Body = { x: sep.x, y: sep.y, vx: sep.vx, vy: sep.vy, t: sep.t, propellant: sep.propellant };
-  // Burns use the centre engines: up to three for the high burns, fewest that can stop it to land.
-  const burnEngines = Math.min(3, b.engineCount);
+  // The high burns light a third of the engines (three of nine, as boosters do); the landing, the fewest that can stop it.
+  const burnEngines = Math.max(1, Math.ceil(b.engineCount / 3));
   const samples: RecoverySample[] = [];
   const burns: RecoveryResult["burns"] = [];
   let peakHeating = 0;

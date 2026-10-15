@@ -102,6 +102,8 @@ function score(result: FlightResult, vehicle: Vehicle, mission: Mission): number
     penalty += 100 * (summary.maxBuffetLoad.value / vehicle.limits.maxDynamicPressure - 1) + 100;
   }
 
+  // A booster drawn to come back should come back: a steering that loses it costs more than a little insertion error.
+  if (result.recovery && result.recovery.outcome !== "landed") penalty += 0.6;
   if (result.outcome === "failure") return 1_000 + penalty;
   const orbit = summary.orbit;
   if (result.outcome !== "orbit" || !orbit) {

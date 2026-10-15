@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { aeroShape } from "./sim/airframe.ts";
 import { simulateAscent } from "./sim/ascent.ts";
 import {
@@ -66,6 +67,8 @@ const designs = (p: Policy) => p === "designer" || p === "designer-fast" || p ==
 const fleetRuns: Array<{ landed: number; lost: number; reflown: number; buildPerFlight: number }> = [];
 /** Landing margin the reuse bot wants on paper, m/s, and what it wants left in the last stage at orbit, as a share of its propellant. */
 const LANDING_MARGIN = 100;
+/** What lost each booster, over every run of a policy. */
+const boosterLosses = new Map<string, number>();
 const ASCENT_MARGIN = 0.02;
 /** The reuse bot overhauls a booster every this many flights, and retires it this worn. */
 const OVERHAUL_EVERY = 5;
@@ -101,7 +104,8 @@ function guard(company: Company, act: () => unknown): boolean {
   try {
     act();
     return !company.dead;
-  } catch {
+  } catch (error) {
+    if (process.env.GUARD_LOG) console.log(`      refused: ${(error as Error).message}`);
     return false;
   }
 }
@@ -161,6 +165,14 @@ function flyAndCount(company: Company, key: string, target: Parameters<typeof fl
   return guard(company, () => {
     const before = trace && "contract" in target ? forecastResult(company, key, board(company, target.contract)) : null;
     const report = fly(company, key, target);
+    const home = report.result.recovery;
+    if (report.booster && home?.outcome !== "landed") {
+      const why = home ? `${home.cause}${home.touchdown ? ` (${home.touchdown.speed.toFixed(1)} m/s, ${Math.round(home.touchdown.miss)} m)` : ""}` : "with the vehicle";
+      const cause = why.replace(/ \(.*/, "");
+      boosterLosses.set(cause, (boosterLosses.get(cause) ?? 0) + 1);
+      if (process.env.DUMP_LOST && home) (globalThis as { dumped?: unknown[] }).dumped = [...((globalThis as { dumped?: unknown[] }).dumped ?? []), { booster: company.designs[key]!.stages[0], recovery: company.designs[key]!.geometry!.recovery, sep: home.separation, mission: report.result.mission }];
+      if (verbose) console.log(`      booster lost: ${why}, heating ${((home?.peakHeating ?? 0) / 1e6).toFixed(1)} MW/m², left ${Math.round(home?.propellantLeft ?? 0)} kg`);
+    }
     hangar(company);
     if (before) {
       const v = company.designs[key]!;
@@ -221,6 +233,7 @@ function withLanding(company: Company, spec: VehicleSpec, job: Contract): Vehicl
       const v = { ...assembleVehicle(s, company.campaign.engines), payloadMass: job.payloadMass };
       const m = landingMargin(v, job.mission);
       // The reserve comes out of the ascent's margin: keep as much as the guide asks for.
+      if (trace) console.log(`    reuse sizing: reserve ${reserve.toFixed(2)} ${m?.ascent} ascent ${((m?.ascentMargin ?? 0) / v.stages.at(-1)!.propellantMass * 100).toFixed(1)}% landing ${m?.deltaV.toFixed(0)} m/s`);
       if (m && m.ascent === "orbit" && m.ascentMargin < ASCENT_MARGIN * v.stages.at(-1)!.propellantMass) return null;
       if (m && m.ascent === "orbit" && m.deltaV >= LANDING_MARGIN) return s;
       // More reserve only stages it lower: past an ascent it can't fly, give up.
@@ -393,6 +406,11 @@ function play(seed: number, policy: Policy): Outcome {
   };
 }
 
+process.on("exit", () => {
+  const dumped = (globalThis as { dumped?: unknown[] }).dumped;
+  if (process.env.DUMP_LOST && dumped) writeFileSync(process.env.DUMP_LOST, JSON.stringify(dumped));
+});
+
 const median = (xs: number[]) => {
   if (xs.length === 0) return NaN;
   const s = [...xs].sort((a, b) => a - b);
@@ -414,6 +432,7 @@ for (const policy of policies) {
   losses.clear();
   extraTests.length = 0;
   fleetRuns.length = 0;
+  boosterLosses.clear();
   const runs: Outcome[] = [];
   for (let seed = 1; seed <= seeds; seed++) if (!only || Number(only) === seed) runs.push(play(seed, policy));
   const orbit = runs.filter((r) => r.firstOrbitDay !== null);
@@ -429,6 +448,7 @@ for (const policy of policies) {
   if (fleetRuns.length > 0) {
     const sum = (f: (r: (typeof fleetRuns)[number]) => number) => fleetRuns.reduce((s, r) => s + f(r), 0);
     if (sum((r) => r.landed + r.lost) > 0) console.log(`  boosters: landed ${sum((r) => r.landed)} of ${sum((r) => r.landed + r.lost)}, ${sum((r) => r.reflown)} flights on a flown booster`);
+    if (boosterLosses.size > 0) console.log(`  boosters lost: ${[...boosterLosses].map(([n, k]) => `${n} ×${k}`).join(", ")}`);
     console.log(`  building and the hangar: median $${(median(fleetRuns.map((r) => r.buildPerFlight)) / 1000).toFixed(2)}M a flight`);
   }
   if (verbose) {
