@@ -317,7 +317,7 @@ export function retuneJob(company: Company, key: string, contract: Contract): Jo
   }, (c) => retuneSpec(c, key, { contract: contract.id }), () => ({ kind: "retune", design: key, pitchProgram: v.pitchProgram, text: "" }));
 }
 
-export function launchJob(company: Company, key: string, contract: Contract, onDone: (r: FlightReport) => void): Job<FlightReport> {
+export function launchJob(company: Company, key: string, contract: Contract, onDone: (r: FlightReport) => void, newBooster = false): Job<FlightReport> {
   const v = company.designs[key]!;
   return {
     title: `Launch the ${v.name} for ${contract.customer}?`,
@@ -327,7 +327,7 @@ export function launchJob(company: Company, key: string, contract: Contract, onD
     cost: COSTS.launchFee,
     forContract: contract.id,
     exposure: contract.penalty > 0 ? [{ cost: contract.penalty, text: `If the flight fails, ${contract.customer} charges a ${money(contract.penalty)} penalty.` }] : undefined,
-    run: (c) => fly(c, key, { contract: contract.id }),
+    run: (c) => fly(c, key, { contract: contract.id, ...(newBooster ? { newBooster } : {}) }),
     onDone,
   };
 }

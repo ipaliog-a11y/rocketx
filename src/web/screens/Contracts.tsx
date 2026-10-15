@@ -3,7 +3,7 @@ import { accept, bid, commitSeries, reputation, seriesBonus, seriesBroken, uncom
 import { KIND_LABELS, type Contract, type ContractKind } from "../../sim/contracts.ts";
 import { COSTS } from "../../sim/cost.ts";
 import { holds, LICENCE_LABELS, requiredLicence, type Licence } from "../../sim/licence.ts";
-import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
+import { BoosterNote, DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
 import { Chip, Facts, Tabs } from "../components/Bits.tsx";
 import { defaultDesign, game } from "../game.ts";
 import { deadlineRisks, waitJob } from "../jobs.ts";
@@ -580,6 +580,7 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
           {open && <Schedule day={company.day} deadline={contract.deadline} b={b} />}
           {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
           <Findings b={b} />
+          <BoosterNote b={b} />
           <Forecast b={b} />
           {contract.kind !== "crew" && (
             <span className="actions">

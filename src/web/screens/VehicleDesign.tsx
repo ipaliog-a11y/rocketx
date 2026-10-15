@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { maxEngines, specOf, stageRole, type VehicleSpec } from "../../sim/builder.ts";
 import { posted, type Company } from "../../sim/company.ts";
 import { defaultFins, MATERIALS, NOSE_LABELS, type FinSection, type Material, type NoseShape } from "../../sim/geometry.ts";
-import { suggestBuilds, type Goal, type Suggestion } from "../../sim/guide.ts";
+import { suggestBuilds, type Goal, type Suggestion, type Suggestions } from "../../sim/guide.ts";
 import { UNGUIDED_MARGIN } from "../../sim/stability.ts";
 import { circular, escape, gto, highCircular, LEO_300, lunar, SSO_500, SUBORBITAL_TEST } from "../../missions.ts";
 import { landingMargin, type LandingMargin } from "../../sim/landing.ts";
@@ -127,6 +127,14 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
     }, 150);
     return () => clearTimeout(t);
   }, [flyKey]);
+  // The paper flight home is a caution, not a limit: the design check doesn't know what mission it will fly.
+  const landingCautions = landing
+    ? landing.ascent === "failure"
+      ? [`On paper (${LEO_300.name}) the upper stage is lost at staging in ${(landing.stagingQ / 1000).toFixed(0)} kPa of air: hold back less reserve, or give the booster more.`]
+      : landing.recovery?.outcome !== "landed"
+        ? [`On paper (${LEO_300.name}) the booster comes home short: about ${Math.round(-landing.propellant)} kg more reserve would land it.`]
+        : []
+    : [];
   const quote = drawQuote(company, d, drawName);
   const pending = company.tasks.find((t) => t.spec.kind === "design" && base && t.spec.vehicle.name === base.name);
   const proofTask = company.tasks.find((t) => t.spec.kind === "proof" && t.spec.design === sel);
@@ -242,7 +250,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
                 </div>
               </div>
             ))}
-            {d.warnings.map((w) => (
+            {[...d.warnings, ...landingCautions].map((w) => (
               <div key={w} className="check">
                 <div className="ed-crow">
                   <span>CAUTION</span>
@@ -611,15 +619,17 @@ function SizingGuide({ company, use, job }: { company: Company; use: (s: Suggest
   const [suborbital, setSuborbital] = useState(false);
   const [apogee, setApogee] = useState(120);
   const [payload, setPayload] = useState(150);
-  const [results, setResults] = useState<Suggestion[] | null>(null);
+  const [booster, setBooster] = useState<"expended" | RecoveryMode>("expended");
+  const [results, setResults] = useState<Suggestions | null>(null);
   const [thinking, setThinking] = useState(false);
   const box = useRef<HTMLElement>(null);
 
   const goal = (): Goal => {
     const c = work.find((x) => x.id === source);
-    if (c) return { mission: c.mission, payloadMass: c.payloadMass, minApogee: c.minApogee };
+    const reuse = booster === "expended" ? {} : { reuse: booster };
+    if (c) return { mission: c.mission, payloadMass: c.payloadMass, minApogee: c.minApogee, ...(c.minApogee === undefined ? reuse : {}) };
     if (suborbital) return { mission: SUBORBITAL_TEST, payloadMass: payload, minApogee: apogee * 1000 };
-    return { mission: ORBITS.find((o) => o.id === orbit)!.mission, payloadMass: payload };
+    return { mission: ORBITS.find((o) => o.id === orbit)!.mission, payloadMass: payload, ...reuse };
   };
   const run = () => {
     setThinking(true);
@@ -680,10 +690,22 @@ function SizingGuide({ company, use, job }: { company: Company; use: (s: Suggest
               <input id="sg-payload" type="number" min={10} step={10} value={payload} onChange={(e) => setPayload(Math.max(10, Number(e.target.value) || 10))} />
             </>
           )}
-          <Verb label={thinking ? "SIZING…" : "SUGGEST"} note="3 STACKS" go disabled={thinking} onClick={run} />
+          <label className="lbl" htmlFor="sg-booster">
+            BOOSTER
+          </label>
+          <select id="sg-booster" value={booster} onChange={(e) => setBooster(e.target.value as typeof booster)}>
+            <option value="expended">EXPENDED</option>
+            <option value="drone-ship">LAND ON A DRONE SHIP</option>
+            <option value="rtls">FLY BACK TO THE PAD</option>
+          </select>
+          <Verb label={thinking ? "SIZING…" : "SUGGEST"} note={booster === "expended" ? "3 STACKS" : "SIZES THE RESERVE"} go disabled={thinking} onClick={run} />
         </div>
       </div>
-      {results && results.length === 0 && <div className="mono alarm" style={{ padding: "0 16px 16px" }}>▲ NO STACK FROM THESE ENGINES DOES THIS JOB. A BIGGER ENGINE FROM TESTING › DESIGN MIGHT.</div>}
+      {results && results.length === 0 && (
+        <div className="mono alarm" style={{ padding: "0 16px 16px" }}>
+          ▲ {results.reason ? results.reason.toUpperCase() : "NO STACK FROM THESE ENGINES DOES THIS JOB. A BIGGER ENGINE FROM TESTING › DESIGN MIGHT."}
+        </div>
+      )}
       {results && results.length > 0 && (
         <div className="ed-guide-results suggestions">
           {results.map((s) => (
@@ -710,6 +732,26 @@ function SizingGuide({ company, use, job }: { company: Company; use: (s: Suggest
                     {money(s.build.cost)} · {money(s.design.cost)}
                   </span>
                 </div>
+                {s.reuse && (
+                  <>
+                    <div>
+                      <span>RESERVE · LANDING</span>
+                      <span>
+                        {Math.round(s.reuse.reserve * 100)}% · +{Math.round(s.reuse.landing.propellant)} KG
+                      </span>
+                    </div>
+                    <div>
+                      <span>REFLIGHT</span>
+                      <span>
+                        {money(s.reuse.reflight.cost)} · {s.reuse.reflight.days} D
+                      </span>
+                    </div>
+                    <div>
+                      <span>PAYS BACK</span>
+                      <span>{s.reuse.payback === null ? "NEVER" : s.reuse.payback === 1 ? "FIRST FLIGHT" : `FLIGHT ${s.reuse.payback}`}{s.reuse.expendable !== null ? ` · VS ${money(s.reuse.expendable)}` : ""}</span>
+                    </div>
+                  </>
+                )}
               </div>
               <span className="t" style={{ fontSize: 13, color: "var(--ed-muted)" }}>
                 {s.note}

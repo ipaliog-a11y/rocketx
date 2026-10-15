@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { bid, readyDay, type Company } from "../../sim/company.ts";
+import { bid, nextBooster, readyDay, type Company } from "../../sim/company.ts";
 import type { Contract } from "../../sim/contracts.ts";
 import { CAPSULE, crewRating } from "../../sim/crew.ts";
 import { STATION } from "../../missions.ts";
 import { COSTS } from "../../sim/cost.ts";
-import { DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
+import { BoosterNote, DesignSelect, Findings, Forecast, Schedule } from "../components/BidParts.tsx";
 import { Chip, Facts, Tabs } from "../components/Bits.tsx";
 import { height, Rocket } from "../components/Rocket.tsx";
 import { game } from "../game.ts";
@@ -154,6 +154,10 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
   const onLine = company.orders.filter((o) => o.design === design).length;
   const turns = v.pitchProgram?.kind === "gravity-turn";
   const left = contract.deadline - company.day;
+  // A flown booster is stacked and a new one is on the ground too: the player can pick the new one.
+  const [newBooster, setNewBooster] = useState(false);
+  const booster = b.booster ? nextBooster(company, design, contract) : null;
+  const canChoose = !!booster?.serial && booster.fresh > 0 && !booster.cautious;
 
   return (
     <section className="grow row" aria-label={`Prepare ${contract.title}`}>
@@ -186,6 +190,13 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
         {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
         {(contract.kind === "crew" || contract.kind === "cargo") && <StationNote company={company} design={design} crew={contract.kind === "crew"} />}
         <Findings b={b} />
+        <BoosterNote b={b} />
+        {canChoose && (
+          <label className="with-icon" style={{ gap: 8 }}>
+            <input type="checkbox" checked={newBooster} onChange={(e) => setNewBooster(e.target.checked)} />
+            <span>Fly a new booster instead of {booster!.serial}</span>
+          </label>
+        )}
         <Forecast b={b} />
         <div className="actions">
           <button
@@ -193,7 +204,7 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
             className="btn primary"
             disabled={ready === null || (contract.kind === "crew" && !crewRating(company, design, contract.mission).rated)}
             title={ready === null ? `Order a ${v.name} first` : contract.kind === "crew" && !crewRating(company, design, contract.mission).rated ? `The ${v.name} isn't crew-rated` : undefined}
-            onClick={() => game.schedule(launchJob(company, design, contract, (r) => game.showFlight(r, design)))}
+            onClick={() => game.schedule(launchJob(company, design, contract, (r) => game.showFlight(r, design), canChoose && newBooster))}
           >
             {ready !== null && ready > company.day ? `Launch on rollout · day ${ready}` : `Launch ${v.name}`}
           </button>

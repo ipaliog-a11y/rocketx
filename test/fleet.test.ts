@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fitControl, specOf, type VehicleSpec } from "../src/sim/builder.ts";
-import { boosterOf, build, cleanReflights, fly, newCompany, readyDay, refusesFlightProven, retireBooster, wait, type Company } from "../src/sim/company.ts";
+import { bid, boosterOf, build, cleanReflights, fly, newCompany, nextBooster, readyDay, refusesFlightProven, retireBooster, wait, type Company } from "../src/sim/company.ts";
 import { vehicleCost } from "../src/sim/cost.ts";
 import { boosterCost, FLIGHT_PROVEN_TRUST, REFURB, restackCost, wearFailure, wearRisk } from "../src/sim/fleet.ts";
 import { defaultGeometry } from "../src/sim/geometry.ts";
@@ -109,4 +109,21 @@ test("crew and series customers won't fly a booster that has flown until it has 
   for (let i = 0; i < FLIGHT_PROVEN_TRUST; i++) c.flights.push(clean);
   assert.equal(cleanReflights(c), FLIGHT_PROVEN_TRUST);
   assert.ok(!refusesFlightProven(c, crew));
+});
+
+test("bids and launches name the booster; a new one can be asked for", () => {
+  const { c, key } = landedOnce();
+  runTask(c, { kind: "refurb", serial: "B1001", depth: "turnaround" });
+  build(c, key, { booster: "B1001" });
+  build(c, key);
+  wait(c, Math.max(...c.orders.map((o) => o.readyDay)) - c.day);
+  assert.deepEqual(nextBooster(c, key, null), { serial: "B1001", flight: 2, proven: 1, fresh: 1, cautious: false });
+  const contract = c.board.find((x) => x.mission.target && !x.seriesId && x.kind !== "crew")!;
+  const b = bid(c, contract.id, key);
+  assert.deepEqual(b.booster, { serial: "B1001", flight: 2, refusesFlown: false });
+  // Asked for a new one, the flight takes the new vehicle and leaves B1001 stacked.
+  const r = fly(c, key, { mission: LEO, newBooster: true });
+  assert.equal(r.booster?.startsWith(`Booster B${1001 + c.boosters!.length - 1}`), true, r.booster ?? "");
+  assert.deepEqual(c.stacked![key], ["B1001"]);
+  assert.throws(() => fly(c, key, { mission: LEO, newBooster: true }), /stacked on a booster that has flown/);
 });

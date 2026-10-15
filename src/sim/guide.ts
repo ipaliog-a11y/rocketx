@@ -11,6 +11,9 @@ import { hashSeed } from "./random.ts";
 import { rollWind } from "./wind.ts";
 import { unguidedProblems } from "./stability.ts";
 import { burnTime, type Vehicle } from "./vehicle.ts";
+import { landingMargin } from "./landing.ts";
+import { defaultRecovery, type RecoveryMode } from "./recovery.ts";
+import { payback, reflightCost } from "./fleet.ts";
 
 /**
  * The design office's sizing guide. Given a job (an orbit or an apogee and
@@ -21,7 +24,31 @@ import { burnTime, type Vehicle } from "./vehicle.ts";
  * forecast before anyone signs.
  */
 
-export type Goal = { mission: Mission; payloadMass: number; minApogee?: number };
+export type Goal = {
+  mission: Mission;
+  payloadMass: number;
+  minApogee?: number;
+  /** Bring the booster back: the guide sizes the stack and its landing reserve together. */
+  reuse?: RecoveryMode;
+};
+
+/** What a reusable pick holds back and what flying it again costs. */
+export type ReuseFigures = {
+  mode: RecoveryMode;
+  /** Share of the booster's propellant held back. */
+  reserve: number;
+  /** On paper, with typical engines and the job's payload: propellant (kg) and Δv (m/s) left at touchdown. */
+  landing: { propellant: number; deltaV: number };
+  /** A new upper stage on the landed booster, and its turnaround. */
+  reflight: { cost: number; days: number };
+  /** The cheapest expendable rocket for the same job, $k. */
+  expendable: number | null;
+  /** The flight on which reuse has cost less than expending, if every booster lands. */
+  payback: number | null;
+};
+
+/** The guide's picks; empty with a reason when nothing it can draw does the job the way it was asked. */
+export type Suggestions = Suggestion[] & { reason?: string };
 
 export type Suggestion = {
   label: "Cheapest" | "Balanced" | "Most margin";
@@ -34,6 +61,7 @@ export type Suggestion = {
   build: { cost: number; days: number };
   design: DesignQuote;
   note: string;
+  reuse?: ReuseFigures;
 };
 
 /** Typical engines deliver this share of their drawings' Isp. */
@@ -109,7 +137,21 @@ function enoughEngines(spec: VehicleSpec, stage: number, tw: number, engines: Re
   return n <= max ? withCount(n) : null;
 }
 
-type Candidate = { spec: VehicleSpec; vehicle: Vehicle; figures: Figures; margin: number; firstCost: number };
+type Candidate = { spec: VehicleSpec; vehicle: Vehicle; figures: Figures; margin: number; firstCost: number; reuse?: ReuseFigures };
+
+/** Reserve the guide plans with while it screens stacks, before it fits the real one. */
+const PLANNING_RESERVE: Record<RecoveryMode, number> = { "drone-ship": 0.14, rtls: 0.22 };
+/** Δv a reusable pick must have left at touchdown on paper, m/s. */
+const GUIDE_LANDING = 100;
+/** Δv margin a reusable candidate needs, with the planning reserve held back, to be worth flying on paper. */
+const REUSE_SCREEN = 0.01;
+
+/** Total Δv with a share of the booster's propellant held back for the landing. */
+function heldDeltaV(v: Vehicle, share: number): number {
+  const s0 = v.stages[0]!;
+  const held = s0.propellantMass * share;
+  return figures({ ...v, stages: [{ ...s0, propellantMass: s0.propellantMass - held, dryMass: s0.dryMass + held }, ...v.stages.slice(1)] }).totalDeltaV;
+}
 
 /**
  * A candidate drawn as it will be built: the default shape and build, and on
@@ -139,7 +181,7 @@ export function asBuilt(c: Candidate, engines: Record<string, Engine>): Candidat
 }
 
 /** Three picks from the candidates that clear the bar: cheapest, a comfortable margin, and the most margin for the money. */
-function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, note: (c: Candidate) => string, fit: (c: Candidate) => Candidate = (c) => c): Suggestion[] {
+function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, note: (c: Candidate) => string, fit: (c: Candidate) => Candidate = (c) => c, tries = 6): Suggestion[] {
   // Sized for flight (loop speed, shells for the wind), a pick can lose margin: re-check it, and fall through to the next.
   const fitted = new Map<Candidate, Candidate>();
   const sized = (c: Candidate) => {
@@ -147,7 +189,7 @@ function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, n
     return fitted.get(c)!;
   };
   const ok = candidates.filter((c) => c.margin >= minMargin).sort((a, b) => a.firstCost - b.firstCost);
-  const first = (pool: Candidate[], bar: number) => pool.slice(0, 6).map(sized).find((c) => c.margin >= bar);
+  const first = (pool: Candidate[], bar: number) => pool.slice(0, tries).map(sized).find((c) => c.margin >= bar);
   const cheapest = first(ok, minMargin);
   if (!cheapest) return [];
   const raw = [...fitted].find(([, v]) => v === cheapest)![0];
@@ -157,7 +199,7 @@ function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, n
   const out: Suggestion[] = [];
   const add = (label: Suggestion["label"], c: Candidate | undefined) => {
     if (!c) return;
-    out.push({ label, spec: c.spec, vehicle: c.vehicle, figures: c.figures, margin: c.margin, build: vehicleCost(c.vehicle), design: designQuote(c.spec, existing), note: note(c) });
+    out.push({ label, spec: c.spec, vehicle: c.vehicle, figures: c.figures, margin: c.margin, build: vehicleCost(c.vehicle), design: designQuote(c.spec, existing), note: note(c), ...(c.reuse ? { reuse: c.reuse } : {}) });
   };
   add("Cheapest", cheapest);
   add("Balanced", balanced);
@@ -169,7 +211,7 @@ function pick(candidates: Candidate[], existing: Vehicle[], minMargin: number, n
  * Suggest up to three designs for a goal from the company's engines.
  * `existing` is the company's designs: their tooling is free to reuse.
  */
-export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, existing: Vehicle[], name = "New design"): Suggestion[] {
+export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, existing: Vehicle[], name = "New design"): Suggestions {
   const all = Object.values(engines);
   const padEngines = all.filter((e) => !flowSeparates(e, P_SEA_LEVEL));
   const firstCost = (spec: VehicleSpec, v: Vehicle) => vehicleCost(v).cost + designQuote(spec, existing).cost;
@@ -212,6 +254,9 @@ export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, exist
   const relights = missionPlan(goal.mission).burns.length > 0;
   // Beyond about 11 km/s two stages run out: add a kick stage on the best of them.
   const kicked = needed > 11_000;
+  if (goal.reuse && kicked) {
+    return Object.assign([], { reason: `This job needs about ${(needed / 1000).toFixed(1)} km/s: a kick stage on top, and nothing left over to bring the booster back. The guide sizes it expendable.` });
+  }
   const floor = kicked ? -0.45 : 0;
   const candidates: Candidate[] = [];
   for (const d of DIAMETERS.filter((x) => x >= 0.8)) {
@@ -284,20 +329,109 @@ export function suggestBuilds(goal: Goal, engines: Record<string, Engine>, exist
   // spare are the ones worth re-drawing, alongside the cheapest outright and
   // the most capable.
   const minMargin = relights ? 0.1 : 0.04;
+  const reuse = goal.reuse;
+  // The cheapest expendable stack that clears the bar with room to spare: what reuse has to beat.
+  const expendable = reuse ? [...pool].filter((c) => c.margin >= minMargin + 0.02).sort((a, b) => a.firstCost - b.firstCost)[0] : undefined;
+  const expendableCost = expendable ? vehicleCost(asBuilt(expendable, engines).vehicle).cost : null;
+  if (reuse) {
+    // Screen on what's left once a typical reserve is held back.
+    pool = pool.map((c) => ({ ...c, margin: (heldDeltaV(c.vehicle, PLANNING_RESERVE[reuse]) * TYPICAL_ISP) / needed - 1 }));
+  }
+  const bar = reuse ? REUSE_SCREEN : minMargin;
   const byCost = [...pool].sort((a, b) => a.firstCost - b.firstCost);
   const shortlist = [
     ...new Set([
       ...byCost.slice(0, 20),
-      ...byCost.filter((c) => c.margin >= minMargin + 0.02).slice(0, 30),
-      ...byCost.filter((c) => c.margin >= minMargin + 0.05).slice(0, 15),
+      ...byCost.filter((c) => c.margin >= bar + 0.02).slice(0, 30),
+      ...byCost.filter((c) => c.margin >= bar + 0.05).slice(0, 15),
       ...[...pool].sort((a, b) => b.margin - a.margin).slice(0, 15),
     ]),
   ].map((c) => asBuilt(c, engines));
-  return pick(shortlist, existing, minMargin, (c) => {
-    const engines = [...new Set(c.vehicle.stages.map((st) => st.engine.name))];
-    const restart = relights ? ` Restart-test the ${c.vehicle.stages.at(-1)!.engine.name} in the altitude cell: this mission relights it after a coast.` : "";
-    return `${(c.figures.totalDeltaV / 1000).toFixed(2)} km/s on paper against about ${(needed / 1000).toFixed(2)} needed. Test the ${engines.join(", ")}, run the shape in the tunnel, and re-tune before trusting a forecast.${restart}`;
-  }, (c) => flightFit(c, goal.mission, engines));
+  let why: string | null = null;
+  const picks: Suggestions = pick(
+    shortlist,
+    existing,
+    // A reusable pick's real bar is its paper flight (reserveFit): the Δv screen only needs to be close.
+    reuse ? REUSE_SCREEN : minMargin,
+    (c) => {
+      const engines = [...new Set(c.vehicle.stages.map((st) => st.engine.name))];
+      const restart = relights ? ` Restart-test the ${c.vehicle.stages.at(-1)!.engine.name} in the altitude cell: this mission relights it after a coast.` : "";
+      const back = c.reuse
+        ? ` Holds back ${Math.round(c.reuse.reserve * 100)}% of the booster's propellant for ${c.reuse.mode === "rtls" ? "the flight back to the pad" : "a drone-ship landing"}: about ${Math.round(c.reuse.landing.propellant)} kg spare on paper. A reflight costs ${money(c.reuse.reflight.cost)}${c.reuse.expendable !== null ? ` against ${money(c.reuse.expendable)} for a new expendable rocket` : ""}${c.reuse.payback !== null ? `; it pays back on flight ${c.reuse.payback} if every booster lands` : ""}.`
+        : "";
+      return `${(c.figures.totalDeltaV / 1000).toFixed(2)} km/s on paper against about ${(needed / 1000).toFixed(2)} needed. Test the ${engines.join(", ")}, run the shape in the tunnel, and re-tune before trusting a forecast.${restart}${back}`;
+    },
+    (c) => {
+      const fitted = flightFit(c, goal.mission, engines);
+      if (!reuse) return fitted;
+      const r = reserveFit(fitted, goal, reuse, engines, needed, minMargin, expendableCost);
+      if ("why" in r) {
+        why ??= r.why;
+        return { ...fitted, margin: -1 };
+      }
+      return r;
+    },
+    // A landing rules out more stacks than the wind does: look further down the list.
+    reuse ? 12 : 6,
+  );
+  if (reuse) {
+    // A dearer pick that lands with less and has less margin than a cheaper one is no choice at all.
+    const kept = picks.filter((s, i) => !picks.slice(0, i).some((t) => t.build.cost <= s.build.cost && t.margin >= s.margin && t.reuse!.landing.deltaV >= s.reuse!.landing.deltaV));
+    picks.splice(0, picks.length, ...kept);
+  }
+  if (reuse && picks.length === 0) picks.reason = why ?? "No stack the guide can draw from these engines carries the job and a landing reserve.";
+  return picks;
+}
+
+const money = (k: number) => `$${(k / 1000).toFixed(2)}M`;
+
+/**
+ * Fit the landing reserve to a stack: the least that brings the booster home
+ * on paper with margin, flying the job with typical engines. More reserve
+ * only stages it lower and slower, so once the ascent suffers, stop.
+ */
+function reserveFit(c: Candidate, goal: Goal, mode: RecoveryMode, engines: Record<string, Engine>, needed: number, minMargin: number, expendable: number | null): Candidate | { why: string } {
+  const hardware = typicalHardware(Object.values(engines));
+  let why = "landing";
+  let short = 0;
+  for (let step = 4; step <= 18; step++) {
+    const reserve = step / 50;
+    const spec = fitControl({ ...c.spec, geometry: { ...c.spec.geometry!, recovery: { ...defaultRecovery(mode), reserve } } }, engines);
+    const vehicle = { ...assembleVehicle(spec, engines), pitchProgram: c.vehicle.pitchProgram };
+    // The same Δv margin an expendable pick needs, with the reserve held back.
+    const margin = (heldDeltaV(vehicle, reserve) * TYPICAL_ISP) / needed - 1;
+    if (margin < minMargin) {
+      why = "ascent";
+      break;
+    }
+    const m = landingMargin(vehicle, goal.mission, { hardware });
+    if (!m) return { why: "The design can't bring a booster back." };
+    if (m.ascent !== "orbit") {
+      why = m.ascentLoss?.kind === "loss-of-control" && m.ascentLoss.stage === 1 ? `staging` : "ascent";
+      if (why === "staging") return { why: `Held back for ${mode === "rtls" ? "the flight back to the pad" : "the landing"}, the reserve stages the booster so low and slow (${(m.stagingQ / 1000).toFixed(0)} kPa) that the upper stage can't hold attitude in the air.${mode === "rtls" ? " Try the drone ship, or a bigger booster." : " Try a bigger booster."}` };
+      break;
+    }
+    if (m.deltaV >= GUIDE_LANDING) {
+      const f = figures(vehicle);
+      const reflight = reflightCost(vehicle);
+      const cost = vehicleCost(vehicle).cost;
+      return {
+        spec,
+        vehicle,
+        figures: f,
+        margin,
+        firstCost: cost + (c.firstCost - vehicleCost(c.vehicle).cost),
+        reuse: { mode, reserve, landing: { propellant: m.propellant, deltaV: m.deltaV }, reflight, expendable, payback: expendable !== null ? payback(cost, reflight.cost, expendable) : null },
+      };
+    }
+    short = m.propellant;
+  }
+  return {
+    why:
+      why === "ascent"
+        ? `Every stack that does the job runs out of margin before it can hold back enough to land${mode === "rtls" ? " back at the pad. Try the drone ship" : ""}.`
+        : `Even the most the guide will hold back leaves the booster ${Math.round(-short)} kg short of a landing.`,
+  };
 }
 
 /**
