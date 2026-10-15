@@ -331,7 +331,7 @@ function Guide({ company, use, job }: { company: Company; use: (s: Suggestion) =
         </button>
       </div>
       {results && results.length === 0 && (
-        <span className="bad">Nothing the company's engines can build does this job. A bigger or better engine from the Engine shop might.</span>
+        <span className="bad">Nothing the company's engines can build does this job. A bigger or better engine from Testing › Design might.</span>
       )}
       {results && results.length > 0 && (
         <div className="suggestions">

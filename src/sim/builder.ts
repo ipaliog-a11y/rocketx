@@ -55,6 +55,7 @@ export function propellantFor(diameter: number, tankLength: number): number {
 
 /** Engine mass, kg. */
 export function engineMass(engine: Engine): number {
+  if (engine.mass !== undefined) return engine.mass;
   return engine.thrustVac / (G0 * (pressureFed(engine) ? ENGINE_TW.pressureFed : ENGINE_TW.pumped));
 }
 

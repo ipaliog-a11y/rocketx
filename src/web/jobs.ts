@@ -1,4 +1,5 @@
 import { build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import type { EngineDesign } from "../sim/enginePhysics.ts";
 import { buyUnit, cancelTask, designSpec, runTask, TRACKS, type Task, type TaskSpec, type Track } from "../sim/schedule.ts";
 import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, PAD_ABORT, type AbortFlaw } from "../sim/crew.ts";
 import type { Contract } from "../sim/contracts.ts";
@@ -311,7 +312,11 @@ export function licenceJob(application: Application): Job {
   }, (c) => licenceSpec(c));
 }
 
-export function developJob(parts: EngineParts, name: string, quote: { cost: number; days: number; newParts: string[] }): Job {
+/** Develop an engine: a new one from parts, or a new revision of a programme at a new design point. */
+export function developJob(
+  { parts, name, design, family, rev }: { parts: EngineParts; name: string; design?: EngineDesign; family?: string; rev?: number },
+  quote: { cost: number; days: number; newParts: string[] },
+): Job {
   return trackJob({
     title: `Develop the ${name}?`,
     doing: `Developing the ${name}${quote.newParts.length > 0 ? `: ${quote.newParts.length} new part${quote.newParts.length === 1 ? "" : "s"}` : ""}`,
@@ -323,7 +328,7 @@ export function developJob(parts: EngineParts, name: string, quote: { cost: numb
       quote.newParts.length > 0
         ? `New parts bring new unknowns: ${quote.newParts.map(partLabel).join(", ")}. Nothing about them is proven until they fire.`
         : "Every part is already in production, with what tests have learned about it.",
-  }, () => ({ kind: "develop", name, parts }));
+  }, () => ({ kind: "develop", name, parts, design, family, rev }));
 }
 
 export function refineJob(key: string): Job {

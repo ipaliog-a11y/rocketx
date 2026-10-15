@@ -5,6 +5,7 @@ import type { Engine } from "./engine.ts";
 import { combineTruth, FAILURE_LABELS, rollPartTruths, type FailureMode } from "./hardware.ts";
 import { holds, LICENCE_LABELS, nextLicence, type Licence } from "./licence.ts";
 import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, fixAbortFlaw, newCapsule, PAD_ABORT, padAbort, type AbortFlaw } from "./crew.ts";
+import { designEngine, sameDesign, type EngineDesign } from "./enginePhysics.ts";
 import { assembleEngine, developmentCost, INJECTORS, NOZZLES, OWNER, parsePartKey, partKeys, partLabel, partsProblems, type EngineParts, type InjectorOption, type NozzleOption } from "./parts.ts";
 import {
   applyFix,
@@ -72,7 +73,7 @@ export type TaskSpec =
   | { kind: "tunnel"; design: string; facility: AeroFacility }
   | { kind: "fix-aero"; design: string; mode: FailureMode }
   | { kind: "refine"; part: string }
-  | { kind: "develop"; name: string; parts: EngineParts }
+  | { kind: "develop"; name: string; parts: EngineParts; design?: EngineDesign; family?: string; rev?: number }
   | { kind: "design"; vehicle: Vehicle; tooling: string[]; cost: number; days: number }
   | { kind: "retune"; design: string; pitchProgram: Vehicle["pitchProgram"]; text: string }
   | { kind: "licence"; tier: Licence }
@@ -209,7 +210,7 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       const name = spec.name.trim();
       if (name.length === 0) throw new Error("The engine needs a name.");
       if (company.campaign.engines[name] || pendingOf(company, "develop").some((t) => t.spec.name === name)) throw new Error(`There is already an engine called ${name}.`);
-      const twin = twinOf(company, spec.parts);
+      const twin = twinOf(company, spec.parts, spec.design);
       if (twin) throw new Error(`The ${twin} is already this engine: the same parts at the same size. Use it, or change a part.`);
       const problems = partsProblems(spec.parts);
       if (problems.length > 0) throw new Error(problems.join(" "));
@@ -256,12 +257,12 @@ function fixFor(mode: FailureMode) {
 
 const SLOT_CHOICES = ["size", "cycle", "injector", "cooling", "nozzle"] as const;
 
-/** An engine the company has, or is developing, built from exactly these parts: developing it again would teach nothing. */
-export function twinOf(company: Company, parts: EngineParts): string | null {
-  const same = (p?: EngineParts) => p !== undefined && SLOT_CHOICES.every((k) => p[k] === parts[k]);
-  const have = Object.values(company.campaign.engines).find((e) => same(e.parts));
+/** An engine the company has, or is developing, built from exactly these parts to the same design point: developing it again would teach nothing. */
+export function twinOf(company: Company, parts: EngineParts, design?: EngineDesign): string | null {
+  const same = (p?: EngineParts, d?: EngineDesign) => p !== undefined && SLOT_CHOICES.every((k) => p[k] === parts[k]) && sameDesign(d, design);
+  const have = Object.values(company.campaign.engines).find((e) => same(e.parts, e.design));
   if (have) return have.name;
-  return pendingOf(company, "develop").find((t) => same(t.spec.parts))?.spec.name ?? null;
+  return pendingOf(company, "develop").find((t) => same(t.spec.parts, t.spec.design))?.spec.name ?? null;
 }
 
 /** Designs on the drawing board: booked, not yet drawn up. */
@@ -483,10 +484,10 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
       return { summary: text.split(":")[0] + ".", text, tone: "good" };
     }
     case "develop": {
-      const engine = assembleEngine(spec.parts, spec.name);
+      const engine = spec.design ? designEngine(spec.parts, spec.design, spec.name, { family: spec.family, rev: spec.rev }) : assembleEngine(spec.parts, spec.name);
       const newParts = partKeysOf(spec.parts).filter((k) => !developedParts(company).includes(k));
       rollPartTruths([engine], company.seed, campaign.partTruth);
-      campaign.truth[spec.name] = combineTruth(engine, campaign.partTruth);
+      campaign.truth[spec.name] = combineTruth(engine, campaign.partTruth, company.seed);
       campaign.engines[spec.name] = engine;
       refreshFromParts(campaign);
       const text = `${spec.name} developed: ${(engine.thrustVac / 1000).toFixed(1)} kN, Isp ${engine.ispVac} s on paper. ${newParts.length === 0 ? "Every part was already in production." : `New parts: ${newParts.map(partLabel).join(", ")}.`}`;
