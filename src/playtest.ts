@@ -53,7 +53,8 @@ import type { GncTest } from "./sim/gncTests.ts";
  * proof-tests the shells and runs the GNC lab's three tests; "designer-fast"
  * only fires the engines and runs the tunnel, to show what the rest buys.
  * "designer-reuse" tests like "designer" and lands its booster on a drone
- * ship: the least reserve that comes home with margin. It turns landed
+ * ship: the least reserve that comes home with margin, on a stack sized for
+ * more payload when the guide's own picks can't spare it. It turns landed
  * boosters around, overhauls them every fifth flight, retires the worn,
  * and stacks new upper stages on them.
  */
@@ -64,8 +65,8 @@ const designs = (p: Policy) => p === "designer" || p === "designer-fast" || p ==
 /** What each run's boosters did: landings, losses, reflights, and what building cost per flight. */
 const fleetRuns: Array<{ landed: number; lost: number; reflown: number; buildPerFlight: number }> = [];
 /** Landing margin the reuse bot wants on paper, m/s, and what it wants left in the last stage at orbit, as a share of its propellant. */
-const LANDING_MARGIN = 150;
-const ASCENT_MARGIN = 0.04;
+const LANDING_MARGIN = 100;
+const ASCENT_MARGIN = 0.02;
 /** The reuse bot overhauls a booster every this many flights, and retires it this worn. */
 const OVERHAUL_EVERY = 5;
 const RETIRE_AT = 0.85;
@@ -241,9 +242,16 @@ function drawOrbiter(company: Company, policy: Policy, job: Contract): string | 
   if (!balanced) return null;
   let spec: VehicleSpec = balanced.spec;
   if (policy === "designer-reuse") {
-    // The balanced stack if it can spare the reserve, else a bigger one that can.
-    const ordered = [balanced, ...picks.filter((p) => p !== balanced)];
-    spec = ordered.map((p) => withLanding(company, p.spec, job)).find((s) => s !== null) ?? balanced.spec;
+    // The guide sizes for the payload with little to spare: ask it for more payload until a stack can spare the reserve.
+    for (const scale of [1, 1.5, 2]) {
+      const sized = scale === 1 ? picks : suggestBuilds({ mission: job.mission, payloadMass: Math.round(job.payloadMass * scale) }, company.campaign.engines, Object.values(company.designs), "Orbiter");
+      const first = sized.find((p) => p.label === "Balanced") ?? sized[0];
+      const fits = [first, ...sized.filter((p) => p !== first)].filter((p) => p !== undefined).map((p) => withLanding(company, p.spec, job)).find((s) => s !== null);
+      if (fits) {
+        spec = fits;
+        break;
+      }
+    }
   }
   if (!guard(company, () => runTask(company, designSpec(company, { ...spec, name: "Orbiter" })))) return null;
   const key = Object.keys(company.designs).find((k) => company.designs[k]!.name === "Orbiter");
