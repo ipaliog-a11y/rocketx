@@ -1,4 +1,3 @@
-import { writeFileSync } from "node:fs";
 import { aeroShape } from "./sim/airframe.ts";
 import { simulateAscent } from "./sim/ascent.ts";
 import {
@@ -32,13 +31,11 @@ import { generateBoard, startingCash } from "./contracts.ts";
 import { SUBORBITAL_TEST } from "./missions.ts";
 import { missionPlan } from "./sim/mission.ts";
 import { ENGINES, VEHICLES } from "./vehicles.ts";
-import { suggestBuilds } from "./sim/guide.ts";
+import { suggestBuilds, type Suggestion } from "./sim/guide.ts";
 import { flownGnc } from "./sim/control.ts";
 import { flightWindSeed, rollWind } from "./sim/wind.ts";
 import { book, designSpec, runTask } from "./sim/schedule.ts";
-import { assembleVehicle, fitControl, type VehicleSpec } from "./sim/builder.ts";
-import { landingMargin } from "./sim/landing.ts";
-import { defaultRecovery } from "./sim/recovery.ts";
+import type { VehicleSpec } from "./sim/builder.ts";
 import type { GncTest } from "./sim/gncTests.ts";
 
 /**
@@ -53,11 +50,11 @@ import type { GncTest } from "./sim/gncTests.ts";
  * (built-up drag, shells, the attitude loop in wind). "designer" also
  * proof-tests the shells and runs the GNC lab's three tests; "designer-fast"
  * only fires the engines and runs the tunnel, to show what the rest buys.
- * "designer-reuse" tests like "designer" and lands its booster on a drone
- * ship: the least reserve that comes home with margin, on a stack sized for
- * more payload when the guide's own picks can't spare it. It turns landed
- * boosters around, overhauls them every fifth flight, retires the worn,
- * and stacks new upper stages on them.
+ * "designer-reuse" tests like "designer" and flies the guide's reusable
+ * pick (a drone-ship landing) once it holds the rocket's cost and a cushion:
+ * from the start if it can, else switching after first orbit. It turns
+ * landed boosters around, overhauls them every fifth flight, retires the
+ * worn, and stacks new upper stages on them.
  */
 
 type Policy = "careful" | "cheap" | "reckless" | "greedy" | "designer" | "designer-fast" | "designer-reuse";
@@ -65,11 +62,8 @@ type Policy = "careful" | "cheap" | "reckless" | "greedy" | "designer" | "design
 const designs = (p: Policy) => p === "designer" || p === "designer-fast" || p === "designer-reuse";
 /** What each run's boosters did: landings, losses, reflights, and what building cost per flight. */
 const fleetRuns: Array<{ landed: number; lost: number; reflown: number; buildPerFlight: number }> = [];
-/** Landing margin the reuse bot wants on paper, m/s, and what it wants left in the last stage at orbit, as a share of its propellant. */
-const LANDING_MARGIN = 100;
 /** What lost each booster, over every run of a policy. */
 const boosterLosses = new Map<string, number>();
-const ASCENT_MARGIN = 0.02;
 /** Cash beyond the reusable rocket's build cost the bot wants before drawing one, $k: drawing, tests and slack. */
 const REUSE_CUSHION = 6_000;
 /** The reuse bot overhauls a booster every this many flights, and retires it this worn. */
@@ -172,7 +166,6 @@ function flyAndCount(company: Company, key: string, target: Parameters<typeof fl
       const why = home ? `${home.cause}${home.touchdown ? ` (${home.touchdown.speed.toFixed(1)} m/s, ${Math.round(home.touchdown.miss)} m)` : ""}` : "with the vehicle";
       const cause = why.replace(/ \(.*/, "");
       boosterLosses.set(cause, (boosterLosses.get(cause) ?? 0) + 1);
-      if (process.env.DUMP_LOST && home) (globalThis as { dumped?: unknown[] }).dumped = [...((globalThis as { dumped?: unknown[] }).dumped ?? []), { booster: company.designs[key]!.stages[0], recovery: company.designs[key]!.geometry!.recovery, sep: home.separation, mission: report.result.mission }];
       if (verbose) console.log(`      booster lost: ${why}, heating ${((home?.peakHeating ?? 0) / 1e6).toFixed(1)} MW/m², left ${Math.round(home?.propellantLeft ?? 0)} kg`);
     }
     hangar(company);
@@ -227,51 +220,22 @@ function deliver(company: Company, key: string, contract: Contract): boolean {
   return flyAndCount(company, key, { contract: contract.id });
 }
 
-/** The least reserve that brings the booster home with margin, on paper, with the job's payload still in orbit. */
-function withLanding(company: Company, spec: VehicleSpec, job: Contract): VehicleSpec | null {
-  for (let reserve = 0.1; reserve <= 0.3 + 1e-9; reserve += 0.02) {
-    const s = fitControl({ ...spec, geometry: { ...spec.geometry!, recovery: { ...defaultRecovery("drone-ship"), reserve: Math.round(reserve * 100) / 100 } } }, company.campaign.engines);
-    try {
-      const v = { ...assembleVehicle(s, company.campaign.engines), payloadMass: job.payloadMass };
-      const m = landingMargin(v, job.mission);
-      // The reserve comes out of the ascent's margin: keep as much as the guide asks for.
-      if (trace) console.log(`    reuse sizing: reserve ${reserve.toFixed(2)} ${m?.ascent} ascent ${((m?.ascentMargin ?? 0) / v.stages.at(-1)!.propellantMass * 100).toFixed(1)}% landing ${m?.deltaV.toFixed(0)} m/s`);
-      if (m && m.ascent === "orbit" && m.ascentMargin < ASCENT_MARGIN * v.stages.at(-1)!.propellantMass) return null;
-      if (m && m.ascent === "orbit" && m.deltaV >= LANDING_MARGIN) return s;
-      // More reserve only stages it lower: past an ascent it can't fly, give up.
-      if (m && m.ascent === "failure") return null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
 /**
  * A designer bot's orbital rocket: the guide's balanced pick for the first
- * LEO job, drawn up, then tested. Returns its design key, or null.
+ * LEO job (or a reusable pick, given one), drawn up, then tested. Returns
+ * its design key, or null.
  */
-function drawOrbiter(company: Company, policy: Policy, job: Contract): string | null {
-  const picks = suggestBuilds({ mission: job.mission, payloadMass: job.payloadMass }, company.campaign.engines, Object.values(company.designs), "Orbiter");
-  const balanced = picks.find((p) => p.label === "Balanced") ?? picks[0];
-  if (!balanced) return null;
-  let spec: VehicleSpec = balanced.spec;
-  if (policy === "designer-reuse" && trace) console.log(`    reuse sizing: cash $${(company.cash / 1000).toFixed(2)}M, balanced builds for $${(balanced.build.cost / 1000).toFixed(2)}M`);
-  if (policy === "designer-reuse") {
-    // The guide sizes for the payload with little to spare: ask it for more payload until a stack can spare the reserve.
-    for (const scale of [1, 1.5, 2]) {
-      const sized = scale === 1 ? picks : suggestBuilds({ mission: job.mission, payloadMass: Math.round(job.payloadMass * scale) }, company.campaign.engines, Object.values(company.designs), "Orbiter");
-      const first = sized.find((p) => p.label === "Balanced") ?? sized[0];
-      const fits = [first, ...sized.filter((p) => p !== first)].filter((p) => p !== undefined).map((p) => withLanding(company, p.spec, job)).find((s) => s !== null);
-      // A bigger rocket is only worth it with the cash to draw, test and build it, and some to spare.
-      if (fits && company.cash >= vehicleCost(assembleVehicle(fits, company.campaign.engines)).cost + REUSE_CUSHION) {
-        spec = fits;
-        break;
-      }
-    }
+function drawOrbiter(company: Company, policy: Policy, job: Contract, reusable: Suggestion | null = null, name = "Orbiter"): string | null {
+  let spec: VehicleSpec;
+  if (reusable) spec = reusable.spec;
+  else {
+    const picks = suggestBuilds({ mission: job.mission, payloadMass: job.payloadMass }, company.campaign.engines, Object.values(company.designs), name);
+    const balanced = picks.find((p) => p.label === "Balanced") ?? picks[0];
+    if (!balanced) return null;
+    spec = balanced.spec;
   }
-  if (!guard(company, () => runTask(company, designSpec(company, { ...spec, name: "Orbiter" })))) return null;
-  const key = Object.keys(company.designs).find((k) => company.designs[k]!.name === "Orbiter");
+  if (!guard(company, () => runTask(company, designSpec(company, { ...spec, name })))) return null;
+  const key = Object.keys(company.designs).find((k) => company.designs[k]!.name === name);
   if (!key) return null;
   const v = company.designs[key]!;
   for (const [index, stage] of v.stages.entries()) {
@@ -329,8 +293,14 @@ function play(seed: number, policy: Policy): Outcome {
 
   // The orbital rocket: the preset Meridian, or one the designer bots draw themselves.
   let orbiter = "meridian";
+  let reusePick: Suggestion | null = null;
   if (designs(policy)) {
-    const drawn = company.dead ? null : drawOrbiter(company, policy, contract("leo-150"));
+    // The reuse bot flies reusable from the start if it can afford to, else switches once it can.
+    reusePick = policy === "designer-reuse" && !company.dead ? (suggestBuilds({ mission: contract("leo-150").mission, payloadMass: contract("leo-150").payloadMass, reuse: "drone-ship" }, company.campaign.engines, Object.values(company.designs), "Reuser")[0] ?? null) : null;
+    const affordable = reusePick && company.cash >= reusePick.build.cost + REUSE_CUSHION;
+    if (trace && reusePick) console.log(`    reuse: cash $${(company.cash / 1000).toFixed(2)}M, reusable pick $${(reusePick.build.cost / 1000).toFixed(2)}M at ${Math.round(reusePick.reuse!.reserve * 100)}%${affordable ? "" : ": expendable for now"}`);
+    const drawn = company.dead ? null : affordable ? drawOrbiter(company, policy, contract("leo-150"), reusePick, "Reuser") : drawOrbiter(company, policy, contract("leo-150"));
+    if (affordable) reusePick = null;
     if (drawn) orbiter = drawn;
     else note ||= "couldn't draw an orbiter";
   } else if (testing && !company.dead) {
@@ -343,6 +313,12 @@ function play(seed: number, policy: Policy): Outcome {
   const considered = new Set<string>();
   let demos = 0;
   while (!company.dead && company.day < HORIZON && holds(company, "orbital")) {
+    if (reusePick && company.firstOrbitDay !== null && company.cash >= reusePick.build.cost + REUSE_CUSHION) {
+      if (trace) console.log(`    reuse: day ${company.day}, cash $${(company.cash / 1000).toFixed(2)}M: drawing the reusable rocket`);
+      const drawn = drawOrbiter(company, policy, contract("leo-150"), reusePick, "Reuser");
+      if (drawn) orbiter = drawn;
+      reusePick = null;
+    }
     if (reputation(company) < 1) {
       if (demos >= MAX_DEMOS) break;
       demos += 1;
@@ -409,11 +385,6 @@ function play(seed: number, policy: Policy): Outcome {
     note: company.dead ? "bankrupt" : note,
   };
 }
-
-process.on("exit", () => {
-  const dumped = (globalThis as { dumped?: unknown[] }).dumped;
-  if (process.env.DUMP_LOST && dumped) writeFileSync(process.env.DUMP_LOST, JSON.stringify(dumped));
-});
 
 const median = (xs: number[]) => {
   if (xs.length === 0) return NaN;

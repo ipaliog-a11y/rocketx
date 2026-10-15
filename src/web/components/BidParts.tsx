@@ -105,3 +105,19 @@ export function DesignSelect({ label, value, onChange, designs, inventory }: { l
     </label>
   );
 }
+
+/** A reusable design's booster for this flight: one that has flown or a new one, and whether the customer will fly on the first. */
+export function BoosterNote({ b }: { b: Bid }) {
+  const x = b.booster;
+  if (!x) return null;
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <span>
+        <strong>Booster</strong>{" "}
+        <span className="soft">{x.serial ? `${x.serial}, its flight ${x.flight}` : "a new one"}</span>{" "}
+        {x.refusesFlown && <Chip tone="warn">NO FLOWN BOOSTERS</Chip>}
+      </span>
+      {x.note ? <span className="bad">{x.note}</span> : x.refusesFlown && <span className="soft">The customer wants a booster that hasn't flown until the company has a record of clean reflights.</span>}
+    </div>
+  );
+}

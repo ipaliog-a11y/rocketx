@@ -88,4 +88,22 @@ export function restackCost(vehicle: Vehicle): { cost: number; days: number } {
   };
 }
 
+/** What flying a landed booster again costs: a new upper stage stacked on it, and its turnaround. */
+export function reflightCost(vehicle: Vehicle): { cost: number; days: number } {
+  const restack = restackCost(vehicle);
+  return { cost: restack.cost + Math.round((REFURB.turnaround.share * boosterCost(vehicle)) / 5) * 5, days: restack.days + REFURB.turnaround.days };
+}
+
+/**
+ * The flight on which a reusable rocket has cost less, all told, than
+ * expending a rocket every time: its first build, then reflights, against an
+ * expendable rocket per flight. Null if a reflight costs as much as a new
+ * expendable one. Assumes every booster lands.
+ */
+export function payback(reusable: number, reflight: number, expendable: number): number | null {
+  if (reflight >= expendable) return null;
+  if (reusable <= expendable) return 1;
+  return Math.floor((reusable - reflight) / (expendable - reflight)) + 1;
+}
+
 export const nextSerial = (fleet: BoosterUnit[]) => `B${1001 + fleet.length}`;

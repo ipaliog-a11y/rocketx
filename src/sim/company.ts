@@ -632,7 +632,30 @@ export type FlightReport = ActionResult & {
  * given mission. The debrief is written from what the company knew before
  * the flight; then the telemetry is learned.
  */
-export function fly(company: Company, key: string, target: { contract: string } | { mission: Mission; abortTest?: boolean }): FlightReport {
+/**
+ * Which booster a reusable design's next flight goes on: one that has flown
+ * if one is stacked, unless the customer won't have it or a new one was
+ * asked for. Null `serial` is a new booster; `error` says why it can't fly.
+ */
+export function nextBooster(company: Company, key: string, contract: Contract | null, newBooster = false): { serial: string | null; flight: number; proven: number; fresh: number; cautious: boolean; error?: string } {
+  const design = designOf(company, key);
+  const proven = company.stacked?.[key] ?? [];
+  const fresh = (company.inventory[key] ?? 0) - proven.length;
+  const cautious = contract !== null && refusesFlightProven(company, contract);
+  const wantsNew = newBooster || cautious;
+  if (proven.length > 0 && !(wantsNew && fresh > 0)) {
+    const unit = boosterOf(company, proven[0]!);
+    const error = cautious
+      ? `${contract!.customer} won't fly on a booster that has flown until the company has ${FLIGHT_PROVEN_TRUST} clean reflights (it has ${cleanReflights(company)}). Build a new ${design.name}.`
+      : newBooster
+        ? `Every ${design.name} on the ground is stacked on a booster that has flown. Build a new one.`
+        : undefined;
+    return { serial: unit.serial, flight: unit.flights + 1, proven: proven.length, fresh, cautious, ...(error ? { error } : {}) };
+  }
+  return { serial: null, flight: 1, proven: proven.length, fresh, cautious };
+}
+
+export function fly(company: Company, key: string, target: ({ contract: string } | { mission: Mission; abortTest?: boolean }) & { newBooster?: boolean }): FlightReport {
   alive(company);
   const design = designOf(company, key);
   const ready = readyDay(company, key);
@@ -665,12 +688,11 @@ export function fly(company: Company, key: string, target: { contract: string } 
   const reusable = !!design.geometry?.recovery && design.stages.length > 1;
   let unit: BoosterUnit | null = null;
   if (reusable) {
-    const proven = ((company.stacked ??= {})[key] ??= []);
-    const fresh = (company.inventory[key] ?? 0) - proven.length;
-    const cautious = contract !== null && refusesFlightProven(company, contract);
-    if (proven.length > 0 && !(cautious && fresh > 0)) {
-      if (cautious) throw new Error(`${contract!.customer} won't fly on a booster that has flown until the company has ${FLIGHT_PROVEN_TRUST} clean reflights (it has ${cleanReflights(company)}). Build a new ${design.name}.`);
-      unit = boosterOf(company, proven.shift()!);
+    const next = nextBooster(company, key, contract, target.newBooster);
+    if (next.error) throw new Error(next.error);
+    if (next.serial) {
+      company.stacked![key]!.shift();
+      unit = boosterOf(company, next.serial);
     } else {
       const fleet = (company.boosters ??= []);
       unit = { serial: nextSerial(fleet), design: key, flights: 0, status: "stacked", lastFlight: company.day };
@@ -831,6 +853,8 @@ export type Bid = {
   /** Everything the vehicle would fly on trust. */
   unknowns: Unknown[];
   forecast: { text: string; delivers: boolean; result: FlightResult };
+  /** A reusable design: which booster would fly, and whether the customer will have one that has flown. */
+  booster?: { serial: string | null; flight: number; refusesFlown: boolean; note?: string };
 };
 
 /**
@@ -897,6 +921,12 @@ export function bid(company: Company, contractId: string, key: string): Bid {
     regimes,
     unknowns: flightUnknowns(vehicle, company.campaign, mission),
     forecast: { text: describeForecast(contract, forecast), delivers, result: forecast },
+    ...(design.geometry?.recovery && design.stages.length > 1
+      ? (() => {
+          const next = nextBooster(company, key, contract);
+          return { booster: { serial: next.serial, flight: next.flight, refusesFlown: next.cautious, ...(next.error ? { note: next.error } : {}) } };
+        })()
+      : {}),
   };
 }
 
