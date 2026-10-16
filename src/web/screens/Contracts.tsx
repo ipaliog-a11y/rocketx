@@ -529,10 +529,13 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
 
   return (
     <aside className="side card" aria-label="Bid">
-      <div className="stack" style={{ gap: 4 }}>
-        <p className="label">
+      <p className="label hdr-row">
+        <span>
           {KIND_LABELS[contract.kind]} · {contract.customer}
-        </p>
+        </span>
+        <span className="mono">{contract.id.toUpperCase()}</span>
+      </p>
+      <div className="sheet-title">
         <h2>{contract.title}</h2>
       </div>
       {series.length > 0 && (
@@ -570,6 +573,7 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
           ["Reputation", `${contract.minReputation} or better`],
           ["Posted", `day ${contract.postedDay}`],
           ["Fly by", `day ${contract.deadline}`],
+          ...(contract.minApogee !== undefined ? [["Apogee", `≥ ${km(contract.minApogee, 0)}`] as [string, string]] : []),
         ]}
       />
       {announced ? (
@@ -578,12 +582,11 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
         <>
           <DesignSelect label="Bid it with" value={design} onChange={setDesign} designs={company.designs} inventory={company.inventory} />
           {open && <Schedule day={company.day} deadline={contract.deadline} b={b} />}
-          {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
           <Findings b={b} />
           <BoosterNote b={b} />
           <Forecast b={b} />
           {contract.kind !== "crew" && (
-            <span className="actions">
+            <span className="verb-row">
               <button type="button" className="btn quiet" onClick={() => go({ place: "rockets", tab: "board", contract: contract.id })}>
                 <Icon name="rocket" size="sm" />
                 {b.forecast.delivers ? "Suggest a rocket" : "Suggest a rocket for this"}
@@ -593,17 +596,17 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
         </>
       )}
       {signed ? (
-        <div className="actions">
-          <span className="soft">Signed. Build, re-tune and fly it from the Launch page.</span>
+        <div className="verb-group">
+          <span className="stamp-tag held" style={{ alignSelf: "flex-start" }}>SIGNED</span>
           <button type="button" className="btn primary" onClick={() => go({ place: "launch", contract: contract.id })}>
-            Go to Launch
+            Go to Launch <span className="note">build, re-tune, fly</span>
           </button>
         </div>
       ) : (
         open && (
-          <div className="actions">
+          <div className="verb-group" style={{ gap: 8 }}>
             <button type="button" className="btn primary" disabled={b.blockers.length > 0} onClick={() => game.act((c) => accept(c, contract.id))}>
-              Sign contract
+              Sign contract <span className="note">{b.blockers.length > 0 ? "clear the blockers first" : `due day ${contract.deadline}`}</span>
             </button>
             <span className="muted" style={{ fontSize: 14 }}>
               Signing commits you to day {contract.deadline}. Missing it costs {money(contract.penalty)}.
