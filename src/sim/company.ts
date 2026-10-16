@@ -15,7 +15,8 @@ import { learnFromFlight } from "./telemetry.ts";
 import { believedHardware, flightUnknowns, newCampaign, type Campaign, type Facility, type Unknown } from "./teststand.ts";
 import { retuneFromTests } from "./tuning.ts";
 import { believedAero, type AeroFacility } from "./tunnel.ts";
-import { believedGnc, flownGnc } from "./control.ts";
+import { believedGnc, flownGnc, rollGncTruth } from "./control.ts";
+import { rollStructureTruths } from "./structures.ts";
 import { flightWindSeed, rollWind } from "./wind.ts";
 import { FLIGHT_PROVEN_TRUST, flightWear, nextSerial, restackCost, rollBoosterTruth, wearFailure, type BoosterUnit } from "./fleet.ts";
 import { ENTRY_HEATING, RECOVERY_CAUSE_LABELS } from "./recovery.ts";
@@ -122,6 +123,11 @@ export function newCompany(
     engines,
     partTruth: rollPartTruths(engines, seed),
   });
+  // Starting designs drawn with shells and a control loop have hidden truths too, as if drawn on day 0.
+  for (const vehicle of Object.values(designs)) {
+    if (vehicle.structure) rollStructureTruths(vehicle, seed, (campaign.structureTruth ??= {}));
+    if (vehicle.control) (campaign.gncTruth ??= {})[vehicle.name] ??= rollGncTruth(vehicle.name, vehicle.control.design, vehicle.stages.length, seed);
+  }
   return {
     name,
     seed,

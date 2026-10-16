@@ -24,7 +24,8 @@ import type { Facility } from "./sim/teststand.ts";
 import type { AeroFacility } from "./sim/tunnel.ts";
 import { generateBoard, startingCash } from "./contracts.ts";
 import { MISSIONS } from "./missions.ts";
-import { ENGINES, VEHICLES } from "./vehicles.ts";
+import { ENGINES } from "./vehicles.ts";
+import { STARTER_ENGINES, STARTERS } from "./starters.ts";
 
 /**
  * Play a company run as a script of steps, in order:
@@ -53,7 +54,7 @@ const seed = seedAt >= 0 ? Number(args.splice(seedAt, 2)[1]) : 1;
 const steps = args.filter((a) => !a.startsWith("--"));
 
 const board = generateBoard(seed);
-const company = newCompany(seed, startingCash(seed), VEHICLES, Object.values(ENGINES), board);
+const company = newCompany(seed, startingCash(seed), STARTERS, STARTER_ENGINES, board);
 const money = (k: number) => `$${(k / 1000).toFixed(2)}M`;
 
 console.log(
@@ -116,7 +117,7 @@ function run(step: string): ActionResult | null {
       const [key = "", missionName] = (rest[0] ?? "").split("@");
       const vehicle = vehicleKey(key);
       if (rest[1]) return fly(company, vehicle, { contract: rest[1] });
-      const steered = VEHICLES[vehicle]!.pitchProgram?.kind === "gravity-turn";
+      const steered = company.designs[vehicle]!.pitchProgram?.kind === "gravity-turn";
       const mission = MISSIONS[missionName ?? (steered ? "leo-300" : "suborbital")];
       if (!mission) throw new Error(`Unknown mission "${missionName}". Choose one of: ${Object.keys(MISSIONS).join(", ")}`);
       return fly(company, vehicle, { mission });
@@ -144,7 +145,7 @@ function boardText(): string {
 }
 
 function vehicleKey(key: string | undefined): string {
-  if (!key || !VEHICLES[key]) throw new Error(`Unknown vehicle "${key ?? ""}". Choose one of: ${Object.keys(VEHICLES).join(", ")}`);
+  if (!key || !company.designs[key]) throw new Error(`Unknown vehicle "${key ?? ""}". Choose one of: ${Object.keys(company.designs).join(", ")}`);
   return key;
 }
 
