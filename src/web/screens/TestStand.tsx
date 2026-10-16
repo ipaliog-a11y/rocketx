@@ -232,10 +232,11 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
 
   return (
     <section ref={top} className="grow stack" aria-label={`${engine.name} campaign`} style={{ gap: 18, scrollMarginTop: 12 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "6px 16px" }}>
-        <h2 style={{ fontSize: 26 }}>{engine.name}</h2>
-        <span className="muted" style={{ fontSize: 14 }}>
-          {(engine.thrustVac / 1000).toFixed(1)} kN · Isp {engine.ispVac} s · rated {engine.ratedLife ?? 300} s · exit {(engine.exitPressure / 1000).toFixed(0)} kPa
+      <div className="sheet-title engine-title">
+        <span className="lbl">Engine campaign</span>
+        <h2>{engine.name}</h2>
+        <span className="part-sub">
+          {(engine.thrustVac / 1000).toFixed(1)} KN · ISP {engine.ispVac} S · RATED {engine.ratedLife ?? 300} S · EXIT {(engine.exitPressure / 1000).toFixed(0)} KPA
         </span>
         {engine.parts && <PartLine company={company} engine={engine} />}
         <span className="muted" style={{ fontSize: 13 }}>
@@ -271,18 +272,17 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
               {t !== undefined ? ` at ${t.toFixed(1)} s` : ""}
             </p>
             {fix ? (
-              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 20px" }}>
-                <span style={{ flex: "1 1 260px" }}>
+              <>
+                <span>
                   <strong>Fix: {fix.name}.</strong> <span className="soft">{fix.text}</span>{" "}
                   <span className="muted">{engine.parts ? "Fixes every engine with the part; its proof starts over." : "Earlier firings stop counting."}</span>
                 </span>
-                <span className="mono soft">
-                  {money(fixQuote(mode, engine).cost)} · {fixQuote(mode, engine).days} days
-                </span>
-                <button type="button" className="btn primary" onClick={() => game.schedule(fixEngineJob(engine, mode))}>
-                  Apply fix
-                </button>
-              </div>
+                <div className="verb-group">
+                  <button type="button" className="btn primary" onClick={() => game.schedule(fixEngineJob(engine, mode))}>
+                    Apply fix <span className="note">{money(fixQuote(mode, engine).cost)} · {fixQuote(mode, engine).days} d</span>
+                  </button>
+                </div>
+              </>
             ) : (
               <span className="soft">This comes from the nozzle's shape. No stand fix: it needs a different bell.</span>
             )}
@@ -291,7 +291,10 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
       })}
 
       <form className="card" onSubmit={(e) => e.preventDefault()} aria-label="Plan a firing">
-        <p className="label">Plan a firing</p>
+        <p className="label hdr-row">
+          <span>Plan a firing</span>
+          <span className="mono">{spec.name.toUpperCase()}</span>
+        </p>
         <fieldset style={{ margin: 0, padding: 0, border: 0, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
           <legend className="sr-only">Facility</legend>
           {(Object.keys(FACILITIES) as Facility[]).map((id) => {
@@ -323,7 +326,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
         </fieldset>
         {startCheck ? (
           <div className="stack" style={{ gap: 4 }}>
-            <span className="soft">Duration</span>
+            <span className="lbl">Duration</span>
             <span>
               <strong className="mono">{START_CHECK} s</strong>{" "}
               <span className="soft">Lit and shut down before the bell's flow separates: a start check only.</span>
@@ -331,7 +334,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
           </div>
         ) : (
           <label className="stack" style={{ gap: 8 }}>
-            <span className="soft">Duration</span>
+            <span className="lbl">Duration</span>
             <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <input type="range" min={5} max={longest} step={5} value={duration} onChange={(e) => setDuration(Number(e.target.value))} style={{ flex: 1 }} />
               <output className="mono" style={{ minWidth: 64, textAlign: "right", fontWeight: 600 }}>
@@ -358,7 +361,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
               ? `Covers the ${burn.toFixed(0)} s flight burn, if the hardware lives that long.`
               : `Proves at most ${duration} s of a ${burn.toFixed(0)} s burn.`}
         </span>
-        <div className="actions">
+        <div className="verb-group" style={{ gap: 6 }}>
           <button type="button" className="btn primary" onClick={() => game.schedule(fireJob(engine, planned, facility, runs, restart))}>
             {startCheck ? "Start check" : restart ? "Fire and restart" : "Fire"} <span className="note">{money(cost)} · {days} days</span>
           </button>

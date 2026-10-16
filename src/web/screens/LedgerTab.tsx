@@ -45,66 +45,78 @@ export function LedgerTab({ company }: { company: Company }) {
   for (const e of company.ledger) totals.set(e.category, (totals.get(e.category) ?? 0) + e.amount);
   const spent = [...totals.values()].filter((v) => v < 0).reduce((a, b) => a + b, 0);
 
+  const sorted = [...totals.entries()].sort((a, b) => a[1] - b[1]);
   return (
     <>
       <div className="row">
         <section className="grow stack" aria-label="Money">
           <div className="card">
-            <p className="label">Where the money went</p>
-            {[...totals.entries()]
-              .sort((a, b) => a[1] - b[1])
-              .map(([cat, v]) => (
-                <div key={cat} className="stack" style={{ gap: 4 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <p className="label hdr-row">
+              <span>Where the money went</span>
+              <span className="mono">{money(spent)}</span>
+            </p>
+            {totals.size === 0 ? (
+              <span className="muted">Nothing spent yet.</span>
+            ) : (
+              <ul className="money-rows">
+                {sorted.map(([cat, v]) => (
+                  <li key={cat}>
                     <span>{LABELS[cat]}</span>
                     <span className={`mono ${v > 0 ? "good" : ""}`}>{money(v)}</span>
-                  </div>
-                  {v < 0 && (
-                    <div className="bar" style={{ height: 8 }}>
-                      <div className="fill" style={{ width: `${(v / spent) * 100}%`, background: "var(--cyan)" }} />
-                    </div>
-                  )}
-                </div>
-              ))}
-            {totals.size === 0 && <span className="muted">Nothing spent yet.</span>}
+                    {v < 0 && (
+                      <span className="ro-bar" aria-hidden="true">
+                        <i style={{ width: `${(v / spent) * 100}%` }} />
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col" className="num">Day</th>
-                  <th scope="col">Item</th>
-                  <th scope="col" className="num">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...company.ledger]
-                  .reverse()
-                  .slice(0, 40)
-                  .map((e, i) => (
-                    <tr key={i}>
-                      <td className="num">{e.day}</td>
-                      <td>
-                        {LABELS[e.category]} · <span className="soft">{e.note}</span>
-                      </td>
-                      <td className={`num ${e.amount > 0 ? "good" : ""}`}>{money(e.amount)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
+          <div className="card">
+            <p className="label hdr-row">
+              <span>Ledger</span>
+              <span className="mono">LAST {Math.min(40, company.ledger.length)}</span>
+            </p>
+            <div className="table-wrap flush">
+              <table className="spec compact">
+                <thead>
+                  <tr>
+                    <th scope="col" className="num">Day</th>
+                    <th scope="col">Item</th>
+                    <th scope="col" className="num">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...company.ledger]
+                    .reverse()
+                    .slice(0, 40)
+                    .map((e, i) => (
+                      <tr key={i}>
+                        <td className="num mono">{e.day}</td>
+                        <td>
+                          {LABELS[e.category]} · <span className="soft">{e.note}</span>
+                        </td>
+                        <td className={`num mono ${e.amount > 0 ? "good" : ""}`}>{money(e.amount)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
         <aside className="side stack">
           <div className="card">
-            <p className="label">The record customers read</p>
+            <p className="label hdr-row">
+              <span>The record customers read</span>
+              <span className="mono">{company.record.length}</span>
+            </p>
             {company.record.length === 0 && <span className="muted">Nothing on it yet.</span>}
-            <ul className="list">
+            <ul className="log three">
               {company.record.map((r, i) => (
                 <li key={i}>
-                  <span className="mono muted" style={{ flex: "0 0 64px" }}>
-                    day {r.day}
-                  </span>
-                  <span style={{ flex: 1 }}>
+                  <span className="muted">D {r.day}</span>
+                  <span>
                     {tagText(r.tag)} <span className="muted">· {r.note}</span>
                   </span>
                   <Chip tone={r.reputation > 0 ? "good" : r.reputation < 0 ? "bad" : "muted"}>{r.test ? "TEST · 0" : signed(r.reputation)}</Chip>
@@ -113,16 +125,17 @@ export function LedgerTab({ company }: { company: Company }) {
             </ul>
           </div>
           <div className="card">
-            <p className="label">Flights</p>
+            <p className="label hdr-row">
+              <span>Flights</span>
+              <span className="mono">{company.flights.length}</span>
+            </p>
             {company.flights.length === 0 && <span className="muted">Nothing has flown.</span>}
-            <ul className="list">
+            <ul className="log">
               {company.flights.map((f, i) => (
                 <li key={i}>
-                  <span className="mono muted" style={{ flex: "0 0 64px" }}>
-                    day {f.day}
-                  </span>
+                  <span className="muted">D {f.day}</span>
                   <span>
-                    {f.design} · {f.contract ?? f.mission} · {f.settlement ?? f.outcome}
+                    {f.design} · {f.contract ?? f.mission} · <span className="mono">{(f.settlement ?? f.outcome).toUpperCase()}</span>
                   </span>
                 </li>
               ))}

@@ -132,35 +132,27 @@ export function Tunnel({ company, design }: { company: Company; design?: string 
             />
           </div>
 
-          <div className="row" style={{ gap: 16 }}>
-            <div className="card" style={{ flex: "1 1 180px" }}>
-              <span className="muted" style={{ fontSize: 13 }}>
-                Drag against the hand curve
-              </span>
-              <span className="mono" style={{ fontSize: 22, fontWeight: 600 }}>
-                {known?.dragFactor != null ? pct(known.dragFactor - 1) : "unknown"}
-              </span>
-              <span className="muted" style={{ fontSize: 13 }}>
-                {known?.dragSource === "cfd" ? <><Term id="cfd">CFD</Term> estimate</> : known?.dragSource === "tunnel" ? "tunnel measurement" : "never measured"}
+          <dl className="ro-row ro-3" aria-label="What the company knows about this shape">
+            <div className="ro">
+              <dt className="lbl">Drag vs hand curve</dt>
+              <dd className="val">{known?.dragFactor != null ? pct(known.dragFactor - 1) : "unknown"}</dd>
+              <span className="ro-sub">
+                {known?.dragSource === "cfd" ? <><Term id="cfd">CFD</Term> ESTIMATE</> : known?.dragSource === "tunnel" ? "TUNNEL MEASUREMENT" : "NEVER MEASURED"}
               </span>
             </div>
-            <div className="card" style={{ flex: "1 1 180px" }}>
-              <span className="muted" style={{ fontSize: 13 }}>
+            <div className="ro">
+              <dt className="lbl">
                 <Term id="transonic">Transonic</Term> rise
-              </span>
-              <span className="mono" style={{ fontSize: 22, fontWeight: 600 }}>
-                {known?.transonicRise != null ? `×${known.transonicRise.toFixed(2)}` : "unknown"}
-              </span>
+              </dt>
+              <dd className="val">{known?.transonicRise != null ? `×${known.transonicRise.toFixed(2)}` : "unknown"}</dd>
             </div>
-            <div className={`card ${buffetOpen ? "alert" : ""}`} style={{ flex: "1 1 180px" }}>
-              <span className="muted" style={{ fontSize: 13 }}>
+            <div className="ro">
+              <dt className="lbl">
                 <Term id="buffet">Buffet</Term>
-              </span>
-              <span className="mono" style={{ fontSize: 22, fontWeight: 600 }}>
-                {known?.buffet == null ? "unknown" : known.buffet > 0 ? `${known.buffet.toFixed(2)}× q` : "none"}
-              </span>
+              </dt>
+              <dd className={`val ${buffetOpen ? "bad" : ""}`}>{known?.buffet == null ? "unknown" : known.buffet > 0 ? `${known.buffet.toFixed(2)}× q` : "none"}</dd>
             </div>
-          </div>
+          </dl>
 
           {buffetOpen && (
             <div className="card alert">
@@ -168,15 +160,12 @@ export function Tunnel({ company, design }: { company: Company; design?: string 
               <span>
                 Between Mach {BUFFET_BAND[0]} and {BUFFET_BAND[1]} the shock on the fairing shoulder oscillates. If {known?.buffet?.toFixed(2)}× dynamic pressure passes the structure's budget, the vehicle breaks up. No pitch programme helps much: every ascent goes transonic low down.
               </span>
-              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 20px" }}>
-                <span style={{ flex: "1 1 260px" }}>
-                  <strong>Fix: {BUFFET_FIX.name}.</strong> <span className="soft">They break up the oscillation and add about 3% drag. Earlier tunnel data stops counting.</span>
-                </span>
-                <span className="mono soft">
-                  {money(BUFFET_FIX.cost)} · {BUFFET_FIX.days} days
-                </span>
+              <span>
+                <strong>Fix: {BUFFET_FIX.name}.</strong> <span className="soft">They break up the oscillation and add about 3% drag. Earlier tunnel data stops counting.</span>
+              </span>
+              <div className="verb-group">
                 <button type="button" className="btn primary" onClick={() => game.schedule(fixAeroJob(shape.design, shape.label))}>
-                  Fit them
+                  Fit {BUFFET_FIX.name.toLowerCase()} <span className="note">{money(BUFFET_FIX.cost)} · {BUFFET_FIX.days} d</span>
                 </button>
               </div>
             </div>
@@ -187,25 +176,26 @@ export function Tunnel({ company, design }: { company: Company; design?: string 
               const f = AERO_FACILITIES[id];
               return (
                 <div key={id} className="card" style={{ flex: "1 1 240px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
-                    <strong style={{ fontSize: 18 }}>{f.name.charAt(0).toUpperCase() + f.name.slice(1)}</strong>
-                    <span className="mono soft">
-                      {money(f.cost)} · {f.days} d
+                  <p className="label hdr-row">
+                    <span>{f.name}</span>
+                    <span className="mono">
+                      {money(f.cost)} · {f.days} D
                     </span>
-                  </div>
-                  <ul className="list">
+                  </p>
+                  <ul className="checklist">
                     {SEES[id].map(([sees, text]) => (
                       <li key={text}>
-                        <span className={sees === true ? "good" : sees === "partly" ? "warn" : "bad"} style={{ fontWeight: 700, flex: "0 0 auto" }}>
-                          {sees === true ? "✓" : sees === "partly" ? "~" : "✕"}
-                        </span>
+                        <span className={sees === true ? "good" : sees === "partly" ? "warn" : "bad"}>{sees === true ? "✓" : sees === "partly" ? "~" : "✕"}</span>
                         <span>{text}</span>
+                        <span className={`mono ${sees === true ? "good" : sees === "partly" ? "warn" : "muted"}`}>{sees === true ? "SEES" : sees === "partly" ? "PARTLY" : "BLIND"}</span>
                       </li>
                     ))}
                   </ul>
-                  <button type="button" className="btn" onClick={() => game.schedule(tunnelJob(shape.design, shape.label, id))}>
-                    Book <span className="note">+{money(f.days * COSTS.overheadPerDay)} payroll</span>
-                  </button>
+                  <div className="verb-group" style={{ marginTop: "auto" }}>
+                    <button type="button" className="btn" onClick={() => game.schedule(tunnelJob(shape.design, shape.label, id))}>
+                      Book <span className="note">+{money(f.days * COSTS.overheadPerDay)} payroll</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}

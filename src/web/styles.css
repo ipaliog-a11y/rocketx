@@ -917,3 +917,43 @@ table.spec.compact td { padding-top: 8px; padding-bottom: 8px; }
 .label.hdr-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .label.hdr-row > span:last-child { flex: 0 0 auto; }
 @media (max-width: 700px) { .facts dd { white-space: normal; overflow-wrap: anywhere; } }
+
+/* ── Work, ledger, crew, testing in the same rows ── */
+.btn { text-align: left; }
+.task-rows { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.task-row { display: flex; flex-direction: column; gap: 3px; padding: 6px 0 0 10px; border-left: 1px solid var(--line-strong); }
+.task-row .part-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.task-cancel { min-height: 28px; padding: 0 6px; font-size: 11px; }
+.log li > .lbl, .log .lbl { margin-right: 6px; }
+.log.three li { grid-template-columns: 64px minmax(0, 1fr) auto; align-items: baseline; }
+.money-rows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.money-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.money-rows li:last-child { border-bottom: 0; }
+.money-rows .ro-bar { grid-column: 1 / -1; }
+.money-rows .mono { font-size: 14px; }
+.tile-label-up { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.ro-row.ro-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ro-row.ro-3 .ro { border-bottom: 0; border-right: 1px solid var(--line); }
+.ro-row.ro-3 .ro:last-child { border-right: 0; }
+.engine-title h2 { font-size: 26px; }
+@media (max-width: 700px) {
+  .ro-row.ro-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ro-row.ro-3 .ro { padding: 10px; }
+  .ro-row.ro-3 .ro .val { font-size: 17px; }
+}
+.money-rows li { border-bottom: 0; padding: 6px 0; gap: 6px 12px; }
+.money-rows .ro-bar { height: 6px; }
+@media (min-width: 1000px) {
+  .part-rows.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .part-rows.two .part-row { border-bottom: 1px solid var(--line); }
+  .part-rows.two .part-row:nth-child(odd) { border-right: 1px solid var(--line); }
+  .part-rows.two .part-row:nth-last-child(-n+2):nth-child(odd), .part-rows.two .part-row:last-child { border-bottom: 0; }
+}
+.part-rows.two .part-row { align-content: start; }
+/* A long verb wraps its note onto a second line rather than squeezing both into columns. */
+.btn { flex-wrap: wrap; row-gap: 2px; padding-top: 6px; padding-bottom: 6px; }
+.btn .note { flex: 0 0 auto; white-space: nowrap; margin-left: auto; }
+@media (max-width: 700px) {
+  .part-verbs .btn, .checklist .btn { flex: 1 1 100%; }
+  .part-verbs { margin-left: 0; }
+}
