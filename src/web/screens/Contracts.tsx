@@ -74,7 +74,7 @@ export function Contracts({ company, version, route }: Props) {
           <h1>
             Contracts
             <Info label="About contracts">
-              Work posted by customers. Each pays on delivery and charges a penalty if you sign and miss the deadline. Some need a licence or a reputation; some customers won't sign after a
+              Work posted by customers. Each pays on delivery and charges a penalty if you sign and miss the deadline. Some need a license or a reputation; some customers won't sign after a
               failure like the one they fear. Recurring work comes as a series: commit to all of it for a bonus. The calendar shows postings, deadlines and rollouts; pick a future day to advance to it.
             </Info>
           </h1>
@@ -99,7 +99,7 @@ export function Contracts({ company, version, route }: Props) {
               <p className="label bad">Reputation {reputation(company)}: most customers won't sign</p>
               <span className="soft">
                 Two ways back. Student payloads accept any record and earn +1 when delivered. And every clean test flight above 100 km, from Rockets › Design, wins back a point
-                until you are at 0.{company.licence === "suborbital" ? " The orbital licence also needs a reputation of 0 or better." : ""}
+                until you are at 0.{company.licence === "suborbital" ? " The orbital license also needs a reputation of 0 or better." : ""}
               </span>
             </div>
           )}
@@ -107,7 +107,7 @@ export function Contracts({ company, version, route }: Props) {
           <div className="actions">
             {nextPosting !== null && <span className="muted">Next new posting around day {nextPosting}.</span>}
             <button type="button" className="btn" onClick={() => game.schedule(waitJob(30, "Waiting for new work"))}>
-              Wait 30 days · {money(30 * COSTS.overheadPerDay)}
+              Wait 30 days <span className="note">{money(30 * COSTS.overheadPerDay)}</span>
             </button>
             {nextPosting !== null && (
               <button type="button" className="btn" onClick={() => game.schedule(waitJob(nextPosting - company.day, "Waiting for the next posting"))}>
@@ -116,7 +116,7 @@ export function Contracts({ company, version, route }: Props) {
             )}
             {nextRollout !== null && nextRollout > company.day && (
               <button type="button" className="btn" onClick={() => game.schedule(waitJob(nextRollout - company.day, "Waiting for the next rollout", `Advance ${nextRollout - company.day} days to the next rollout?`, "Advance"))}>
-                Advance to the next rollout · day {nextRollout}
+                Advance to the next rollout <span className="note">day {nextRollout}</span>
               </button>
             )}
           </div>
@@ -196,9 +196,9 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
           </select>
         </label>
         <label>
-          <span>Licence</span>
+          <span>License</span>
           <select value={licence} onChange={(e) => setLicence(e.target.value as Licence | "all")}>
-            <option value="all">Any licence</option>
+            <option value="all">Any license</option>
             <option value="suborbital">Suborbital</option>
             <option value="orbital">Orbital</option>
             <option value="crew">Crewed flight</option>
@@ -529,10 +529,13 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
 
   return (
     <aside className="side card" aria-label="Bid">
-      <div className="stack" style={{ gap: 4 }}>
-        <p className="label">
+      <p className="label hdr-row">
+        <span>
           {KIND_LABELS[contract.kind]} · {contract.customer}
-        </p>
+        </span>
+        <span className="mono">{contract.id.toUpperCase()}</span>
+      </p>
+      <div className="sheet-title">
         <h2>{contract.title}</h2>
       </div>
       {series.length > 0 && (
@@ -566,10 +569,11 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
         items={[
           ["Pays", <span className="good">{money(contract.payout)}</span>],
           ["Penalty", <span className="bad">{money(contract.penalty)}</span>],
-          ["Licence", LICENCE_LABELS[requiredLicence(contract)]],
+          ["License", LICENCE_LABELS[requiredLicence(contract)]],
           ["Reputation", `${contract.minReputation} or better`],
           ["Posted", `day ${contract.postedDay}`],
           ["Fly by", `day ${contract.deadline}`],
+          ...(contract.minApogee !== undefined ? [["Apogee", `≥ ${km(contract.minApogee, 0)}`] as [string, string]] : []),
         ]}
       />
       {announced ? (
@@ -578,12 +582,11 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
         <>
           <DesignSelect label="Bid it with" value={design} onChange={setDesign} designs={company.designs} inventory={company.inventory} />
           {open && <Schedule day={company.day} deadline={contract.deadline} b={b} />}
-          {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
           <Findings b={b} />
           <BoosterNote b={b} />
           <Forecast b={b} />
           {contract.kind !== "crew" && (
-            <span className="actions">
+            <span className="verb-row">
               <button type="button" className="btn quiet" onClick={() => go({ place: "rockets", tab: "board", contract: contract.id })}>
                 <Icon name="rocket" size="sm" />
                 {b.forecast.delivers ? "Suggest a rocket" : "Suggest a rocket for this"}
@@ -593,17 +596,17 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
         </>
       )}
       {signed ? (
-        <div className="actions">
-          <span className="soft">Signed. Build, re-tune and fly it from the Launch page.</span>
+        <div className="verb-group">
+          <span className="stamp-tag held" style={{ alignSelf: "flex-start" }}>SIGNED</span>
           <button type="button" className="btn primary" onClick={() => go({ place: "launch", contract: contract.id })}>
-            Go to Launch
+            Go to Launch <span className="note">build, re-tune, fly</span>
           </button>
         </div>
       ) : (
         open && (
-          <div className="actions">
+          <div className="verb-group" style={{ gap: 8 }}>
             <button type="button" className="btn primary" disabled={b.blockers.length > 0} onClick={() => game.act((c) => accept(c, contract.id))}>
-              Sign contract
+              Sign contract <span className="note">{b.blockers.length > 0 ? "clear the blockers first" : `due day ${contract.deadline}`}</span>
             </button>
             <span className="muted" style={{ fontSize: 14 }}>
               Signing commits you to day {contract.deadline}. Missing it costs {money(contract.penalty)}.
@@ -640,7 +643,7 @@ function SeriesCommit({ company, seriesId }: { company: Company; seriesId: strin
     return (
       <span className="actions">
         <button type="button" className="btn" onClick={() => setAsking(true)}>
-          Commit to the series · sign {left.length} launches
+          Commit to the series <span className="note">sign {left.length} launches</span>
         </button>
       </span>
     );

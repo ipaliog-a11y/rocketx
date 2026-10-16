@@ -42,7 +42,7 @@ export function achievements(company: Company): Achievement[] {
     { id: "first-build", title: "Rolled out", text: "Build a vehicle.", earned: built > 0 },
     { id: "space", title: "Kármán line", text: "Fly above 100 km.", earned: space.length > 0, day: space[0]?.day },
     { id: "first-pay", title: "Paying customer", text: "Get paid for a flight.", earned: firstPayout !== undefined, day: firstPayout?.day },
-    { id: "orbital-licence", title: "Cleared for orbit", text: "Earn the orbital licence.", earned: company.licence !== "suborbital", day: licenceDay("orbital") },
+    { id: "orbital-licence", title: "Cleared for orbit", text: "Earn the orbital license.", earned: company.licence !== "suborbital", day: licenceDay("orbital") },
     { id: "first-orbit", title: "Orbit", text: "Reach orbit.", earned: company.firstOrbitDay !== null, day: company.firstOrbitDay ?? undefined },
     { id: "fleet", title: "Production line", text: "Build 5 vehicles.", earned: built >= 5, progress: [Math.min(built, 5), 5] },
     { id: "deliveries", title: "Regular service", text: "Deliver 5 contracts.", earned: delivered >= 5, progress: [Math.min(delivered, 5), 5] },

@@ -15,7 +15,8 @@ import { learnFromFlight } from "./telemetry.ts";
 import { believedHardware, flightUnknowns, newCampaign, type Campaign, type Facility, type Unknown } from "./teststand.ts";
 import { retuneFromTests } from "./tuning.ts";
 import { believedAero, type AeroFacility } from "./tunnel.ts";
-import { believedGnc, flownGnc } from "./control.ts";
+import { believedGnc, flownGnc, rollGncTruth } from "./control.ts";
+import { rollStructureTruths } from "./structures.ts";
 import { flightWindSeed, rollWind } from "./wind.ts";
 import { FLIGHT_PROVEN_TRUST, flightWear, nextSerial, restackCost, rollBoosterTruth, wearFailure, type BoosterUnit } from "./fleet.ts";
 import { ENTRY_HEATING, RECOVERY_CAUSE_LABELS } from "./recovery.ts";
@@ -122,6 +123,11 @@ export function newCompany(
     engines,
     partTruth: rollPartTruths(engines, seed),
   });
+  // Starting designs drawn with shells and a control loop have hidden truths too, as if drawn on day 0.
+  for (const vehicle of Object.values(designs)) {
+    if (vehicle.structure) rollStructureTruths(vehicle, seed, (campaign.structureTruth ??= {}));
+    if (vehicle.control) (campaign.gncTruth ??= {})[vehicle.name] ??= rollGncTruth(vehicle.name, vehicle.control.design, vehicle.stages.length, seed);
+  }
   return {
     name,
     seed,
@@ -161,17 +167,20 @@ function alive(company: Company): void {
 }
 
 /** Move money and time, then settle anything the new date makes due. Returns notices. */
-function charge(company: Company, category: Category, amount: number, days: number, note: string): string[] {
+function charge(company: Company, category: Category, amount: number, days: number, note: string, options: SettleOptions = {}): string[] {
   company.cash -= amount;
   if (amount !== 0) company.ledger.push({ day: company.day, category, amount: -amount, note });
-  return settleDays(company, days);
+  return settleDays(company, days, options);
 }
+
+/** `deferSolvency`: a flight is under way, and whether the company can pay waits until its customer has. */
+type SettleOptions = { deferSolvency?: boolean };
 
 /**
  * Let `days` pass. The clock stops wherever a job on the tracks finishes, so
  * what it found lands on its own day, and the next job can start.
  */
-export function settleDays(company: Company, days: number): string[] {
+export function settleDays(company: Company, days: number, options: SettleOptions = {}): string[] {
   const target = company.day + days;
   const notices = runTracks(company);
   while (!company.dead) {
@@ -184,7 +193,7 @@ export function settleDays(company: Company, days: number): string[] {
       company.cash -= overhead;
       company.ledger.push({ day: company.day, category: "overhead", amount: -overhead, note: `${step} days` });
     }
-    notices.push(...tick(company));
+    notices.push(...tick(company, options.deferSolvency));
     if (company.dead) break;
     notices.push(...runTracks(company));
     if (company.day >= target) break;
@@ -205,7 +214,7 @@ export function posted(company: Company): Contract[] {
 }
 
 /** Deadlines that have passed, vehicles that rolled out, and whether the company can still pay its bills. */
-function tick(company: Company): string[] {
+function tick(company: Company, deferSolvency = false): string[] {
   const notices: string[] = [];
   for (const order of company.orders.filter((o) => o.readyDay <= company.day)) {
     company.inventory[order.design] = (company.inventory[order.design] ?? 0) + 1;
@@ -224,7 +233,7 @@ function tick(company: Company): string[] {
     notices.push(`Day ${contract.deadline}: ${contract.customer} gave up waiting on "${contract.title}". Penalty $${contract.penalty}k.`);
     notices.push(...seriesAfter(company, contract, false));
   }
-  if (company.dead) return notices;
+  if (company.dead || deferSolvency) return notices;
   if (company.cash < 0) {
     company.dead = true;
     notices.push(`Day ${company.day}: the cash is gone. The company is dead.`);
@@ -352,7 +361,7 @@ export function rename(company: Company, name: string): void {
 /** The licence an application now would be for. */
 export function licenceSpec(company: Company): TaskSpec {
   const next = nextLicence(company, reputation(company));
-  if (!next) throw new Error("The company already holds every licence there is.");
+  if (!next) throw new Error("The company already holds every license there is.");
   return { kind: "licence", tier: next.tier };
 }
 
@@ -367,7 +376,7 @@ function signingProblem(company: Company, contract: Contract, announcedOk = fals
   if (!announcedOk && company.day < contract.postedDay) return `"${contract.title}" isn't on the board yet.`;
   if (company.day > contract.deadline) return `"${contract.title}" has expired.`;
   const needs = requiredLicence(contract);
-  if (!holds(company, needs)) return `"${contract.title}" needs the ${LICENCE_LABELS[needs].toLowerCase()} licence.`;
+  if (!holds(company, needs)) return `"${contract.title}" needs the ${LICENCE_LABELS[needs].toLowerCase()} license.`;
   if ((contract.kind === "cargo" || contract.kind === "crew") && !company.capsule) return `"${contract.title}" flies the company's own capsule: develop one first.`;
   if (reputation(company) < contract.minReputation) return `${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`;
   const objection = objectionTo(company, contract);
@@ -437,7 +446,7 @@ function lossOfCrew(company: Company, contract: Contract): string[] {
   company.ledger.push({ day: company.day, category: "penalty", amount: -LOSS_OF_CREW.penalty, note: `${contract.title}: loss of crew` });
   company.record.push({ day: company.day, tag: "crew-lost", reputation: LOSS_OF_CREW.reputation, note: contract.title });
   return [
-    `The regulator revokes the crewed-flight licence. Compensation and the investigation cost ${money(LOSS_OF_CREW.penalty)}, and the record shows it: reputation ${LOSS_OF_CREW.reputation}. The company goes on, but it will have to earn the right to fly people again.`,
+    `The regulator revokes the crewed-flight license. Compensation and the investigation cost ${money(LOSS_OF_CREW.penalty)}, and the record shows it: reputation ${LOSS_OF_CREW.reputation}. The company goes on, but it will have to earn the right to fly people again.`,
   ];
 }
 
@@ -666,7 +675,7 @@ export function fly(company: Company, key: string, target: ({ contract: string }
   const abortTest = "abortTest" in target && target.abortTest === true;
   const crewed = contract?.kind === "crew";
   const needs = contract ? requiredLicence(contract) : missionLicence(mission);
-  if (!holds(company, needs)) throw new Error(needs === "crew" ? "Flying people needs the crewed-flight licence." : `Flying to orbit needs an orbital licence. Apply on the company page.`);
+  if (!holds(company, needs)) throw new Error(needs === "crew" ? "Flying people needs the crewed-flight license." : `Flying to orbit needs an orbital license. Apply on the company page.`);
   if ((abortTest || crewed || contract?.kind === "cargo") && !company.capsule) throw new Error("That flight needs the company's capsule: develop one first.");
   if (crewed) {
     const rating = crewRating(company, key, mission);
@@ -703,7 +712,7 @@ export function fly(company: Company, key: string, target: ({ contract: string }
   const boosterTruth = unit ? company.campaign.boosterTruth?.[unit.serial] : undefined;
   const worn = unit && boosterTruth && unit.flights > 0 ? wearFailure(boosterTruth, unit.serial, unit.flights + 1, company.seed, burnTime(design.stages[0]!) * (1 - design.geometry!.recovery!.reserve)) : null;
 
-  const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`)];
+  const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`, { deferSolvency: true })];
   company.inventory[key]! -= 1;
   // The day's wind, and the attitude loop as built and as testing has corrected it.
   const gncTruth = vehicle.control ? company.campaign.gncTruth?.[vehicle.name] : undefined;
@@ -876,7 +885,7 @@ export function bid(company: Company, contractId: string, key: string): Bid {
     blockers.push(`${contract.customer} wants a reputation of ${contract.minReputation}; the company has ${reputation(company)}.`);
   }
   const needs = requiredLicence(contract);
-  if (!holds(company, needs)) blockers.push(`Needs the ${LICENCE_LABELS[needs].toLowerCase()} licence; the company holds ${LICENCE_LABELS[company.licence].toLowerCase()}.`);
+  if (!holds(company, needs)) blockers.push(`Needs the ${LICENCE_LABELS[needs].toLowerCase()} license; the company holds ${LICENCE_LABELS[company.licence].toLowerCase()}.`);
   const objection = objectionTo(company, contract);
   if (objection) blockers.push(`${contract.customer} won't sign with a record that shows ${describeTag(objection.tag)}.`);
 
@@ -993,7 +1002,7 @@ function describeTag(tag: Tag): string {
 }
 
 export function status(company: Company): string {
-  const lines = [`${company.name.replace(/\.$/, "")}. Day ${company.day}. Cash ${money(company.cash)}. Reputation ${reputation(company)}. ${LICENCE_LABELS[company.licence]} licence.`];
+  const lines = [`${company.name.replace(/\.$/, "")}. Day ${company.day}. Cash ${money(company.cash)}. Reputation ${reputation(company)}. ${LICENCE_LABELS[company.licence]} license.`];
   const built = Object.entries(company.inventory).filter(([, n]) => n > 0);
   if (built.length > 0) lines.push(`  On the ground: ${built.map(([k, n]) => `${n} × ${company.designs[k]!.name}`).join(", ")}.`);
   for (const id of company.accepted) {
@@ -1019,7 +1028,7 @@ export function summary(company: Company): string {
     analysis: "Analysis",
     build: "Vehicles built",
     launch: "Launch fees",
-    licence: "Licences",
+    licence: "Licenses",
     facility: "Facilities",
     overhead: "Overhead",
     payout: "Contract payouts",

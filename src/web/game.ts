@@ -379,7 +379,7 @@ export const game = {
 function queueMilestones(was: ReturnType<typeof milestonesOf>, company: Company): void {
   const add = (icon: IconName, title: string, text: string) => state.milestones.push({ id: nextMilestone++, icon, title, text });
   if (was.orbit === null && company.firstOrbitDay !== null) add("orbit", "First orbit", `${company.name} reached orbit on day ${company.firstOrbitDay}.`);
-  if (LICENCE_ORDER.indexOf(company.licence) > LICENCE_ORDER.indexOf(was.licence)) add("licence", `${LICENCE_LABELS[company.licence]} licence`, "The regulator has signed it off. New work is open to you.");
+  if (LICENCE_ORDER.indexOf(company.licence) > LICENCE_ORDER.indexOf(was.licence)) add("licence", `${LICENCE_LABELS[company.licence]} license`, "The regulator has signed it off. New work is open to you.");
   for (const a of achievements(company)) if (a.earned && !was.earned.has(a.id)) add("reputation", a.title, a.text);
 }
 

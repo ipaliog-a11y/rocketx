@@ -167,8 +167,11 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
         <span style={{ padding: "10px 0 14px" }}>{built > 0 ? <Chip tone="good">{built} READY</Chip> : onLine > 0 ? <Chip tone="warn">{`READY DAY ${ready}`}</Chip> : <Chip tone="muted">NONE BUILT</Chip>}</span>
       </div>
       <div className="grow card" style={{ flexBasis: 420 }}>
-        <div className="stack" style={{ gap: 4 }}>
-          <p className="label">{contract.customer}</p>
+        <p className="label hdr-row">
+          <span>Flight prep · {contract.customer}</span>
+          <span className="mono">{contract.id.toUpperCase()}</span>
+        </p>
+        <div className="sheet-title">
           <h2>{contract.title}</h2>
         </div>
         <DesignSelect label="Fly it on" value={design} onChange={setDesign} designs={company.designs} inventory={company.inventory} />
@@ -178,6 +181,7 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
             ["Due", `day ${contract.deadline}`],
             ["Days left", <span className={left < COSTS.padDays ? "bad" : undefined}>{left}</span>],
             ["Launch", `${money(COSTS.launchFee)} · ${COSTS.padDays} d`],
+            ...(contract.minApogee !== undefined ? [["Apogee", `≥ ${km(contract.minApogee, 0)}`] as [string, string]] : []),
           ]}
         />
         {ready === null && <Schedule day={company.day} deadline={contract.deadline} b={b} />}
@@ -187,7 +191,6 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
             {ready + 7 > contract.deadline ? ", too late for this contract." : `. Launching then still makes day ${contract.deadline}.`}
           </span>
         )}
-        {contract.minApogee !== undefined && <span className="soft">Needs an apogee of {km(contract.minApogee, 0)}.</span>}
         {(contract.kind === "crew" || contract.kind === "cargo") && <StationNote company={company} design={design} crew={contract.kind === "crew"} />}
         <Findings b={b} />
         <BoosterNote b={b} />
@@ -198,7 +201,7 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
           </label>
         )}
         <Forecast b={b} />
-        <div className="actions">
+        <div className="verb-group">
           <button
             type="button"
             className="btn primary"
@@ -206,19 +209,22 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
             title={ready === null ? `Order a ${v.name} first` : contract.kind === "crew" && !crewRating(company, design, contract.mission).rated ? `The ${v.name} isn't crew-rated` : undefined}
             onClick={() => game.schedule(launchJob(company, design, contract, (r) => game.showFlight(r, design), canChoose && newBooster))}
           >
-            {ready !== null && ready > company.day ? `Launch on rollout · day ${ready}` : `Launch ${v.name}`}
+            {ready !== null && ready > company.day ? `Launch on rollout` : `Launch ${v.name}`}
+            <span className="note">{ready === null ? "order one first" : ready > company.day ? `day ${ready}` : `${money(COSTS.launchFee)} · ${COSTS.padDays} d`}</span>
           </button>
           <button type="button" className="btn" onClick={() => game.schedule(buildJob(company, design))}>
-            Order · {money(b.build.cost)} · {b.build.days} d
+            Order a {v.name} <span className="note">{money(b.build.cost)} · {b.build.days} d</span>
           </button>
           {turns && contract.mission.target && (
             <span className="with-icon">
-              <button type="button" className="btn" onClick={() => game.schedule(retuneJob(company, design, contract))}>
-                Re-tune for {contract.payloadMass} kg
+              <button type="button" className="btn" style={{ flex: 1 }} onClick={() => game.schedule(retuneJob(company, design, contract))}>
+                Re-tune <span className="note">for {contract.payloadMass} kg</span>
               </button>
               <Info label="About re-tuning">A re-tune works out the steering against what tests have measured, for this payload and orbit. Do it after the last test, before you launch.</Info>
             </span>
           )}
+        </div>
+        <div className="verb-row">
           <button type="button" className="btn quiet" onClick={() => go({ place: "rockets", tab: "sim", design, contract: contract.id })}>
             <Icon name="simulate" size="sm" />
             Simulate

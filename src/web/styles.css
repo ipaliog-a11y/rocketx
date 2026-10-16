@@ -8,38 +8,40 @@
      crew    violet  people: capsule, abort system, crewed flights
    Three surfaces, darkest to lightest: ground, panel, raised. */
 :root {
-  --ground: #0e1216;
-  --panel: #151b21;
-  --raised: #1c242c;
-  --selected: #1e2730;
-  --hover: #18202a;
-  --blueprint: #121820;
-  --line: #2a343f;
-  --line-strong: #3a4652;
-  --text: #e8ecef;
-  --text-soft: #c3ccd5;
-  --muted: #93a0ad;
-  --faint: #5b6773;
+  /* The design office's palette (UI-DESIGN.md), shared with the Drawing board. */
+  --ground: #0b1118;
+  --panel: #111a24;
+  --raised: #16212d;
+  --selected: #1a2836;
+  --hover: #142030;
+  --blueprint: #0b1118;
+  --grid: #1a2633;
+  --line: #1f2d3b;
+  --line-strong: #2e5a66;
+  --text: #d3dee7;
+  --text-soft: #b6c4cf;
+  --muted: #8494a1;
+  --faint: #4f6170;
 
-  --action: #f0a43a;
-  --data: #5bb8e3;
-  --data-deep: #2e6e8e;
-  --good: #63c58a;
-  --bad: #ef6a5e;
-  --bad-text: #ef8a80;
-  --caution: #e3c25e;
-  --crew: #a993e8;
-  --action-bg: color-mix(in srgb, var(--action) 16%, var(--ground));
-  --data-bg: color-mix(in srgb, var(--data) 12%, var(--ground));
-  --good-bg: color-mix(in srgb, var(--good) 14%, var(--ground));
+  --action: #f2a93b;
+  --data: #5fd4e6;
+  --data-deep: #2e6e80;
+  --good: #6fc79a;
+  --bad: #ff5a52;
+  --bad-text: #ff8a82;
+  --caution: #d9bf6a;
+  --crew: #a99ae0;
+  --action-bg: color-mix(in srgb, var(--action) 12%, var(--ground));
+  --data-bg: color-mix(in srgb, var(--data) 10%, var(--ground));
+  --good-bg: color-mix(in srgb, var(--good) 12%, var(--ground));
   --bad-bg: color-mix(in srgb, var(--bad) 12%, var(--ground));
-  --caution-bg: color-mix(in srgb, var(--caution) 14%, var(--ground));
-  --crew-bg: color-mix(in srgb, var(--crew) 14%, var(--ground));
-  --good-line: color-mix(in srgb, var(--good) 40%, var(--line));
-  --bad-line: color-mix(in srgb, var(--bad) 40%, var(--line));
+  --caution-bg: color-mix(in srgb, var(--caution) 12%, var(--ground));
+  --crew-bg: color-mix(in srgb, var(--crew) 12%, var(--ground));
+  --good-line: color-mix(in srgb, var(--good) 45%, var(--line));
+  --bad-line: color-mix(in srgb, var(--bad) 45%, var(--line));
   --caution-line: color-mix(in srgb, var(--caution) 45%, var(--line));
   --data-line: color-mix(in srgb, var(--data) 40%, var(--line));
-  --action-line: color-mix(in srgb, var(--action) 45%, var(--line));
+  --action-line: color-mix(in srgb, var(--action) 50%, var(--line));
 
   /* Older names, kept so every screen reads the same tokens. */
   --amber: var(--action);
@@ -57,18 +59,18 @@
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 
-  --sans: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --sans: "IBM Plex Sans Condensed", "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+  --mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
   color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--ground); color: var(--text); font-family: var(--sans); font-size: 16px; }
+html, body { margin: 0; background: var(--ground); color: var(--text); font-family: var(--sans); font-size: 16px; line-height: 1.4; }
 button, input, select { font: inherit; color: inherit; }
 a { color: var(--amber); }
 :focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
-.mono { font-family: var(--mono); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
 .soft { color: var(--text-soft); }
 .good { color: var(--green); }
@@ -277,9 +279,11 @@ svg text { font-family: var(--mono); }
 
 /* Company page */
 .tiles { margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 12px; }
-.tile { padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); display: flex; flex-direction: column; gap: 2px; }
+.tile { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); display: flex; flex-direction: column; gap: 2px; }
 .tile dt { color: var(--muted); font-size: 13px; }
-.tile dd { margin: 0; font-family: var(--mono); font-size: 22px; font-weight: 600; }
+.tile dd { margin: 0; font-family: var(--mono); font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+/* A word, not a figure: the narrow face, so "Suborbital" fits the tile. */
+.tile dd.word { font-family: var(--sans); font-size: 22px; line-height: 1.2; overflow-wrap: normal; }
 .tile > span { font-size: 13px; }
 .ladder { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .ladder li { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; font-weight: 600; color: var(--muted); }
@@ -662,3 +666,294 @@ h1 .info, h2 .info { vertical-align: 4px; }
   .pad-shade { background: linear-gradient(0deg, rgba(5, 8, 20, 0.7) 0%, rgba(5, 8, 20, 0) 45%), linear-gradient(180deg, rgba(5, 8, 20, 0.6) 0%, rgba(5, 8, 20, 0) 30%); }
 }
 @media (prefers-reduced-motion: reduce) { .rec { animation: none; } }
+
+/* ── One identity: the design office, everywhere (UI-DESIGN.md) ──────────
+   Square panels on lines, uppercase headers, mono numbers, and actions as
+   verbs with a note instead of boxed buttons. Later rules here win over the
+   older component rules above. */
+
+/* Square corners. A few round things stay round: dots, rings, the ⓘ. */
+.card, .tile, .chip, .btn, .table-wrap, .facts, .bar, .bar > .fill, .notice, .overlay .card, .pop, .help-search,
+.next-item button, .pipe, .ladder li, .choice > div, .advance, .slot-picker, .part-card, .option, .milestone-card,
+.filter-chips button, .chip-button, .series .pip, .ev, .moment-verdict, .glossary > div, .mini-bar, .task-bar,
+.progress-bar, .name-input, input[type="number"], input[type="search"], input[type="text"], select, .filters select, .campus { border-radius: 0; }
+
+/* Panels: a 1px line, no fill difference to speak of, and the label as a ruled header. */
+.card { border-color: var(--line); gap: 12px; }
+.card > .label:first-child,
+.card > .stack:first-child > .label:first-child { margin: -18px -20px 2px; padding: 12px 20px 10px; border-bottom: 1px solid var(--line); }
+.label { font-family: var(--sans); font-size: 12px; font-weight: 500; letter-spacing: 0.14em; color: var(--muted); }
+.card.blueprint, .blueprint, .campus { background-color: var(--ground); background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 8px 8px; }
+h1 { letter-spacing: 0.01em; }
+
+/* Actions are verbs: an uppercase mono label, a note in muted text, a rule under. */
+.btn {
+  min-height: 42px; padding: 0 12px; border: 0; border-bottom: 1px solid var(--line-strong);
+  background: transparent; color: var(--text); font-family: var(--mono); font-size: 13px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase; justify-content: space-between; gap: 10px;
+}
+.btn .note { color: var(--muted); font-weight: 400; letter-spacing: 0.04em; }
+.btn:hover:not(:disabled) { background: var(--raised); border-color: var(--line-strong); }
+.btn:active:not(:disabled) { transform: none; background: var(--selected); }
+.btn.primary { border: 0; border-left: 2px solid var(--action); border-bottom: 1px solid var(--action-line); background: var(--action-bg); color: var(--data); font-weight: 600; padding-left: 14px; }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--action) 20%, var(--panel)); border-color: var(--action); border-bottom-color: var(--action-line); }
+.btn.danger { border: 0; border-bottom: 1px solid var(--bad-line); color: var(--bad-text); background: transparent; }
+.btn.danger:hover:not(:disabled) { background: var(--bad-bg); }
+.btn.quiet { border-bottom-color: transparent; color: var(--data); padding: 0 8px; }
+.btn.quiet:hover:not(:disabled) { background: var(--data-bg); }
+/* Disabled stays legible: muted, with its reason beside it. */
+.btn:disabled { opacity: 1; color: var(--muted); border-bottom-color: var(--line); }
+.btn.primary:disabled { background: transparent; border-left-color: var(--line-strong); border-bottom-color: var(--line); color: var(--muted); }
+.btn[aria-pressed="true"] { border-bottom: 2px solid var(--action); color: var(--text); background: var(--selected); }
+.btn:focus-visible { outline: 2px solid var(--action); outline-offset: -2px; }
+.actions { gap: 6px 14px; }
+.link { color: var(--data); font-family: var(--mono); font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 500; }
+
+/* Tags: a word in a thin frame, in its tone. Never colour alone. */
+.chip { padding: 2px 7px; border: 1px solid currentColor; background: transparent; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-soft); }
+.chip.good, .chip.warn, .chip.bad, .chip.action, .chip.data, .chip.crew { background: transparent; }
+.chip.muted { color: var(--muted); }
+
+/* Tabs and the top bar. */
+.tabs { border-bottom-color: var(--line); gap: 2px; }
+.tabs button { font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; min-height: 42px; padding: 0 14px; }
+.tab-indicator { border-radius: 0; }
+.topbar { border-bottom-color: var(--line-strong); }
+.brand { font-family: var(--mono); font-weight: 600; font-size: 15px; letter-spacing: 0.18em; }
+.nav button { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; border-radius: 0; }
+.nav button[aria-current="page"] { background: transparent; color: var(--text); box-shadow: inset 0 -2px 0 var(--action); }
+.stats { font-size: 13px; gap: 0; }
+.stats div { padding: 0 12px; border-left: 1px solid var(--line); }
+.stats div:first-child { border-left: 0; }
+.help-btn, .advance-btn { border-bottom: 0; }
+
+/* Inputs: square, on the panel, mono values. */
+input[type="number"], input[type="search"], input[type="text"], select, .filters select, .filters input[type="search"], .help-search {
+  background: var(--panel); border: 1px solid var(--line-strong); color: var(--text); font-family: var(--mono); font-size: 13px;
+}
+.name-input { background: var(--panel); border-color: var(--line-strong); }
+
+/* Tables are spec tables: sans headers, mono figures, hairlines. */
+.table-wrap { border-color: var(--line); }
+th { font-size: 11px; letter-spacing: 0.14em; font-weight: 500; border-bottom: 1px solid var(--line-strong); padding: 8px 12px; }
+td { padding: 10px 12px; border-top-color: var(--line); }
+tr.selected { box-shadow: inset 2px 0 0 var(--action); }
+.facts { border-color: var(--line); }
+.facts dt { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+.facts dd { font-weight: 500; }
+
+/* Bars and progress on a hairline. */
+.bar { height: 8px; background: var(--grid); }
+.task-bar, .mini-bar { height: 3px; background: var(--grid); }
+
+/* Notices, dialogs and popovers: square, line-edged. */
+.notice { border-color: var(--line-strong); background: var(--panel); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45); }
+.overlay { background: rgba(6, 10, 15, 0.86); }
+.overlay .card { border-color: var(--line-strong); }
+.pop { border-color: var(--line-strong); background: var(--panel); }
+.milestone-card { border-color: var(--action); background: var(--panel); }
+.first-run { border-color: var(--action-line); background: var(--panel); }
+.achievement.earned { background: var(--panel); }
+.filter-chips button { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 500; }
+
+@media (max-width: 700px) {
+  .card > .label:first-child,
+  .card > .stack:first-child > .label:first-child { margin: -14px -14px 2px; padding: 10px 14px 8px; }
+  .stats div { padding: 0 8px; }
+  .nav button { font-size: 10px; letter-spacing: 0.06em; }
+  .overlay .card { border-radius: 0; }
+  .actions .btn { justify-content: space-between; }
+}
+
+/* The title screen keeps its film look; its one button stays a solid call. */
+.title-screen .btn.title-go { border: 0; background: var(--action); color: var(--ground); justify-content: center; font-size: 17px; }
+.title-screen .btn.title-go:hover:not(:disabled) { background: color-mix(in srgb, var(--action) 88%, white); }
+
+/* ── Home in the design-office look ── */
+.label.hdr-row { display: flex; justify-content: space-between; gap: 8px; }
+.card > .label.hdr-row:first-child { display: flex; }
+
+/* Next up: part-tree rows, a tag column, the words, a verb on the right. */
+.next-rows { margin: -12px -20px -18px; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.next-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 56px; padding: 8px 12px 8px 14px; border-left: 3px solid var(--line-strong); border-bottom: 1px solid var(--line); }
+.next-row:last-child { border-bottom: 0; }
+.next-row.tone-bad { border-left-color: var(--bad); }
+.next-row.tone-caution { border-left-color: var(--caution); }
+.next-row.tone-good { border-left-color: var(--action); }
+.next-tag { font-size: 12px; color: var(--muted); letter-spacing: 0.06em; }
+.next-row.tone-bad .next-tag { color: var(--bad-text); }
+.next-verbs { display: flex; flex-direction: column; align-items: flex-end; }
+.next-verbs .btn { min-height: 34px; white-space: nowrap; }
+
+/* Spec tables: flush to the panel's edges. */
+.table-wrap.flush { border: 0; background: transparent; margin: 0 -20px -18px; }
+table.spec { font-size: 14px; }
+table.spec td { vertical-align: middle; }
+table.spec th:first-child, table.spec td:first-child { padding-left: 20px; }
+table.spec th:last-child, table.spec td:last-child { padding-right: 20px; }
+table.spec.compact td { padding-top: 8px; padding-bottom: 8px; }
+.row-link { all: unset; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+.row-link:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
+.steps { display: inline-flex; gap: 3px; font-size: 14px; letter-spacing: 0.05em; margin-right: 8px; }
+.step.done { color: var(--good); }
+.step.now { color: var(--action); }
+.step.todo { color: var(--faint); }
+.step.bad { color: var(--bad); }
+.step-now { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.step-now.bad { color: var(--bad-text); }
+.step-now.now { color: var(--action); }
+.step-left { display: block; font-size: 12px; }
+.today-campus { gap: 0; }
+.today-campus .campus { margin: 0 -20px -18px; border: 0; }
+
+/* Company: a readout row, as on the Drawing board's bottom row. */
+.ro-row { margin: 0; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); border: 1px solid var(--line-strong); background: var(--panel); }
+.ro { padding: 12px 14px 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ro:last-child { border-right: 0; }
+.ro .val { margin: 0; font-family: var(--mono); font-size: 26px; font-weight: 500; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ro .val small { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+.ro .val.word { font-family: var(--sans); font-size: 21px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; overflow-wrap: normal; }
+.ro .val.bad { color: var(--bad-text); }
+.ro-bar { display: block; position: relative; height: 2px; background: var(--grid); }
+.ro-bar i { position: absolute; inset: 0 auto 0 0; background: var(--data); }
+.ro-bar i.good { background: var(--good); }
+.ro-bar i.bad { background: var(--bad); }
+.ro-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+/* License: stamps on the ladder, a checklist under it. */
+.ladder li { gap: 6px; padding: 12px; border-color: var(--line); color: var(--text); font-weight: 400; align-items: flex-start; }
+.ladder li strong { font-size: 16px; }
+.ladder li .muted { font-size: 13px; }
+.ladder li.held { border-color: var(--line); }
+.ladder li.next { border-color: var(--action); }
+.ladder li.locked { color: var(--muted); }
+.stamp-tag { display: inline-block; border: 2px solid currentColor; padding: 2px 9px; transform: rotate(-3deg); font-family: var(--mono); font-weight: 600; font-size: 12px; letter-spacing: 0.16em; margin-bottom: 4px; }
+.stamp-tag.held { color: var(--good); }
+.stamp-tag.next { color: var(--action); }
+.stamp-tag.locked { color: var(--faint); }
+.checklist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.checklist li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.checklist li > :first-child { font-family: var(--mono); }
+.checklist li > :last-child { font-size: 13px; }
+
+/* Money: three figures, the spend bar, a ruled scale. */
+.figures { margin: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.figures dd { margin: 2px 0 0; font-size: 22px; font-weight: 500; }
+.figures dd.bad { color: var(--bad-text); }
+.scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line-strong); padding-top: 4px; }
+
+/* Logs: a day column and the line. */
+.log { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; font-size: 14px; }
+.log li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.log li > :first-child { font-family: var(--mono); font-size: 12px; padding-top: 2px; }
+
+@media (max-width: 1200px) and (min-width: 701px) {
+  .ro-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ro:nth-child(4n) { border-right: 0; }
+  .ro:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
+}
+@media (max-width: 700px) {
+  .ro-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ro:nth-child(2n) { border-right: 0; }
+  .ro:nth-child(-n+6) { border-bottom: 1px solid var(--line); }
+  .next-rows { margin: -12px -14px -14px; }
+  .next-row { grid-template-columns: 40px minmax(0, 1fr); padding-right: 8px; }
+  .next-verbs { grid-column: 2; align-items: flex-start; flex-direction: row; flex-wrap: wrap; margin-left: -8px; }
+  .table-wrap.flush { margin: 0 -14px -14px; }
+  table.spec th:first-child, table.spec td:first-child { padding-left: 14px; }
+  table.spec th:last-child, table.spec td:last-child { padding-right: 14px; }
+  .today-campus .campus { margin: 0 -14px -14px; }
+  .figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* The small uppercase label, everywhere (the design kit's .lbl). */
+.lbl { font-family: var(--sans); font-size: 12px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+@media (max-width: 700px) { .brand { font-size: 13px; letter-spacing: 0.06em; } }
+
+/* ── Datasheets: the bid, the flight prep, the factory ── */
+.sect { display: flex; flex-direction: column; gap: 6px; }
+.sheet-title { display: flex; flex-direction: column; gap: 2px; }
+.sheet-title h2 { font-size: 22px; line-height: 1.2; text-wrap: balance; }
+.sched { display: flex; flex-direction: column; gap: 6px; }
+.sched-bar { display: flex; height: 10px; overflow: hidden; background: var(--ground); border: 1px solid var(--line); }
+.sched-bar i, .sched-key i { display: block; }
+.sched i.t { background: var(--line-strong); }
+.sched i.b { background: var(--data); }
+.sched i.p { background: var(--action); }
+.sched i.x { background: var(--bad); }
+.sched-key { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--text-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+.sched-key span { display: inline-flex; align-items: center; gap: 6px; }
+.sched-key i { width: 10px; height: 10px; }
+.checklist li > .mono:last-child { font-size: 11px; letter-spacing: 0.08em; }
+.forecast { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; background: var(--raised); border: 1px solid var(--line); border-left: 3px solid var(--good); }
+.forecast.miss { border-left-color: var(--caution); }
+.forecast-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.forecast .mono { font-size: 15px; }
+.stamp-tag.caution { color: var(--caution); }
+.booster-line { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.verb-group { display: flex; flex-direction: column; gap: 0; }
+.verb-group .btn { justify-content: space-between; }
+.verb-row { display: flex; flex-wrap: wrap; gap: 0 4px; }
+
+/* Part rows: a tag column, the words, a status on the right, verbs under the words. */
+.part-rows { margin: -12px -20px -18px; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.part-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 12px 20px 12px 14px; border-left: 3px solid var(--line-strong); border-bottom: 1px solid var(--line); }
+.part-row:last-child { border-bottom: 0; }
+.part-row.tone-good { border-left-color: var(--good); }
+.part-row.tone-warn { border-left-color: var(--caution); }
+.part-row.tone-bad { border-left-color: var(--bad); }
+.part-row.tone-action { border-left-color: var(--action); }
+.part-row.gone { opacity: 0.6; }
+.part-tag { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--data); }
+.part-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.part-sub { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.part-verbs { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 0 4px; margin-left: -10px; }
+.hairline { display: block; position: relative; height: 2px; background: var(--grid); margin-top: 4px; }
+.hairline i { position: absolute; inset: 0 auto 0 0; background: var(--action); }
+@media (max-width: 700px) {
+  .part-rows { margin: -12px -14px -14px; }
+  .part-row { grid-template-columns: 44px minmax(0, 1fr); padding-right: 14px; }
+  .part-row > .chip { grid-column: 2; justify-self: start; }
+}
+.label.hdr-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.label.hdr-row > span:last-child { flex: 0 0 auto; }
+@media (max-width: 700px) { .facts dd { white-space: normal; overflow-wrap: anywhere; } }
+
+/* ── Work, ledger, crew, testing in the same rows ── */
+.btn { text-align: left; }
+.task-rows { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.task-row { display: flex; flex-direction: column; gap: 3px; padding: 6px 0 0 10px; border-left: 1px solid var(--line-strong); }
+.task-row .part-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.task-cancel { min-height: 28px; padding: 0 6px; font-size: 11px; }
+.log li > .lbl, .log .lbl { margin-right: 6px; }
+.log.three li { grid-template-columns: 64px minmax(0, 1fr) auto; align-items: baseline; }
+.money-rows { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.money-rows li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.money-rows li:last-child { border-bottom: 0; }
+.money-rows .ro-bar { grid-column: 1 / -1; }
+.money-rows .mono { font-size: 14px; }
+.tile-label-up { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.ro-row.ro-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ro-row.ro-3 .ro { border-bottom: 0; border-right: 1px solid var(--line); }
+.ro-row.ro-3 .ro:last-child { border-right: 0; }
+.engine-title h2 { font-size: 26px; }
+@media (max-width: 700px) {
+  .ro-row.ro-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ro-row.ro-3 .ro { padding: 10px; }
+  .ro-row.ro-3 .ro .val { font-size: 17px; }
+}
+.money-rows li { border-bottom: 0; padding: 6px 0; gap: 6px 12px; }
+.money-rows .ro-bar { height: 6px; }
+@media (min-width: 1000px) {
+  .part-rows.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .part-rows.two .part-row { border-bottom: 1px solid var(--line); }
+  .part-rows.two .part-row:nth-child(odd) { border-right: 1px solid var(--line); }
+  .part-rows.two .part-row:nth-last-child(-n+2):nth-child(odd), .part-rows.two .part-row:last-child { border-bottom: 0; }
+}
+.part-rows.two .part-row { align-content: start; }
+/* A long verb wraps its note onto a second line rather than squeezing both into columns. */
+.btn { flex-wrap: wrap; row-gap: 2px; padding-top: 6px; padding-bottom: 6px; }
+.btn .note { flex: 0 0 auto; white-space: nowrap; margin-left: auto; }
+@media (max-width: 700px) {
+  .part-verbs .btn, .checklist .btn { flex: 1 1 100%; }
+  .part-verbs { margin-left: 0; }
+}

@@ -7,28 +7,44 @@ import { Chip } from "./Bits.tsx";
 export function Schedule({ day, deadline, b }: { day: number; deadline: number; b: Bid }) {
   const testing = Math.max(0, b.daysLeft - b.build.days - COSTS.padDays);
   return (
-    <div className="stack" style={{ gap: 6 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }} className="muted">
-        <span>Day {day}</span>
-        <span>{b.daysLeft} days to fly</span>
-        <span>Day {deadline}</span>
-      </div>
-      <div role="img" aria-label={`Schedule: ${testing} days for tests, ${b.build.days} to build, ${COSTS.padDays} on the pad`} style={{ display: "flex", height: 14, borderRadius: 3, overflow: "hidden", background: "var(--ground)" }}>
+    <div className="sched">
+      <span className="lbl">Schedule</span>
+      <div className="sched-bar" role="img" aria-label={`Schedule: ${testing} days for tests, ${b.build.days} to build, ${COSTS.padDays} on the pad`}>
         {b.fitsSchedule ? (
           <>
-            <div style={{ flex: `${testing} 1 0`, background: "#26303a" }} />
-            <div style={{ flex: `${b.build.days} 1 0`, background: "var(--cyan)" }} />
-            <div style={{ flex: `${COSTS.padDays} 1 0`, background: "var(--amber)" }} />
+            <i className="t" style={{ flex: `${testing} 1 0` }} />
+            <i className="b" style={{ flex: `${b.build.days} 1 0` }} />
+            <i className="p" style={{ flex: `${COSTS.padDays} 1 0` }} />
           </>
         ) : (
-          <div style={{ flex: 1, background: "var(--red)" }} />
+          <i className="x" style={{ flex: 1 }} />
         )}
       </div>
-      <span className={b.fitsSchedule ? "muted" : "bad"} style={{ fontSize: 14 }}>
-        {b.fitsSchedule
-          ? `${testing} days of slack for tests, then a ${b.build.days}-day build and ${COSTS.padDays} days on the pad.`
-          : `A ${b.build.days}-day build and ${COSTS.padDays} days on the pad no longer fit before the deadline.`}
-      </span>
+      <div className="scale mono">
+        <span>D {day}</span>
+        <span>{b.daysLeft} d to fly</span>
+        <span>D {deadline}</span>
+      </div>
+      {b.fitsSchedule ? (
+        <div className="sched-key mono">
+          <span>
+            <i className="t" />
+            Tests {testing} d
+          </span>
+          <span>
+            <i className="b" />
+            Build {b.build.days} d
+          </span>
+          <span>
+            <i className="p" />
+            Pad {COSTS.padDays} d
+          </span>
+        </div>
+      ) : (
+        <span className="bad" style={{ fontSize: 14 }}>
+          A {b.build.days}-day build and {COSTS.padDays} days on the pad no longer fit before the deadline.
+        </span>
+      )}
     </div>
   );
 }
@@ -37,35 +53,42 @@ export function Findings({ b }: { b: Bid }) {
   return (
     <>
       {b.blockers.length > 0 && (
-        <ul className="list bad">
+        <ul className="checklist" aria-label="Blockers">
           {b.blockers.map((t) => (
-            <li key={t}>{t}</li>
+            <li key={t}>
+              <span className="bad">▲</span>
+              <span>{t}</span>
+              <span className="mono bad">BLOCKS</span>
+            </li>
           ))}
         </ul>
       )}
       {b.regimes.length > 0 && (
-        <div className="stack" style={{ gap: 6 }}>
-          <p className="label">New regimes</p>
-          <ul className="list">
+        <div className="sect">
+          <span className="lbl">New regimes</span>
+          <ul className="checklist">
             {b.regimes.map((r) => (
-              <li key={r}>{r}</li>
+              <li key={r}>
+                <span className="warn">△</span>
+                <span>{r}</span>
+                <span className="mono muted">NEW</span>
+              </li>
             ))}
           </ul>
         </div>
       )}
       {b.unknowns.length > 0 && (
-        <div className="stack" style={{ gap: 6 }}>
-          <p className="label">Flying on trust</p>
-          <ul className="list">
+        <div className="sect">
+          <span className="lbl">Flying on trust</span>
+          <ul className="checklist">
             {b.unknowns.map((u) => (
               <li key={u.subject + u.text}>
-                <span className="mono warn" style={{ fontSize: 12, fontWeight: 600, flex: "0 0 auto" }}>
-                  {u.subject === "Airframe" ? "AIRFRAME" : "ENGINE"}
-                </span>
+                <span className="warn">?</span>
                 <span>
                   {u.subject !== "Airframe" && <strong>{u.subject} </strong>}
                   {u.text}
                 </span>
+                <span className="mono warn">{u.subject === "Airframe" ? "AIRFRAME" : "ENGINE"}</span>
               </li>
             ))}
           </ul>
@@ -77,14 +100,12 @@ export function Findings({ b }: { b: Bid }) {
 
 export function Forecast({ b }: { b: Bid }) {
   return (
-    <div className="stack" style={{ gap: 6, padding: "14px 16px", borderRadius: 4, background: "var(--raised)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-        <p className="label">Forecast from what's known</p>
-        <Chip tone={b.forecast.delivers ? "good" : "warn"}>{b.forecast.delivers ? "DELIVERS" : "MISSES"}</Chip>
+    <div className={`forecast ${b.forecast.delivers ? "ok" : "miss"}`}>
+      <div className="forecast-head">
+        <span className="lbl">Forecast from what's known</span>
+        <span className={`stamp-tag ${b.forecast.delivers ? "held" : "caution"}`}>{b.forecast.delivers ? "DELIVERS" : "MISSES"}</span>
       </div>
-      <span className="mono" style={{ fontSize: 16 }}>
-        {b.forecast.text}
-      </span>
+      <span className="mono">{b.forecast.text}</span>
     </div>
   );
 }
@@ -93,7 +114,7 @@ export function Forecast({ b }: { b: Bid }) {
 export function DesignSelect({ label, value, onChange, designs, inventory }: { label: string; value: string; onChange: (key: string) => void; designs: Record<string, { name: string }>; inventory: Record<string, number> }) {
   return (
     <label className="stack" style={{ gap: 6 }}>
-      <span className="soft">{label}</span>
+      <span className="lbl">{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}>
         {Object.entries(designs).map(([key, d]) => (
           <option key={key} value={key}>
@@ -111,12 +132,12 @@ export function BoosterNote({ b }: { b: Bid }) {
   const x = b.booster;
   if (!x) return null;
   return (
-    <div className="stack" style={{ gap: 4 }}>
-      <span>
-        <strong>Booster</strong>{" "}
-        <span className="soft">{x.serial ? `${x.serial}, its flight ${x.flight}` : "a new one"}</span>{" "}
+    <div className="sect">
+      <div className="booster-line">
+        <span className="lbl">Booster</span>
+        <span className="mono">{x.serial ? `${x.serial} · flight ${x.flight}` : "NEW"}</span>
         {x.refusesFlown && <Chip tone="warn">NO FLOWN BOOSTERS</Chip>}
-      </span>
+      </div>
       {x.note ? <span className="bad">{x.note}</span> : x.refusesFlown && <span className="soft">The customer wants a booster that hasn't flown until the company has a record of clean reflights.</span>}
     </div>
   );

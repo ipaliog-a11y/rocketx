@@ -227,10 +227,10 @@ function TrackConfirm({ company, job }: { company: Company; job: Job }) {
         </div>
         <div className="actions">
           <button type="button" className={`btn ${ends ? "danger" : risks.length > 0 ? "" : "primary"}`} autoFocus={!ends && risks.length === 0} onClick={() => game.startNow()}>
-            {ends ? "Start now and end the run" : anyway ? "Start now anyway" : "Start now"} · {now} d
+            {ends ? "Start now and end the run" : anyway ? "Start now anyway" : "Start now"} <span className="note">{now} d</span>
           </button>
           <button type="button" className={`btn ${ends ? "danger" : risks.length > 0 ? "primary" : ""}`} autoFocus={!ends && risks.length > 0} onClick={() => game.plan()}>
-            {ends ? "Add to plan anyway" : "Add to plan"} · {money(q.cost)}
+            {ends ? "Add to plan anyway" : "Add to plan"} <span className="note">{money(q.cost)}</span>
           </button>
           <button type="button" className={`btn ${ends ? "primary" : ""}`} autoFocus={ends} onClick={() => game.cancel()}>
             Cancel

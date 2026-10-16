@@ -72,15 +72,15 @@ export function Facts({ items }: { items: Array<[ReactNode, ReactNode]> }) {
 export function Stack({ parts, label }: { parts: Array<{ value: number; color: string; name: string }>; label: string }) {
   return (
     <div className="stack" style={{ gap: 8 }}>
-      <div role="img" aria-label={label} style={{ display: "flex", height: 20, borderRadius: 3, overflow: "hidden" }}>
+      <div role="img" aria-label={label} style={{ display: "flex", height: 12, overflow: "hidden" }}>
         {parts.map((p) => (
           <div key={p.name} style={{ flex: `${p.value} 1 0`, background: p.color }} />
         ))}
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", fontSize: 14 }} className="soft">
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", fontSize: 12 }} className="soft mono">
         {parts.map((p) => (
           <span key={p.name}>
-            <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, marginRight: 6, background: p.color }} />
+            <span style={{ display: "inline-block", width: 10, height: 10, marginRight: 6, background: p.color }} />
             {p.name}
           </span>
         ))}

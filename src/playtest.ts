@@ -30,7 +30,7 @@ import { burnTime } from "./sim/vehicle.ts";
 import { generateBoard, startingCash } from "./contracts.ts";
 import { SUBORBITAL_TEST } from "./missions.ts";
 import { missionPlan } from "./sim/mission.ts";
-import { ENGINES, VEHICLES } from "./vehicles.ts";
+import { STARTER_ENGINES, STARTERS } from "./starters.ts";
 import { suggestBuilds, type Suggestion } from "./sim/guide.ts";
 import { flownGnc } from "./sim/control.ts";
 import { flightWindSeed, rollWind } from "./sim/wind.ts";
@@ -45,9 +45,11 @@ import type { GncTest } from "./sim/gncTests.ts";
  *
  *   npm run playtest -- [--seeds 30] [--policy careful,cheap,reckless,greedy,designer,designer-fast,designer-reuse]
  *
- * The designer bots draw their own orbital rocket with the sizing guide
- * instead of flying the preset Meridian, so they play on the new physics
- * (built-up drag, shells, the attitude loop in wind). "designer" also
+ * Every bot starts with the drawn Pathfinder and Meridian (src/starters.ts),
+ * which fly the full physics (built-up drag, shells, the attitude loop in
+ * wind). careful and greedy also proof-test the shells and run the GNC
+ * lab's three tests. The designer bots draw their own orbital rocket with
+ * the sizing guide instead of flying the starting Meridian. "designer" also
  * proof-tests the shells and runs the GNC lab's three tests; "designer-fast"
  * only fires the engines and runs the tunnel, to show what the rest buys.
  * "designer-reuse" tests like "designer" and flies the guide's reusable
@@ -244,17 +246,24 @@ function drawOrbiter(company: Company, policy: Policy, job: Contract, reusable: 
     proveEngine(company, stage.engine, Math.ceil(burnTime(stage) * DURATION_MARGIN), index > 0 ? "altitude" : "sea-level");
   }
   proveShape(company, key, "transonic");
-  if (policy === "designer" || policy === "designer-reuse") {
-    const before = company.cash;
-    if (v.structure) guard(company, () => runTask(company, { kind: "proof", design: key }));
-    if (v.control) for (const test of ["modal", "imu-cal", "hitl"] as GncTest[]) guard(company, () => runTask(company, { kind: "gnc", design: key, test }));
-    extraTests.push(before - company.cash);
-  }
+  if (thorough(policy)) proveBuild(company, key);
   return key;
 }
 
+/** Policies that also proof-test the shells and run the GNC lab's three tests. */
+const thorough = (p: Policy) => p === "careful" || p === "greedy" || p === "designer" || p === "designer-reuse";
+
+/** Proof-test a design's shells and run its GNC tests, tallying what they cost. */
+function proveBuild(company: Company, key: string): void {
+  const v = company.designs[key]!;
+  const before = company.cash;
+  if (v.structure) guard(company, () => runTask(company, { kind: "proof", design: key }));
+  if (v.control) for (const test of ["modal", "imu-cal", "hitl"] as GncTest[]) guard(company, () => runTask(company, { kind: "gnc", design: key, test }));
+  extraTests.push(before - company.cash);
+}
+
 function engineTests(company: Company, key: string, policy: Policy): boolean {
-  const vehicle = VEHICLES[key]!;
+  const vehicle = company.designs[key]!;
   for (const [index, stage] of vehicle.stages.entries()) {
     const facility: Facility = index > 0 ? "altitude" : "sea-level";
     const seconds = policy === "cheap" ? 5 : Math.ceil(burnTime(stage) * DURATION_MARGIN);
@@ -265,7 +274,7 @@ function engineTests(company: Company, key: string, policy: Policy): boolean {
 
 function play(seed: number, policy: Policy): Outcome {
   const board = generateBoard(seed);
-  const company = newCompany(seed, startingCash(seed), VEHICLES, Object.values(ENGINES), board);
+  const company = newCompany(seed, startingCash(seed), STARTERS, STARTER_ENGINES, board);
   const contract = (id: string) => board.find((c) => c.id === id)!;
   const testing = policy !== "reckless";
   let note = "";
@@ -275,6 +284,7 @@ function play(seed: number, policy: Policy): Outcome {
   if (testing) {
     engineTests(company, "pathfinder", policy);
     proveShape(company, "pathfinder", policy === "cheap" ? "cfd" : "transonic");
+    if (thorough(policy)) proveBuild(company, "pathfinder");
   }
   // Suborbital work until the regulator will grant an orbital licence and
   // LEO customers will sign: sounding contracts when the board has them, a
@@ -291,9 +301,9 @@ function play(seed: number, policy: Policy): Outcome {
     } else break;
   }
   if (nextLicence(company, reputation(company))?.ready) guard(company, () => applyForLicence(company));
-  if (!holds(company, "orbital")) note ||= "no orbital licence";
+  if (!holds(company, "orbital")) note ||= "no orbital license";
 
-  // The orbital rocket: the preset Meridian, or one the designer bots draw themselves.
+  // The orbital rocket: the starting Meridian, or one the designer bots draw themselves.
   let orbiter = "meridian";
   let reusePick: Suggestion | null = null;
   // A reusable rocket drawn alongside the expendable one: it flies what it can carry, the expendable the rest.
@@ -310,6 +320,7 @@ function play(seed: number, policy: Policy): Outcome {
   } else if (testing && !company.dead) {
     if (!engineTests(company, "meridian", policy)) note ||= "Meridian engines unproven";
     if (!proveShape(company, "meridian", policy === "cheap" ? "cfd" : "transonic")) note ||= "Meridian shape unproven";
+    if (thorough(policy)) proveBuild(company, "meridian");
   }
 
   // Orbital work until the horizon: bid on what's posted, wait for more,
@@ -337,7 +348,7 @@ function play(seed: number, policy: Policy): Outcome {
       (c) =>
         c.minApogee === undefined &&
         c.kind !== "crew" &&
-        // The bots fly the preset Meridian; work that needs a parking orbit and relights needs a bigger design.
+        // The bots fly Meridian-class rockets; work that needs a parking orbit and relights needs a bigger design.
         missionPlan(c.mission).burns.length === 0 &&
         !considered.has(c.id) &&
         (policy === "greedy" || c.id !== "sso-150") &&
@@ -358,6 +369,8 @@ function play(seed: number, policy: Policy): Outcome {
       flyOn = null;
       for (const k of keys) {
         guard(company, () => retune(company, k, next.id));
+        // The re-tune takes days: the deadline may no longer be reachable.
+        if (!canSign(company, next, k)) continue;
         const greedyBid = policy === "greedy" && next.id === "sso-150";
         if (greedyBid || forecastDelivers(company, k, next)) {
           flyOn = k;
@@ -375,7 +388,7 @@ function play(seed: number, policy: Policy): Outcome {
     console.log(`  seed ${seed} ${policy}: ${[...byCategory].map(([k, v]) => `${k} ${(v / 1000).toFixed(2)}M`).join(", ")}`);
     for (const f of company.flights) console.log(`    day ${f.day} ${f.design} ${f.mission}: ${f.outcome}${f.settlement ? ` (${f.settlement})` : ""}`);
     for (const [id, status] of Object.entries(company.closed)) if (status !== "delivered") console.log(`    contract ${id}: ${status}`);
-    console.log(`    note: ${note || "-"}, licence ${company.licence}, rep ${reputation(company)}`);
+    console.log(`    note: ${note || "-"}, license ${company.licence}, rep ${reputation(company)}`);
   }
   const flown = company.flights.filter((f) => f.design === company.designs[orbiter]?.name || (reuser !== null && f.design === company.designs[reuser]?.name));
   if (designs(policy) && flown.length > 0) {

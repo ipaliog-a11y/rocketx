@@ -383,7 +383,7 @@ export function cancelJob(task: Task): Job {
 export function licenceJob(application: Application): Job {
   const name = LICENCE_LABELS[application.tier].toLowerCase();
   return trackJob({
-    title: `Apply for the ${name} licence?`,
+    title: `Apply for the ${name} license?`,
     doing: `The regulator reviews your ${name} application`,
     verb: "Apply",
     days: application.days,

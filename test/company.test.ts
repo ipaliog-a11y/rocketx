@@ -88,7 +88,7 @@ test("the board and starting cash are seeded", () => {
   assert.notDeepEqual(generateBoard(4), generateBoard(5));
   for (const c of generateBoard(4)) assert.ok(c.payout > 0 && c.deadline > 0);
   assert.equal(startingCash(4), startingCash(4));
-  assert.ok(startingCash(4) >= 9_000 && startingCash(4) <= 14_000);
+  assert.ok(startingCash(4) >= 11_000 && startingCash(4) <= 16_000);
 });
 
 test("customers settle on what the flight did", () => {
@@ -197,6 +197,28 @@ test("running out of cash ends the run", () => {
   assert.ok(out.notices.some((n) => /company is dead/.test(n)));
   assert.throws(() => build(c, "pathfinder"), /company is gone/);
   assert.match(summary(c), /THE COMPANY DIED/);
+});
+
+test("a flight's payout lands before the books are checked: payroll on the pad can't kill a company being paid", () => {
+  const built = vehicleCost(PATHFINDER);
+  const days = built.days + COSTS.padDays;
+  // Ten thousand short of the build, the launch and the payroll, until the customer pays.
+  const short = built.cost + COSTS.launchFee + days * COSTS.overheadPerDay - 10;
+  const paid = company(short);
+  paid.firstOrbitDay = 0;
+  accept(paid, "sounding");
+  build(paid, "pathfinder");
+  fly(paid, "pathfinder", { contract: "sounding" });
+  assert.equal(paid.dead, false);
+  assert.equal(paid.cash, 1_500 - 10);
+
+  // A test flight earns nothing: the same books end the run once it lands.
+  const unpaid = company(short);
+  unpaid.firstOrbitDay = 0;
+  build(unpaid, "pathfinder");
+  const out = fly(unpaid, "pathfinder", { mission: SUBORBITAL_TEST });
+  assert.equal(unpaid.dead, true);
+  assert.ok(out.notices.some((n) => /company is dead/.test(n)));
 });
 
 test("before first orbit, a company that can't afford an orbital vehicle is finished", () => {

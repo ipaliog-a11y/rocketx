@@ -81,10 +81,10 @@ export function App() {
               <Ticker value={cash} format={money} delta={(d) => `${d > 0 ? "+" : "−"}${money(Math.abs(d))}`} />
             </dd>
           </div>
-          <div className="stat-licence" title="Launch licence">
+          <div className="stat-licence" title="Launch license">
             <dt>
               <Icon name="licence" size="sm" />
-              <span className="sr-only">Licence</span>
+              <span className="sr-only">License</span>
             </dt>
             <dd>{LICENCE_LABELS[company.licence].toUpperCase()}</dd>
           </div>

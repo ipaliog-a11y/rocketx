@@ -2,20 +2,21 @@
  * The design-office look (UI-DESIGN.md): in-house engineering software on a
  * control-room workstation. Dark only, one accent. Cyan is nominal data,
  * amber is the one thing being touched, red is a limit and nothing else.
- * Scoped under .ed so the rest of the game keeps its own look.
+ * Its colours and faces are the game's own tokens; the layout is scoped under .ed.
  */
 .ed {
-  --ed-bg: #0b1118;
-  --ed-panel: #111a24;
-  --ed-grid: #1a2633;
-  --ed-line: #5fd4e6;
-  --ed-line-dim: #2e5a66;
-  --ed-text: #c9d6e0;
-  --ed-muted: #7c8c99;
-  --ed-accent: #f2a93b;
-  --ed-alarm: #ff4d4d;
-  --ed-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace;
-  --ed-sans: "IBM Plex Sans Condensed", "Barlow Semi Condensed", sans-serif;
+  /* The game's own tokens (styles.css): one palette for every screen. */
+  --ed-bg: var(--ground);
+  --ed-panel: var(--panel);
+  --ed-grid: var(--grid);
+  --ed-line: var(--data);
+  --ed-line-dim: var(--line-strong);
+  --ed-text: var(--text);
+  --ed-muted: var(--muted);
+  --ed-accent: var(--action);
+  --ed-alarm: var(--bad);
+  --ed-mono: var(--mono);
+  --ed-sans: var(--sans);
   background: var(--ed-bg);
   color: var(--ed-text);
   font-family: var(--ed-sans);
