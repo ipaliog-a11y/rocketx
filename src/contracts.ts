@@ -121,7 +121,7 @@ export function generateBoard(seed: number): Contract[] {
       title: `Rideshare slot ${i + 1}: 150 kg to LEO 300 km`,
       mission: LEO_300,
       payloadMass: 150,
-      payout: vary(6_000, 0.15),
+      payout: vary(7_000, 0.15),
       degradedShare: 0.5,
       penalty: 1_500,
       deadline: postedDay + RIDESHARE_WINDOW,
@@ -240,11 +240,11 @@ function generated(seed: number): Contract[] {
     const smallsat = kind === "smallsat";
     const customer = smallsat ? pick(["Ostrava Imaging", "Pallas Earthwatch", "Verdant Analytics", "Cobalt Radar", "Gannet Maritime"]) : pick(["Orbital Freight Exchange", "Cubeway Dispensers"]);
     const what = smallsat ? pick(["imager", "radar sat", "AIS receiver", "hyperspectral camera"]) : "cubesat dispenser";
-    // A Meridian costs about $4.4M built, flown and paid for, so even a
+    // A Meridian costs about $5.4M built, flown and paid for, so even a
     // light payload has to cover that. Height and inclination add a premium.
     const premium = (orbit.km - 300) * 6 + (orbit.inc - 28.5) * 25;
     const payout = step(
-      smallsat ? between(4_800, 5_600) + payload * between(15, 22) + premium : between(4_300, 5_000) + payload * 10 + premium,
+      smallsat ? between(5_800, 6_600) + payload * between(15, 22) + premium : between(5_300, 6_000) + payload * 10 + premium,
       50,
     );
     return {
@@ -298,7 +298,7 @@ function generated(seed: number): Contract[] {
     const every = int(40, 60);
     const count = int(6, 10);
     const payload = c.sats * c.each;
-    const base = step(500 + payload * between(44, 50) + (c.km - 300) * 5, 50);
+    const base = step(1_500 + payload * between(44, 50) + (c.km - 300) * 5, 50);
     for (let i = 0; i < count; i++) {
       const day = start + i * every;
       if (day >= 1_100) break;
