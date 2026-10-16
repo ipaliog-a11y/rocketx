@@ -360,7 +360,7 @@ function EngineDetail({ company, use, plan }: { company: Company; use: EngineUse
         </span>
         <div className="actions">
           <button type="button" className="btn primary" onClick={() => game.schedule(fireJob(engine, planned, facility, runs, restart))}>
-            {startCheck ? "Start check" : restart ? "Fire and restart" : "Fire"} · {money(cost)} · {days} days
+            {startCheck ? "Start check" : restart ? "Fire and restart" : "Fire"} <span className="note">{money(cost)} · {days} days</span>
           </button>
           <span className="muted" style={{ fontSize: 13 }}>
             +{money(days * COSTS.overheadPerDay)} payroll · a lost engine costs {money(hardwareLoss(engine).cost)} and {hardwareLoss(engine).days} d

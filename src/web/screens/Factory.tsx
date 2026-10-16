@@ -96,7 +96,7 @@ export function Factory({ company }: { company: Company }) {
                 {company.lines.length === 1 ? " Two lines can keep up with a launch every month or so." : " Three lines can keep a constellation customer supplied."}
               </span>
               <button type="button" className="btn primary" onClick={() => game.schedule(job)}>
-                Buy line {company.lines.length + 1} · {money(job.cost)}
+                Buy line {company.lines.length + 1} <span className="note">{money(job.cost)}</span>
               </button>
             </>
           ) : (
@@ -153,17 +153,17 @@ function Boosters({ company }: { company: Company }) {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {b.status === "ready" && (
                     <button type="button" className="btn primary" onClick={() => game.schedule(restackJob(company, b.design, b.serial))}>
-                      Stack a {design.name} · {money(restackCost(design).cost)}
+                      Stack a {design.name} <span className="note">{money(restackCost(design).cost)}</span>
                     </button>
                   )}
                   {b.status === "flown" && (
                     <button type="button" className="btn primary" onClick={() => game.schedule(refurbJob(company, b.serial, "turnaround"))}>
-                      Turn around · {money(refurbJob(company, b.serial, "turnaround").cost)}
+                      Turn around <span className="note">{money(refurbJob(company, b.serial, "turnaround").cost)}</span>
                     </button>
                   )}
                   {(b.status === "flown" || b.status === "ready") && (
                     <button type="button" className="btn" onClick={() => game.schedule(refurbJob(company, b.serial, "overhaul"))}>
-                      Overhaul · {money(refurbJob(company, b.serial, "overhaul").cost)}
+                      Overhaul <span className="note">{money(refurbJob(company, b.serial, "overhaul").cost)}</span>
                     </button>
                   )}
                   {(b.status === "flown" || b.status === "ready") && (

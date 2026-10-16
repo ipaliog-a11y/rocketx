@@ -84,7 +84,7 @@ export function App() {
           <div className="stat-licence" title="Launch license">
             <dt>
               <Icon name="licence" size="sm" />
-              <span className="sr-only">Licence</span>
+              <span className="sr-only">License</span>
             </dt>
             <dd>{LICENCE_LABELS[company.licence].toUpperCase()}</dd>
           </div>

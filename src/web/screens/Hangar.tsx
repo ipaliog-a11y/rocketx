@@ -202,7 +202,7 @@ function Design({ company, designKey, simulate }: { company: Company; designKey:
         </p>
         <div className="actions">
           <button type="button" className="btn primary" onClick={() => game.schedule(buildJob(company, designKey))}>
-            Order one · {money(cost)} · {days} days
+            Order one <span className="note">{money(cost)} · {days} days</span>
           </button>
           <button
             type="button"

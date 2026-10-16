@@ -209,7 +209,7 @@ function Prep({ company, version, contract, design, setDesign }: { company: Comp
             {ready !== null && ready > company.day ? `Launch on rollout · day ${ready}` : `Launch ${v.name}`}
           </button>
           <button type="button" className="btn" onClick={() => game.schedule(buildJob(company, design))}>
-            Order · {money(b.build.cost)} · {b.build.days} d
+            Order <span className="note">{money(b.build.cost)} · {b.build.days} d</span>
           </button>
           {turns && contract.mission.target && (
             <span className="with-icon">

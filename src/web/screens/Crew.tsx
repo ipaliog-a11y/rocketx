@@ -31,7 +31,7 @@ export function Crew({ company }: { company: Company }) {
         ) : (
           <div className="actions">
             <button type="button" className="btn primary" disabled={!orbital} onClick={() => game.schedule(capsuleJob())}>
-              Develop the capsule · {money(CAPSULE.develop.cost)} · {CAPSULE.develop.days} d
+              Develop the capsule <span className="note">{money(CAPSULE.develop.cost)} · {CAPSULE.develop.days} d</span>
             </button>
             {!orbital && <span className="muted">Needs the orbital license first.</span>}
           </div>
@@ -50,7 +50,7 @@ export function Crew({ company }: { company: Company }) {
               <Chip tone={capsule.known.padAbortPassed ? "good" : "muted"}>{capsule.known.padAbortPassed ? "PASSED" : "NOT PASSED"}</Chip>
               <span className="actions">
                 <button type="button" className="btn" onClick={() => game.schedule(padAbortJob())}>
-                  Book the range · {money(1_500)} · 20 d
+                  Book the range <span className="note">{money(1_500)} · 20 d</span>
                 </button>
               </span>
             </div>
@@ -74,7 +74,7 @@ export function Crew({ company }: { company: Company }) {
                   <Chip tone={open ? "bad" : fixed ? "good" : "muted"}>{open ? "FOUND" : fixed ? "FIXED" : "NOT SEEN"}</Chip>
                   {open && (
                     <button type="button" className="btn primary" onClick={() => game.schedule(fixAbortJob(flaw))}>
-                      Fix: {ABORT_FIXES[flaw].name} · {money(ABORT_FIXES[flaw].cost)} · {ABORT_FIXES[flaw].days} d
+                      Fix: {ABORT_FIXES[flaw].name} <span className="note">{money(ABORT_FIXES[flaw].cost)} · {ABORT_FIXES[flaw].days} d</span>
                     </button>
                   )}
                 </li>

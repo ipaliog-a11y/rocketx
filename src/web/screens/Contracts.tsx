@@ -107,7 +107,7 @@ export function Contracts({ company, version, route }: Props) {
           <div className="actions">
             {nextPosting !== null && <span className="muted">Next new posting around day {nextPosting}.</span>}
             <button type="button" className="btn" onClick={() => game.schedule(waitJob(30, "Waiting for new work"))}>
-              Wait 30 days · {money(30 * COSTS.overheadPerDay)}
+              Wait 30 days <span className="note">{money(30 * COSTS.overheadPerDay)}</span>
             </button>
             {nextPosting !== null && (
               <button type="button" className="btn" onClick={() => game.schedule(waitJob(nextPosting - company.day, "Waiting for the next posting"))}>
@@ -116,7 +116,7 @@ export function Contracts({ company, version, route }: Props) {
             )}
             {nextRollout !== null && nextRollout > company.day && (
               <button type="button" className="btn" onClick={() => game.schedule(waitJob(nextRollout - company.day, "Waiting for the next rollout", `Advance ${nextRollout - company.day} days to the next rollout?`, "Advance"))}>
-                Advance to the next rollout · day {nextRollout}
+                Advance to the next rollout <span className="note">day {nextRollout}</span>
               </button>
             )}
           </div>
@@ -196,7 +196,7 @@ function Table({ rows, selected, select }: { rows: Row[]; selected?: string; sel
           </select>
         </label>
         <label>
-          <span>Licence</span>
+          <span>License</span>
           <select value={licence} onChange={(e) => setLicence(e.target.value as Licence | "all")}>
             <option value="all">Any license</option>
             <option value="suborbital">Suborbital</option>
@@ -566,7 +566,7 @@ function BidPanel({ company, version, contract, design, setDesign }: { company: 
         items={[
           ["Pays", <span className="good">{money(contract.payout)}</span>],
           ["Penalty", <span className="bad">{money(contract.penalty)}</span>],
-          ["Licence", LICENCE_LABELS[requiredLicence(contract)]],
+          ["License", LICENCE_LABELS[requiredLicence(contract)]],
           ["Reputation", `${contract.minReputation} or better`],
           ["Posted", `day ${contract.postedDay}`],
           ["Fly by", `day ${contract.deadline}`],
@@ -640,7 +640,7 @@ function SeriesCommit({ company, seriesId }: { company: Company; seriesId: strin
     return (
       <span className="actions">
         <button type="button" className="btn" onClick={() => setAsking(true)}>
-          Commit to the series · sign {left.length} launches
+          Commit to the series <span className="note">sign {left.length} launches</span>
         </button>
       </span>
     );

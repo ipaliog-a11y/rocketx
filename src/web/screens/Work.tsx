@@ -57,7 +57,7 @@ export function WorkStrip({ company, open }: { company: Company; open: () => voi
         {/* The top bar's Advance goes to the next finish; this runs the whole plan. */}
         {Number.isFinite(last) && last > next && (
           <button type="button" className="btn" onClick={() => advanceTo(company, last, "Working through the plan")}>
-            All done · day {last}
+            All done <span className="note">day {last}</span>
           </button>
         )}
         {!folded && (
@@ -99,7 +99,7 @@ export function Work({ company }: { company: Company }) {
               {extra && (
                 <span className="actions">
                   <button type="button" className="btn" onClick={() => game.buyUnit(track)}>
-                    Add {extra.name} · {money(extra.cost)} · {extra.days} d
+                    Add {extra.name} <span className="note">{money(extra.cost)} · {extra.days} d</span>
                   </button>
                 </span>
               )}
@@ -157,7 +157,7 @@ function TaskRow({ company, task, start, end }: { company: Company; task: Task; 
       ) : (
         <span className="actions">
           <button type="button" className="btn" onClick={() => game.cancelTask(task.id)}>
-            Cancel · {money(task.cost)} back
+            Cancel <span className="note">{money(task.cost)} back</span>
           </button>
         </span>
       )}

@@ -79,7 +79,7 @@ function TestAction({ company, partKey, test }: { company: Company; partKey: str
     <div className="stack" style={{ gap: 4 }}>
       <span className="actions">
         <button type="button" className="btn primary" onClick={() => test({ engine: plan.engine, facility: plan.facility, seconds: plan.seconds, restart: plan.restart, why: plan.why })}>
-          Test it · {plan.engine} · {money(plan.cost)}
+          Test it <span className="note">{plan.engine} · {money(plan.cost)}</span>
         </button>
       </span>
       <span className="muted" style={{ fontSize: 13 }}>

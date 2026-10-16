@@ -1019,7 +1019,7 @@ export function summary(company: Company): string {
     analysis: "Analysis",
     build: "Vehicles built",
     launch: "Launch fees",
-    licence: "Licences",
+    licence: "Licenses",
     facility: "Facilities",
     overhead: "Overhead",
     payout: "Contract payouts",

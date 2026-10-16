@@ -204,7 +204,7 @@ export function Tunnel({ company, design }: { company: Company; design?: string 
                     ))}
                   </ul>
                   <button type="button" className="btn" onClick={() => game.schedule(tunnelJob(shape.design, shape.label, id))}>
-                    Book · +{money(f.days * COSTS.overheadPerDay)} payroll
+                    Book <span className="note">+{money(f.days * COSTS.overheadPerDay)} payroll</span>
                   </button>
                 </div>
               );
