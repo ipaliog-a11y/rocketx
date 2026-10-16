@@ -167,17 +167,20 @@ function alive(company: Company): void {
 }
 
 /** Move money and time, then settle anything the new date makes due. Returns notices. */
-function charge(company: Company, category: Category, amount: number, days: number, note: string): string[] {
+function charge(company: Company, category: Category, amount: number, days: number, note: string, options: SettleOptions = {}): string[] {
   company.cash -= amount;
   if (amount !== 0) company.ledger.push({ day: company.day, category, amount: -amount, note });
-  return settleDays(company, days);
+  return settleDays(company, days, options);
 }
+
+/** `deferSolvency`: a flight is under way, and whether the company can pay waits until its customer has. */
+type SettleOptions = { deferSolvency?: boolean };
 
 /**
  * Let `days` pass. The clock stops wherever a job on the tracks finishes, so
  * what it found lands on its own day, and the next job can start.
  */
-export function settleDays(company: Company, days: number): string[] {
+export function settleDays(company: Company, days: number, options: SettleOptions = {}): string[] {
   const target = company.day + days;
   const notices = runTracks(company);
   while (!company.dead) {
@@ -190,7 +193,7 @@ export function settleDays(company: Company, days: number): string[] {
       company.cash -= overhead;
       company.ledger.push({ day: company.day, category: "overhead", amount: -overhead, note: `${step} days` });
     }
-    notices.push(...tick(company));
+    notices.push(...tick(company, options.deferSolvency));
     if (company.dead) break;
     notices.push(...runTracks(company));
     if (company.day >= target) break;
@@ -211,7 +214,7 @@ export function posted(company: Company): Contract[] {
 }
 
 /** Deadlines that have passed, vehicles that rolled out, and whether the company can still pay its bills. */
-function tick(company: Company): string[] {
+function tick(company: Company, deferSolvency = false): string[] {
   const notices: string[] = [];
   for (const order of company.orders.filter((o) => o.readyDay <= company.day)) {
     company.inventory[order.design] = (company.inventory[order.design] ?? 0) + 1;
@@ -230,7 +233,7 @@ function tick(company: Company): string[] {
     notices.push(`Day ${contract.deadline}: ${contract.customer} gave up waiting on "${contract.title}". Penalty $${contract.penalty}k.`);
     notices.push(...seriesAfter(company, contract, false));
   }
-  if (company.dead) return notices;
+  if (company.dead || deferSolvency) return notices;
   if (company.cash < 0) {
     company.dead = true;
     notices.push(`Day ${company.day}: the cash is gone. The company is dead.`);
@@ -709,7 +712,7 @@ export function fly(company: Company, key: string, target: ({ contract: string }
   const boosterTruth = unit ? company.campaign.boosterTruth?.[unit.serial] : undefined;
   const worn = unit && boosterTruth && unit.flights > 0 ? wearFailure(boosterTruth, unit.serial, unit.flights + 1, company.seed, burnTime(design.stages[0]!) * (1 - design.geometry!.recovery!.reserve)) : null;
 
-  const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`)];
+  const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`, { deferSolvency: true })];
   company.inventory[key]! -= 1;
   // The day's wind, and the attitude loop as built and as testing has corrected it.
   const gncTruth = vehicle.control ? company.campaign.gncTruth?.[vehicle.name] : undefined;

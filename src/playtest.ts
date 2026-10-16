@@ -386,7 +386,6 @@ function play(seed: number, policy: Policy): Outcome {
     const byCategory = new Map<string, number>();
     for (const e of company.ledger) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount);
     console.log(`  seed ${seed} ${policy}: ${[...byCategory].map(([k, v]) => `${k} ${(v / 1000).toFixed(2)}M`).join(", ")}`);
-    if (process.env.LEDGER) for (const e of company.ledger) if (e.category !== "overhead") console.log(`      d${e.day} ${e.category} ${(e.amount / 1000).toFixed(2)}M ${e.note}`);
     for (const f of company.flights) console.log(`    day ${f.day} ${f.design} ${f.mission}: ${f.outcome}${f.settlement ? ` (${f.settlement})` : ""}`);
     for (const [id, status] of Object.entries(company.closed)) if (status !== "delivered") console.log(`    contract ${id}: ${status}`);
     console.log(`    note: ${note || "-"}, license ${company.licence}, rep ${reputation(company)}`);

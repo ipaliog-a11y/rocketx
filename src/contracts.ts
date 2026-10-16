@@ -535,5 +535,5 @@ function generated(seed: number): Contract[] {
 /** Starting cash, $k. Some companies start leaner than others. */
 export function startingCash(seed: number): number {
   const random = rng(hashSeed(`${seed}:cash`));
-  return Math.round(9_000 + 5_000 * random());
+  return Math.round(11_000 + 5_000 * random());
 }
