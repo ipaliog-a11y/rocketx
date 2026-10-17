@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { maxEngines, specOf, stageRole, type VehicleSpec } from "../../sim/builder.ts";
 import { buildDays, posted, type Company } from "../../sim/company.ts";
 import { vehicleCost } from "../../sim/cost.ts";
+import { pendingDesigns } from "../../sim/schedule.ts";
 import { defaultFins, MATERIALS, NOSE_LABELS, type FinSection, type Material, type NoseShape } from "../../sim/geometry.ts";
 import { suggestBuilds, type Goal, type Suggestion, type Suggestions } from "../../sim/guide.ts";
 import { UNGUIDED_MARGIN } from "../../sim/stability.ts";
@@ -616,9 +617,29 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
           </span>
         </div>
       </section>
-      <SizingGuide company={company} job={job} use={(s) => (setSpec(withGeometry(s.spec)), setLog(`> load guide ${s.label.toLowerCase()}`))} />
+      <SizingGuide
+        company={company}
+        job={job}
+        use={(s) => {
+          // A guide pick is a new rocket, not a revision of whatever is open.
+          const name = freeName(s.spec.stages.length === 1 ? "Sounder" : "Orbiter", [...names, ...pendingDesigns(company).map((v) => v.name)]);
+          setSel(NEW);
+          setNewName(name);
+          setSpec(withGeometry(s.spec));
+          setLog(`> load guide ${s.label.toLowerCase()} as ${name.toLowerCase()}`);
+        }}
+      />
     </>
   );
+}
+
+/** The first of "Orbiter", "Orbiter 2", "Orbiter 3"… that no design is called yet. */
+function freeName(base: string, taken: string[]): string {
+  const used = new Set(taken.map((n) => n.toLowerCase()));
+  for (let i = 1; ; i++) {
+    const name = i === 1 ? base : `${base} ${i}`;
+    if (!used.has(name.toLowerCase())) return name;
+  }
 }
 
 /** The sizing guide, as a design-office panel: a job in, three stacks out. */

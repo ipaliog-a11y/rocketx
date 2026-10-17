@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { buildDays, readyDay, reengine, type Company } from "../../sim/company.ts";
-import { holds, missionLicence } from "../../sim/licence.ts";
+import { holds, missionLicence, SPACE_LINE } from "../../sim/licence.ts";
 import { vehicleCost } from "../../sim/cost.ts";
 import { burnTime, idealDeltaV, stackMass } from "../../sim/vehicle.ts";
 import { LEO_300, SUBORBITAL_TEST } from "../../missions.ts";
@@ -243,6 +243,8 @@ function Record({ company }: { company: Company }) {
       {Object.entries(company.designs).map(([key, v]) => {
         const xp = company.experience[key];
         const flights = company.flights.filter((f) => f.design === v.name);
+        // A sounding rocket's record is how high it has been.
+        const peak = Math.max(0, ...flights.map((f) => f.apogee));
         return (
           <div key={key} className="card" style={{ flex: "1 1 300px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
@@ -252,7 +254,16 @@ function Record({ company }: { company: Company }) {
               </span>
             </div>
             <div className="actions" style={{ gap: 6 }}>
-              <Chip tone={(xp?.orbits ?? 0) > 0 ? "good" : "muted"}>{(xp?.orbits ?? 0) > 0 ? "ORBIT ✓" : "ORBIT"}</Chip>
+              {v.pitchProgram?.kind === "gravity-turn" ? (
+                <Chip tone={(xp?.orbits ?? 0) > 0 ? "good" : "muted"}>{(xp?.orbits ?? 0) > 0 ? "ORBIT ✓" : "ORBIT"}</Chip>
+              ) : (
+                peak >= SPACE_LINE && (
+                  <>
+                    <Chip tone="good">SPACE ✓</Chip>
+                    <Chip>{`UP TO ${km(peak, 0).toUpperCase()}`}</Chip>
+                  </>
+                )
+              )}
               {xp && xp.orbits > 0 && <Chip>{`UP TO ${km(xp.maxApoapsis, 0).toUpperCase()}`}</Chip>}
               {xp && xp.maxPayload > 0 && <Chip>{`${xp.maxPayload} KG`}</Chip>}
               {xp?.inclinations.map((i) => <Chip key={i}>{`${i}°`}</Chip>)}
