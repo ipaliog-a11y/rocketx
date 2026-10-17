@@ -26,7 +26,9 @@ export type ContractKind =
   | "deep-space"
   | "megaconstellation"
   | "cargo"
-  | "crew";
+  | "crew"
+  | "bus"
+  | "platform";
 
 export const KIND_LABELS: Record<ContractKind, string> = {
   sounding: "Sounding science",
@@ -44,6 +46,8 @@ export const KIND_LABELS: Record<ContractKind, string> = {
   megaconstellation: "Mega-constellation",
   cargo: "Station cargo",
   crew: "Crew",
+  bus: "Satellite bus",
+  platform: "Earth-observation platform",
 };
 
 /** A problem statement with money attached. */
