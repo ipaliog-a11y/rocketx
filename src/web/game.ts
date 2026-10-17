@@ -9,6 +9,7 @@ import type { IconName } from "./components/Icon.tsx";
 import { after } from "./motion.ts";
 import { generateBoard, startingCash } from "../contracts.ts";
 import { DESIGNS } from "./designs.ts";
+import { ERAS } from "../sim/market.ts";
 import { cancelJob, deadlineRisks, signedContracts, unitJob, type Job } from "./jobs.ts";
 import { cashRisk } from "./cashRisk.ts";
 
@@ -123,7 +124,7 @@ function release(): void {
 
 /** What a company has achieved, to tell what an action changed. */
 function milestonesOf(company: Company) {
-  return { orbit: company.firstOrbitDay, licence: company.licence, earned: new Set(achievements(company).filter((a) => a.earned).map((a) => a.id)) };
+  return { orbit: company.firstOrbitDay, licence: company.licence, era: company.market?.era ?? 1, earned: new Set(achievements(company).filter((a) => a.earned).map((a) => a.id)) };
 }
 
 /** The finished jobs an action produced, as toasts, one after another. */
@@ -381,6 +382,8 @@ function queueMilestones(was: ReturnType<typeof milestonesOf>, company: Company)
   if (was.orbit === null && company.firstOrbitDay !== null) add("orbit", "First orbit", `${company.name} reached orbit on day ${company.firstOrbitDay}.`);
   if (LICENCE_ORDER.indexOf(company.licence) > LICENCE_ORDER.indexOf(was.licence)) add("licence", `${LICENCE_LABELS[company.licence]} license`, "The regulator has signed it off. New work is open to you.");
   for (const a of achievements(company)) if (a.earned && !was.earned.has(a.id)) add("reputation", a.title, a.text);
+  const era = company.market?.era ?? 1;
+  if (era > was.era) add("contract", `Market era ${era}: ${ERAS[era - 1]!.label}`, ERAS[era - 1]!.text);
 }
 
 export function useGame(): State {

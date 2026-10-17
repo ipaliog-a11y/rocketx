@@ -15,6 +15,7 @@ import { glyphKind, Icon, MissionGlyph } from "../components/Icon.tsx";
 import { LOW_CASH } from "../cashRisk.ts";
 import { useGo, type Route } from "../nav.ts";
 import { Info } from "../components/Info.tsx";
+import { ERAS, marketOf } from "../../sim/market.ts";
 
 type Props = { company: Company; version: number; route?: Route };
 type View = "table" | "calendar";
@@ -81,6 +82,7 @@ export function Contracts({ company, version, route }: Props) {
           <span className="muted">
             Day {company.day} · {shortDate(company.day)} · {rows.filter((r) => r.status.key === "open").length} open, {company.accepted.length} signed
           </span>
+          <MarketLine company={company} />
         </div>
         <Tabs<View>
           label="Contract views"
@@ -688,5 +690,25 @@ function SeriesCommit({ company, seriesId }: { company: Company; seriesId: strin
         </button>
       </span>
     </div>
+  );
+}
+
+/** Where the market stands: the era the company's reputation has opened, and what opens the next. */
+function MarketLine({ company }: { company: Company }) {
+  const era = marketOf(company).era;
+  const here = ERAS[era - 1]!;
+  const next = ERAS[era];
+  return (
+    <span className="with-icon mono" style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", flexWrap: "wrap", gap: "2px 8px" }}>
+      <span className="lbl">Market</span>
+      <span>
+        Era {era} of {ERAS.length} · {here.label}
+      </span>
+      <span className="muted">{next ? `· next at reputation ${next.reputation}` : "· the top of the market"}</span>
+      <Info label="About market eras">
+        As the company's reputation grows, bigger customers come to it. At reputation {ERAS[1].reputation} the market moves to {ERAS[1].wants}; at {ERAS[2].reputation}, to {ERAS[2].wants}. Light one-off
+        smallsat and rideshare work thins as it goes, and an era never closes. Now: {here.wants}.
+      </Info>
+    </span>
   );
 }
