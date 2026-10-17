@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { maxEngines, specOf, stageRole, type VehicleSpec } from "../../sim/builder.ts";
-import { posted, type Company } from "../../sim/company.ts";
+import { buildDays, posted, type Company } from "../../sim/company.ts";
+import { vehicleCost } from "../../sim/cost.ts";
 import { defaultFins, MATERIALS, NOSE_LABELS, type FinSection, type Material, type NoseShape } from "../../sim/geometry.ts";
 import { suggestBuilds, type Goal, type Suggestion, type Suggestions } from "../../sim/guide.ts";
 import { UNGUIDED_MARGIN } from "../../sim/stability.ts";
@@ -10,7 +11,7 @@ import { recoveryMass, type RecoveryMode } from "../../sim/recovery.ts";
 import { CurveSlider, PanelHeader, Readout, Stamp, TitleBlock, Verb } from "../design/kit.tsx";
 import { money } from "../format.ts";
 import { game } from "../game.ts";
-import { designJob, proofJob } from "../jobs.ts";
+import { buildJob, designJob, proofJob } from "../jobs.ts";
 import { IMU, type ImuGrade } from "../../sim/control.ts";
 import { reducedMotion } from "../motion.ts";
 import { useGo } from "../nav.ts";
@@ -180,6 +181,15 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
     setLog(`> draw up ${drawName.toLowerCase()}   · ${(d.vehicle ? d.vehicle.limits.maxQAlpha! / 1000 : 0).toFixed(1)} kPa·° q·α cap`);
   };
   const canAct = !!base && !d.changed && !pending;
+  // A drawing in the office: this design's own, or the revision or new design just drawn up from this draft.
+  const drawing = company.tasks.find((t) => t.spec.kind === "design" && (t.spec.vehicle.name === drawName || t.spec.vehicle.name === base?.name || t.spec.vehicle.name === awaiting));
+  const orderNote = canAct
+    ? `${money(vehicleCost(base!).cost)} · ${buildDays(company, sel)} D`
+    : drawing
+      ? drawing.endDay !== undefined
+        ? `DRAWING · DAY ${drawing.endDay}`
+        : "DRAWING"
+      : "DRAW UP FIRST";
   const stageIndex = current.id.startsWith("stage-") ? Number(current.id.slice(6)) : -1;
   const stage = stageIndex >= 0 ? d.spec.stages[stageIndex] : undefined;
   const engineOf = (n: string) => engines[n];
@@ -312,6 +322,7 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
             <div className="ed-actions">
               <Verb label={`DIFF VS REV ${rev}`} note={diff ? "ON" : "OFF"} pressed={diff} disabled={!base} onClick={() => setDiff(!diff)} />
               <Verb label={`DRAW UP REV ${nextRev}`} note={quote.blocked ?? `${money(quote.cost)} · ${quote.days} D`} go disabled={!!quote.blocked} onClick={drawUp} />
+              <Verb label="ORDER ONE" note={orderNote} go={canAct} disabled={!canAct} onClick={() => game.schedule(buildJob(company, sel))} />
               <Verb
                 label={proofTask ? "PROOF TEST BOOKED" : "PROOF TEST"}
                 note={!base?.structure ? "NEW MODEL ONLY" : untested.length === 0 ? "DONE" : d.changed ? "DRAW UP FIRST" : `${untested.length} SHELL${untested.length === 1 ? "" : "S"}`}
