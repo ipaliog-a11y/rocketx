@@ -707,7 +707,7 @@ function MarketLine({ company }: { company: Company }) {
       <span className="muted">{next ? `· next at reputation ${next.reputation}` : "· the top of the market"}</span>
       <Info label="About market eras">
         As the company's reputation grows, bigger customers come to it. At reputation {ERAS[1].reputation} the market moves to {ERAS[1].wants}; at {ERAS[2].reputation}, to {ERAS[2].wants}. Light one-off
-        smallsat and rideshare work thins as it goes, and an era never closes. Now: {here.wants}.
+        work to low orbit (smallsats, rideshares, weather and agency satellites) thins as it goes, and an era never closes. Now: {here.wants}.
       </Info>
     </span>
   );

@@ -27,7 +27,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   { id: "leo", term: "LEO", text: "Low Earth orbit, a few hundred km up: about 9.5 km/s of Δv from the pad." },
   { id: "sso", term: "SSO", text: "Sun-synchronous orbit: nearly polar (about 97–98°), so the satellite passes over every place at the same local time. Launched against the Earth's spin, so it costs more Δv." },
   { id: "gto", term: "GTO", text: "Geostationary transfer orbit: from a low perigee up to 35,786 km. Needs a coast and a relight." },
-  { id: "market-era", term: "Market era", text: "Where the market stands for your company. At reputation 4 customers start asking for 375–450 kg buses and SSO imagers; at 8, for 1–2.5 t buses and platforms. Light one-off smallsat and rideshare work thins each time, so growing means bigger rockets. An era never closes." },
+  { id: "market-era", term: "Market era", text: "Where the market stands for your company. At reputation 4 customers start asking for 375–450 kg buses and SSO imagers; at 8, for 1–2.5 t buses and platforms. Light one-off work to low orbit (smallsats, rideshares, weather and agency satellites) thins each time, so growing means bigger rockets. An era never closes." },
   { id: "c3", term: "C3", text: "Energy left over after escaping the Earth, in km²/s². Lunar and deep-space probes need a C3 at or above a target." },
   { id: "heritage", term: "Heritage", text: "What a design has already done: orbits reached, highest orbit, heaviest payload. Customers trust a design more for work it has done before." },
   { id: "reputation", term: "Reputation", text: "What customers think of the company. Deliveries raise it, failed or late contracts lower it. Some contracts need a minimum, and below zero the orbital license is out of reach." },

@@ -390,8 +390,9 @@ function play(seed: number, policy: Policy): Outcome {
           );
       if (job) {
         triedMove.add(job.id);
-        // The forecast decides, after a re-tune: a design's drawn payload is no limit (Meridian lifts more than its 200 kg).
-        const carries = fleet().some((k) => (guard(company, () => retune(company, k, job.id)), forecastDelivers(company, k, job)));
+        // The forecast decides, not a design's drawn payload (Meridian lifts more than its 200 kg). No re-tune here:
+        // the last stage steers to the orbit, and a re-tune costs three days for every rocket and every job looked at.
+        const carries = fleet().some((k) => forecastDelivers(company, k, job));
         if (!carries) {
           const name = `Mover ${movers.length + 1}`;
           const picks = suggestBuilds({ mission: job.mission, payloadMass: job.payloadMass }, company.campaign.engines, Object.values(company.designs), name);

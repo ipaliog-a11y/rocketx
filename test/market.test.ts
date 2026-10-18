@@ -8,7 +8,7 @@ import { STARTER_ENGINES, STARTERS } from "../src/starters.ts";
 
 const fresh = (seed = 3): Company => newCompany(seed, startingCash(seed), STARTERS, STARTER_ENGINES, generateBoard(seed));
 const rep = (c: Company, points: number) => c.record.push({ day: c.day, tag: "delivered", reputation: points, note: "test" });
-const light = (c: Company, after: number) => c.board.filter((x) => (x.kind === "smallsat" || x.kind === "rideshare") && !x.seriesId && x.postedDay > after);
+const light = (c: Company, after: number) => c.board.filter((x) => ["smallsat", "rideshare", "weather", "agency"].includes(x.kind) && !x.seriesId && x.payloadMass <= 250 && x.postedDay > after);
 
 test("eras open at reputation 4 and 8", () => {
   assert.equal(eraFor(-3), 1);
@@ -39,8 +39,8 @@ test("an era thins unposted light one-off work and adds its own, from the day it
   const series = c.board.filter((x) => x.seriesId).map((x) => x.id);
   advanceMarket(c, 4);
   const after = light(c, 100).map((x) => x.id);
-  // Half, give or take, and exactly the ones the seeded roll keeps.
-  assert.deepEqual(after, before.filter((id) => kept(c.seed, id, 0.5)));
+  // About 40%, and exactly the ones the seeded roll keeps.
+  assert.deepEqual(after, before.filter((id) => kept(c.seed, id, 0.4)));
   assert.ok(after.length < before.length);
   for (const id of [...posted, ...series]) assert.ok(c.board.some((x) => x.id === id), `${id} stays`);
   const work = c.board.filter((x) => x.kind === "bus" || x.kind === "platform");
@@ -54,7 +54,7 @@ test("a light contract already signed is never thinned", () => {
   const c = fresh();
   c.licence = "orbital";
   rep(c, 2);
-  const target = light(c, 0).find((x) => !kept(c.seed, x.id, 0.25))!;
+  const target = light(c, 0).find((x) => !kept(c.seed, x.id, 0.15))!;
   assert.ok(target, "some light contract the era-3 roll would drop");
   c.accepted.push(target.id);
   advanceMarket(c, 8);
