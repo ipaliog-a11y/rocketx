@@ -259,6 +259,26 @@ function drawOrbiter(company: Company, policy: Policy, job: Contract, reusable: 
   return key;
 }
 
+/**
+ * Book a newly drawn rocket's testing on the tracks without waiting for it:
+ * its engines for the longer burns it asks, its shape in the transonic
+ * tunnel, and for thorough bots its shells and GNC.
+ */
+function bookTests(company: Company, key: string, policy: Policy): void {
+  const v = company.designs[key]!;
+  v.stages.forEach((stage, index) => {
+    const seconds = Math.ceil(burnTime(stage) * DURATION_MARGIN);
+    if ((company.campaign.knowledge[stage.engine.name]?.provenDuration ?? 0) < seconds) {
+      guard(company, () => book(company, { kind: "fire", engine: stage.engine.name, seconds, facility: index > 0 ? "altitude" : "sea-level", restart: false }));
+    }
+  });
+  guard(company, () => book(company, { kind: "tunnel", design: key, facility: "transonic" }));
+  if (thorough(policy)) {
+    if (v.structure) guard(company, () => book(company, { kind: "proof", design: key }));
+    if (v.control) for (const test of ["modal", "imu-cal", "hitl"] as GncTest[]) guard(company, () => book(company, { kind: "gnc", design: key, test }));
+  }
+}
+
 /** Policies that also proof-test the shells and run the GNC lab's three tests. */
 const thorough = (p: Policy) => p === "careful" || p === "greedy" || p === "designer" || p === "designer-reuse";
 
@@ -336,6 +356,8 @@ function play(seed: number, policy: Policy): Outcome {
   const movers: string[] = [];
   const fleet = () => [...(reuser ? [reuser] : []), orbiter, ...movers].sort((a, b) => vehicleCost(company.designs[a]!).cost - vehicleCost(company.designs[b]!).cost);
   const triedMove = new Set<string>();
+  // A heavier rocket in the drawing office, by name.
+  let drawing: string | null = null;
 
   // Orbital work until the horizon: bid on what's posted, wait for more,
   // and buy heritage with a demonstration flight if nobody will sign.
@@ -349,22 +371,36 @@ function play(seed: number, policy: Policy): Outcome {
       reuser = drawOrbiter(company, policy, contract("leo-150"), reusePick, "Reuser");
       reusePick = null;
     }
-    // Moving up: era work nothing in the fleet can carry gets a rocket of its own, if the company can afford one.
+    // Moving up: era work nothing in the fleet can carry gets a rocket of its own, if the company can afford
+    // one. Drawing and testing it are booked on the tracks, as a player would, while the fleet keeps flying.
     if (testing && moveUp && !company.dead) {
-      const job = posted(company).find(
-        (c) => (c.kind === "bus" || c.kind === "platform") && !triedMove.has(c.id) && !considered.has(c.id) && company.day + 150 < c.deadline && reputation(company) >= c.minReputation && missionPlan(c.mission).burns.length === 0,
-      );
+      if (drawing) {
+        const name = drawing;
+        const key = Object.keys(company.designs).find((k) => company.designs[k]!.name === name);
+        if (key) {
+          bookTests(company, key, policy);
+          movers.push(key);
+          drawing = null;
+        } else if (!company.tasks.some((t) => t.spec.kind === "design" && t.spec.vehicle.name === name)) drawing = null;
+      }
+      const job = drawing
+        ? undefined
+        : posted(company).find(
+            (c) => (c.kind === "bus" || c.kind === "platform") && !triedMove.has(c.id) && !considered.has(c.id) && company.day + 150 < c.deadline && reputation(company) >= c.minReputation && missionPlan(c.mission).burns.length === 0,
+          );
       if (job) {
         triedMove.add(job.id);
-        const carries = fleet().some((k) => company.designs[k]!.payloadMass >= job.payloadMass && (guard(company, () => retune(company, k, job.id)), forecastDelivers(company, k, job)));
+        // The forecast decides, after a re-tune: a design's drawn payload is no limit (Meridian lifts more than its 200 kg).
+        const carries = fleet().some((k) => (guard(company, () => retune(company, k, job.id)), forecastDelivers(company, k, job)));
         if (!carries) {
-          const picks = suggestBuilds({ mission: job.mission, payloadMass: job.payloadMass }, company.campaign.engines, Object.values(company.designs), `Mover ${movers.length + 1}`);
+          const name = `Mover ${movers.length + 1}`;
+          const picks = suggestBuilds({ mission: job.mission, payloadMass: job.payloadMass }, company.campaign.engines, Object.values(company.designs), name);
           const pick = picks.find((x) => x.label === "Balanced") ?? picks[0];
           if (pick && company.cash >= pick.build.cost + MOVE_CUSHION) {
             if (trace) console.log(`    move up: day ${company.day}, ${job.payloadMass} kg ${job.mission.name}, drawing a $${(pick.build.cost / 1000).toFixed(2)}M rocket`);
-            const drawn = drawOrbiter(company, policy, job, pick, `Mover ${movers.length + 1}`);
-            if (drawn) movers.push(drawn);
-            moveUps.push({ day: company.day, payload: job.payloadMass, drawn: drawn !== null });
+            const booked = guard(company, () => book(company, designSpec(company, { ...pick.spec, name })));
+            if (booked) drawing = name;
+            moveUps.push({ day: company.day, payload: job.payloadMass, drawn: booked });
           } else moveUps.push({ day: company.day, payload: job.payloadMass, drawn: false, why: pick ? "cash" : "no engine big enough" });
         }
       }

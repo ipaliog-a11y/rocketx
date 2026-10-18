@@ -544,8 +544,8 @@ export function startingCash(seed: number): number {
  * own random stream, so the rest of the board is the same with or without
  * eras. Every orbit is a direct ascent from Port Avery (no parking orbit).
  * Pay is about 1.6 times what the sizing guide's rocket for the job costs.
- * Era 2's buses (300-450 kg at 28.5°) fit a bigger rocket drawn with the
- * starting Harrier engines, about $8-9M. Its SSO imagers, and everything in
+ * Era 2's buses (375-450 kg at 28.5°, just past what Meridian lifts) fit a
+ * bigger rocket drawn with the starting Harrier engines, about $8-9M. Its SSO imagers, and everything in
  * era 3, need a developed 100 or 250 kN engine: roughly $1.5M + $16.5k a
  * kilogram to low orbit and 1.6 times that to a sun-synchronous one.
  */
@@ -575,7 +575,7 @@ export function eraWork(seed: number, era: number): Contract[] {
   const premium = (km: number, inc: number) => (km - 300) * 6 + (Math.min(inc, 60) - 28.5) * 25;
   const spec =
     era === 2
-      ? { bus: [300, 450], sso: [300, 500], busRate: [9_500, 11], ssoRate: [5_000, 40], rep: 4, every: [45, 80], start: [5, 15] }
+      ? { bus: [375, 450], sso: [300, 500], busRate: [9_500, 11], ssoRate: [5_000, 40], rep: 4, every: [45, 80], start: [5, 15] }
       : { bus: [1_000, 2_500], sso: [800, 1_500], busRate: [4_000, 26], ssoRate: [8_000, 45], rep: 8, every: [60, 100], start: [10, 25] };
   const BUS = ["Kestrel Comms", "Ostrava Imaging", "Pallas Earthwatch", "Halcyon Telecom", "Verdant Analytics"];
   const PLATFORM = ["Pallas Earthwatch", "Meteorological Office", "Polar Weather Consortium", "Nordlys Imaging"];
