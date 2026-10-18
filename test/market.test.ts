@@ -46,7 +46,7 @@ test("an era thins unposted light one-off work and adds its own, from the day it
   const work = c.board.filter((x) => x.kind === "bus" || x.kind === "platform");
   assert.ok(work.length > 5);
   assert.ok(work.every((x) => x.postedDay > 100 && x.minReputation === 4));
-  assert.ok(work.every((x) => x.payloadMass >= 300 && x.payloadMass <= 600));
+  assert.ok(work.every((x) => x.payloadMass >= 300 && x.payloadMass <= 500));
   assert.deepEqual(c.board.map((x) => x.postedDay), [...c.board.map((x) => x.postedDay)].sort((a, b) => a - b));
 });
 

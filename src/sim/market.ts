@@ -11,7 +11,7 @@ import { hashSeed, rng } from "./random.ts";
  */
 export const ERAS = [
   { era: 1, reputation: -Infinity, keep: 1, label: "Smallsats", wants: "smallsats and rideshares up to about 250 kg", text: "Smallsats and rideshares up to about 250 kg." },
-  { era: 2, reputation: 4, keep: 0.5, label: "Satellite buses", wants: "300–600 kg buses and SSO imagers", text: "Customers now want 300–600 kg buses and SSO imagers. Light one-off work thins to about half." },
+  { era: 2, reputation: 4, keep: 0.5, label: "Satellite buses", wants: "300–450 kg buses and SSO imagers", text: "Customers now want 300–450 kg buses and SSO imagers. Light one-off work thins to about half." },
   { era: 3, reputation: 8, keep: 0.25, label: "Heavy platforms", wants: "1–2.5 t buses and SSO platforms", text: "Customers now want 1–2.5 t buses and SSO platforms. Light one-off work thins to about a quarter." },
 ] as const;
 

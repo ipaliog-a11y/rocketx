@@ -543,9 +543,11 @@ export function startingCash(seed: number): number {
  * can lift, for a company whose reputation has drawn bigger customers. Its
  * own random stream, so the rest of the board is the same with or without
  * eras. Every orbit is a direct ascent from Port Avery (no parking orbit).
- * Pay is about 1.6 times what the sizing guide's rocket for the job costs,
- * with developed 100 and 250 kN engines: roughly $1.5M + $16.5k a kilogram
- * to low orbit and 1.6 times that to a sun-synchronous one.
+ * Pay is about 1.6 times what the sizing guide's rocket for the job costs.
+ * Era 2's buses (300-450 kg at 28.5°) fit a bigger rocket drawn with the
+ * starting Harrier engines, about $8-9M. Its SSO imagers, and everything in
+ * era 3, need a developed 100 or 250 kN engine: roughly $1.5M + $16.5k a
+ * kilogram to low orbit and 1.6 times that to a sun-synchronous one.
  */
 export function eraWork(seed: number, era: number): Contract[] {
   const random = rng(hashSeed(`${seed}:era${era}`));
@@ -555,18 +557,25 @@ export function eraWork(seed: number, era: number): Contract[] {
   const step = (x: number, by: number) => Math.round(x / by) * by;
   const out: Contract[] = [];
   let n = 0;
-  const LEO = [
-    { km: 300, inc: 28.5 },
-    { km: 400, inc: 28.5 },
-    { km: 350, inc: 40 },
-    { km: 450, inc: 40 },
-    { km: 400, inc: 51.6 },
-  ];
+  const LEO =
+    era === 2
+      ? [
+          { km: 300, inc: 28.5 },
+          { km: 350, inc: 28.5 },
+          { km: 400, inc: 28.5 },
+        ]
+      : [
+          { km: 300, inc: 28.5 },
+          { km: 400, inc: 28.5 },
+          { km: 350, inc: 40 },
+          { km: 450, inc: 40 },
+          { km: 400, inc: 51.6 },
+        ];
   const SSO = { km: 500, inc: 97.4 };
   const premium = (km: number, inc: number) => (km - 300) * 6 + (Math.min(inc, 60) - 28.5) * 25;
   const spec =
     era === 2
-      ? { bus: [300, 600], sso: [300, 500], busRate: [3_000, 26], ssoRate: [5_000, 40], rep: 4, every: [45, 80], start: [5, 15] }
+      ? { bus: [300, 450], sso: [300, 500], busRate: [9_500, 11], ssoRate: [5_000, 40], rep: 4, every: [45, 80], start: [5, 15] }
       : { bus: [1_000, 2_500], sso: [800, 1_500], busRate: [4_000, 26], ssoRate: [8_000, 45], rep: 8, every: [60, 100], start: [10, 25] };
   const BUS = ["Kestrel Comms", "Ostrava Imaging", "Pallas Earthwatch", "Halcyon Telecom", "Verdant Analytics"];
   const PLATFORM = ["Pallas Earthwatch", "Meteorological Office", "Polar Weather Consortium", "Nordlys Imaging"];
