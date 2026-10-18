@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { achievements, type Achievement } from "../../sim/achievements.ts";
 import { reputation, type Category, type Company as CompanyState } from "../../sim/company.ts";
+import { ERAS, marketOf } from "../../sim/market.ts";
 import { LICENCE_LABELS, LICENCE_ORDER, licenceRank, nextLicence } from "../../sim/licence.ts";
 import { Chip, Stack, Tabs } from "../components/Bits.tsx";
 import { game } from "../game.ts";
@@ -150,7 +151,7 @@ function Overview({ company, list }: { company: CompanyState; list: Achievement[
       <dl className="ro-row">
         <Ro label="Cash" value={(company.cash / 1000).toFixed(2)} unit="$M" tone={company.cash < 2_000 ? "bad" : undefined} bar={peak > 0 ? company.cash / peak : undefined} sub={`peak ${money(peak)}`} />
         <Ro label="Day" value={String(company.day)} sub={shortDate(company.day).toUpperCase()} />
-        <Ro label="Reputation" value={signed(rep)} tone={rep > 0 ? "good" : rep < 0 ? "bad" : undefined} bar={(rep + 5) / 15} sub="−5 … +10" />
+        <Ro label="Reputation" value={signed(rep)} tone={rep > 0 ? "good" : rep < 0 ? "bad" : undefined} bar={(rep + 5) / 15} sub={marketSub(company)} />
         <Ro label="License" value={LICENCE_LABELS[company.licence]} word sub={nextTier ? `${LICENCE_LABELS[nextTier].toLowerCase()} next` : "every tier held"} />
         <Ro label="Built" value={String(built)} sub="rockets" />
         <Ro label="Hangar" value={String(owned)} sub="on the ground" />
@@ -208,6 +209,13 @@ function Overview({ company, list }: { company: CompanyState; list: Achievement[
 }
 
 /** One readout in the row: label, value and unit, a hairline scale where there is one, and a note. */
+/** The market era under the reputation figure: what reputation has opened, and what opens next. */
+function marketSub(company: CompanyState): string {
+  const era = marketOf(company).era;
+  const next = ERAS[era];
+  return `market era ${era}${next ? ` · next at ${next.reputation}` : ""}`;
+}
+
 function Ro({ label, value, unit, sub, tone, word, bar }: { label: string; value: string; unit?: string; sub?: string; tone?: "good" | "bad"; word?: boolean; bar?: number }) {
   return (
     <div className="ro">

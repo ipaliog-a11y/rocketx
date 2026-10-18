@@ -17,6 +17,7 @@ import { retuneFromTests } from "./tuning.ts";
 import { believedAero, type AeroFacility } from "./tunnel.ts";
 import { believedGnc, flownGnc, rollGncTruth } from "./control.ts";
 import { rollStructureTruths } from "./structures.ts";
+import { advanceMarket, type MarketState } from "./market.ts";
 import { flightWindSeed, rollWind } from "./wind.ts";
 import { FLIGHT_PROVEN_TRUST, flightWear, nextSerial, restackCost, rollBoosterTruth, wearFailure, type BoosterUnit } from "./fleet.ts";
 import { ENTRY_HEATING, RECOVERY_CAUSE_LABELS } from "./recovery.ts";
@@ -109,6 +110,8 @@ export type Company = {
   boosters?: BoosterUnit[];
   /** Built vehicles stacked on a flown booster, by design key: the serials, first to fly first. */
   stacked?: Record<string, string[]>;
+  /** The market era the company's reputation has opened, and the day each opened. */
+  market?: MarketState;
 };
 
 export function newCompany(
@@ -153,6 +156,7 @@ export function newCompany(
     done: [],
     nextTask: 1,
     units: newUnits(),
+    market: { era: 1, since: { 1: 0 } },
   };
 }
 
@@ -233,6 +237,7 @@ function tick(company: Company, deferSolvency = false): string[] {
     notices.push(`Day ${contract.deadline}: ${contract.customer} gave up waiting on "${contract.title}". Penalty $${contract.penalty}k.`);
     notices.push(...seriesAfter(company, contract, false));
   }
+  notices.push(...advanceMarket(company, reputation(company)));
   if (company.dead || deferSolvency) return notices;
   if (company.cash < 0) {
     company.dead = true;

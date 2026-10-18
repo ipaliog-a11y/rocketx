@@ -129,6 +129,7 @@ export function upgradeCompany(company: Company): void {
   company.units.hangar ??= [0];
   company.boosters ??= [];
   company.stacked ??= {};
+  company.market ??= { era: 1, since: { 1: 0 } };
   // Test-flight failures used to cost reputation. They no longer do.
   for (const r of company.record) {
     if (r.note.endsWith(" test flight") && r.tag !== "demonstrated") {

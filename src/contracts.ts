@@ -537,3 +537,74 @@ export function startingCash(seed: number): number {
   const random = rng(hashSeed(`${seed}:cash`));
   return Math.round(11_000 + 5_000 * random());
 }
+
+/**
+ * Work a market era brings: heavier satellites than the starting Meridian
+ * can lift, for a company whose reputation has drawn bigger customers. Its
+ * own random stream, so the rest of the board is the same with or without
+ * eras. Every orbit is a direct ascent from Port Avery (no parking orbit).
+ * Pay is about 1.6 times what the sizing guide's rocket for the job costs.
+ * Era 2's buses (375-450 kg at 28.5°, just past what Meridian lifts) fit a
+ * bigger rocket drawn with the starting Harrier engines, about $8-9M. Its SSO imagers, and everything in
+ * era 3, need a developed 100 or 250 kN engine: roughly $1.5M + $16.5k a
+ * kilogram to low orbit and 1.6 times that to a sun-synchronous one.
+ */
+export function eraWork(seed: number, era: number): Contract[] {
+  const random = rng(hashSeed(`${seed}:era${era}`));
+  const between = (lo: number, hi: number) => lo + (hi - lo) * random();
+  const int = (lo: number, hi: number) => Math.round(between(lo, hi));
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(random() * xs.length)]!;
+  const step = (x: number, by: number) => Math.round(x / by) * by;
+  const out: Contract[] = [];
+  let n = 0;
+  const LEO =
+    era === 2
+      ? [
+          { km: 300, inc: 28.5 },
+          { km: 350, inc: 28.5 },
+          { km: 400, inc: 28.5 },
+        ]
+      : [
+          { km: 300, inc: 28.5 },
+          { km: 400, inc: 28.5 },
+          { km: 350, inc: 40 },
+          { km: 450, inc: 40 },
+          { km: 400, inc: 51.6 },
+        ];
+  const SSO = { km: 500, inc: 97.4 };
+  const premium = (km: number, inc: number) => (km - 300) * 6 + (Math.min(inc, 60) - 28.5) * 25;
+  const spec =
+    era === 2
+      ? { bus: [375, 450], sso: [300, 500], busRate: [9_500, 11], ssoRate: [5_000, 40], rep: 4, every: [45, 80], start: [5, 15] }
+      : { bus: [1_000, 2_500], sso: [800, 1_500], busRate: [4_000, 26], ssoRate: [8_000, 45], rep: 8, every: [60, 100], start: [10, 25] };
+  const BUS = ["Kestrel Comms", "Ostrava Imaging", "Pallas Earthwatch", "Halcyon Telecom", "Verdant Analytics"];
+  const PLATFORM = ["Pallas Earthwatch", "Meteorological Office", "Polar Weather Consortium", "Nordlys Imaging"];
+  const BUS_WHAT = era === 2 ? ["comms bus", "imaging bus", "radar bus"] : ["broadband satellite", "large imaging bus", "relay satellite"];
+  const SSO_WHAT = era === 2 ? ["SSO imager", "hyperspectral imager"] : ["Earth-observation platform", "radar platform"];
+  // Posted from the start of the era: eraWork days count from the day it opens.
+  for (let day = int(spec.start[0]!, spec.start[1]!); day < 1_000; day += int(spec.every[0]!, spec.every[1]!)) {
+    const sso = random() < 0.35;
+    const orbit = sso ? SSO : pick(LEO);
+    const [lo, hi] = sso ? spec.sso : spec.bus;
+    const payload = step(between(lo!, hi!), era === 2 ? 25 : 50);
+    const [base, perKg] = sso ? spec.ssoRate : spec.busRate;
+    const payout = step(base! + perKg! * payload + premium(orbit.km, orbit.inc), 100);
+    const kind = sso ? "platform" : "bus";
+    out.push({
+      id: `${kind}-e${era}-${++n}`,
+      kind,
+      customer: pick(sso ? PLATFORM : BUS),
+      title: `${payload.toLocaleString("en-US")} kg ${pick(sso ? SSO_WHAT : BUS_WHAT)} to ${orbit.km} km, ${orbit.inc}°`,
+      mission: circular(orbit.km, orbit.inc),
+      payloadMass: payload,
+      payout,
+      degradedShare: sso ? 0.25 : 0.4,
+      penalty: step(payout * between(0.2, 0.3), 100),
+      deadline: day + int(300, 380),
+      minReputation: spec.rep,
+      postedDay: day,
+      refuses: random() < 0.4 ? FAILURE_TAGS : [],
+    });
+  }
+  return out;
+}
