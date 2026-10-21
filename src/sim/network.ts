@@ -20,19 +20,19 @@ export const NETWORK = {
   km: 400,
   inclination: 51.6,
   /** One satellite, kg, and the dispenser that carries a batch, kg. */
-  satMass: 40,
-  dispenser: 15,
+  satMass: 20,
+  dispenser: 10,
   /** The engineering office's charter: the satellite bus and the ground segment. $k and days. */
   charter: { cost: 6_000, days: 120 },
   /** A satellite from the supplier, $k, and how long it takes to arrive. */
-  satCost: 350,
+  satCost: 250,
   satDays: 60,
   /** Working satellites for coverage to start, and for full coverage. */
   minimum: 12,
   planned: 24,
   /** Service income at full coverage, $k a month, and ground operations from the charter on. */
   fullRevenue: 3_000,
-  operations: 100,
+  operations: 50,
   /** Billing period, days. */
   month: 30,
   /** A satellite's design life, days, give or take this share, and the chance it fails in its first months. */
@@ -43,6 +43,10 @@ export const NETWORK = {
 
 export type Satellite = {
   id: number;
+  /** Its slot in the planned pattern, 0 to planned − 1. */
+  slot?: number;
+  /** Reached its slot from an in-spec orbit; out of spec it spent half its fuel getting there. */
+  inSpec?: boolean;
   launched: number;
   /** The day it stops working. Hidden from the player until it does. */
   end: number;
@@ -100,10 +104,14 @@ export function rollLife(seed: number, id: number): number {
 export function deploySats(company: Company, count: number, inSpec: boolean): Satellite[] {
   const network = company.network!;
   const added: Satellite[] = [];
+  // New satellites take the empty slots first, lowest first; past the plan they double up as spares.
+  const taken = new Set(network.sats.filter((s) => s.end > company.day && s.slot !== undefined).map((s) => s.slot!));
+  const free = Array.from({ length: NETWORK.planned }, (_, i) => i).filter((i) => !taken.has(i));
   for (let i = 0; i < count; i++) {
     const id = network.nextSat++;
     const life = rollLife(company.seed, id);
-    added.push({ id, launched: company.day, end: company.day + (inSpec ? life : Math.max(1, Math.round(life / 2))) });
+    const slot = free.shift() ?? (id - 1) % NETWORK.planned;
+    added.push({ id, slot, inSpec, launched: company.day, end: company.day + (inSpec ? life : Math.max(1, Math.round(life / 2))) });
   }
   network.sats.push(...added);
   return added;

@@ -81,7 +81,7 @@ const MOVE_CUSHION = 4_000;
 /** Each time a bot met era work its fleet couldn't carry: whether it drew a rocket for it, and if not why. */
 const moveUps: Array<{ day: number; payload: number; drawn: boolean; why?: string }> = [];
 /** Extra cash a bot keeps beyond a network charter or satellite order, $k. */
-const NETWORK_CUSHION = 15_000;
+const NETWORK_CUSHION = 20_000;
 /** What the networks did, over every run of a policy. */
 const networkRuns = { batches: 0, deployed: 0, lost: 0, runs: [] as Array<{ chartered: number; service?: number; working: number; income: number; spent: number }> };
 
@@ -421,7 +421,7 @@ function play(seed: number, policy: Policy): Outcome {
       const net = company.network;
       if (net) {
         const supply = working(net, company.day) + net.stored + net.orders.reduce((n, o) => n + o.count, 0);
-        const want = Math.min(8, NETWORK.planned - supply);
+        const want = Math.min(12, NETWORK.planned - supply);
         if (want > 0 && company.cash >= want * NETWORK.satCost + NETWORK_CUSHION) guard(company, () => orderSatellites(company, want));
         // The rocket that puts up the most satellites for its build cost.
         const best = fleet()
@@ -431,15 +431,18 @@ function play(seed: number, policy: Policy): Outcome {
         const short = NETWORK.planned - working(net, company.day);
         if (best && net.stored > 0 && net.stored >= Math.min(best.n, short)) {
           const n = Math.min(best.n, net.stored);
-          guard(company, () => runTask(company, retuneSpec(company, best.k, { deploy: n })));
-          if (order(company, best.k)) {
-            const before = net.sats.length;
-            flyAndCount(company, best.k, { deploy: n });
-            networkRuns.batches += 1;
-            networkRuns.deployed += net.sats.length - before;
-            networkRuns.lost += n - (net.sats.length - before);
+          // Only when the rocket can be paid for with the cushion intact; a launch that happens loops back, one that can't falls through to customer work.
+          if (company.cash >= vehicleCost(company.designs[best.k]!).cost + NETWORK_CUSHION) {
+            guard(company, () => runTask(company, retuneSpec(company, best.k, { deploy: n })));
+            if (order(company, best.k)) {
+              const before = net.sats.length;
+              const flown = flyAndCount(company, best.k, { deploy: n });
+              networkRuns.batches += 1;
+              networkRuns.deployed += net.sats.length - before;
+              networkRuns.lost += n - (net.sats.length - before);
+              if (flown) continue;
+            }
           }
-          continue;
         }
       }
     }
