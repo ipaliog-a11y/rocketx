@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
-import { newCompany, rename, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { newCompany, rename, retire, runOver, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
+import { recordRun, type Archive } from "../sim/archive.ts";
+import { loadArchive, saveArchive } from "./archive.ts";
 import { forgetStandSeparation } from "../sim/teststand.ts";
 import { book, completionNotice, project, quoteTask, TRACKS, upgradeCompany, type TaskDone, type Track } from "../sim/schedule.ts";
 import type { TestReport } from "../sim/teststand.ts";
@@ -46,6 +48,8 @@ type State = {
   milestones: Milestone[];
   /** A launch is playing: big news waits for its debrief. */
   cinema: boolean;
+  /** Every run that has ended, and what they taught. Outlives the company. */
+  archive: Archive;
   version: number;
 };
 
@@ -56,7 +60,7 @@ const OLD_SAVE_KEYS = ["rocketx.save.v1", "rocketx.save.v2", "rocketx.save.v3", 
 /** Set when an old save was found and dropped, so the new-game screen can say so. Declared before the first load. */
 export let droppedOldSave = false;
 
-let state: State = { company: load(), flight: null, notices: [], pending: null, progress: null, moment: null, milestones: [], cinema: false, version: 0 };
+let state: State = { company: load(), flight: null, notices: [], pending: null, progress: null, moment: null, milestones: [], cinema: false, archive: loadArchive(), version: 0 };
 const listeners = new Set<() => void>();
 let nextNotice = 1;
 let nextFlight = 1;
@@ -85,7 +89,17 @@ function load(): Company | null {
   }
 }
 
+/** A run that has ended goes into the archive, once. */
+function archiveIfOver(): void {
+  const company = state.company;
+  if (!company || company.archived || !runOver(company)) return;
+  state.archive = recordRun(state.archive, company);
+  company.archived = true;
+  saveArchive(state.archive);
+}
+
 function save(): void {
+  archiveIfOver();
   try {
     if (state.company) localStorage.setItem(SAVE_KEY, JSON.stringify(state.company));
     else localStorage.removeItem(SAVE_KEY);
@@ -181,7 +195,16 @@ export const game = {
     return game.act((c) => (rename(c, name), { text: "", notices: [] })) !== null;
   },
 
+  /** Retire the company: the run ends today and goes to the archive. */
+  retire(): void {
+    game.act((c) => retire(c));
+  },
+
+  /** Leave the run. One that got going is retired into the archive first; a fresh one is just dropped. */
   quit(): void {
+    const company = state.company;
+    if (company && !runOver(company) && company.day > 0) retire(company);
+    archiveIfOver();
     state.company = null;
     state.flight = null;
     save();
@@ -327,7 +350,7 @@ export const game = {
         if (engine && history && history.length > fired) state.moment = { id: nextProgress++, engine, report: history.at(-1)! };
         else if (engine) release();
         state.progress = null;
-        if (state.company && !state.company.dead) clockNotice(state.company, "after");
+        if (state.company && !runOver(state.company)) clockNotice(state.company, "after");
         emit();
       }, 40);
     }, ms);

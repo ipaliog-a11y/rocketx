@@ -1,6 +1,6 @@
 import { money } from "./format.ts";
 import { charterProblem, NETWORK, working } from "../sim/network.ts";
-import { bid, readyDay, reputation, type Bid, type Company } from "../sim/company.ts";
+import { bid, readyDay, reputation, REVIEW_DAY, type Bid, type Company } from "../sim/company.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { FAILURE_LABELS } from "../sim/hardware.ts";
 import { LICENCE_LABELS, nextLicence } from "../sim/licence.ts";
@@ -114,6 +114,11 @@ export function nextUp(company: Company, statuses = flightStatuses(company), lim
     add({ key: "network", tone: "good", title: `${net.stored} satellite${net.stored === 1 ? "" : "s"} waiting`, text: `Delivered and waiting for a launch. ${working(net, company.day)} working.`, action: { label: "Launch", route } });
   } else if (net && working(net, company.day) + net.orders.reduce((n, o) => n + o.count, 0) < NETWORK.minimum) {
     add({ key: "network", tone: "data", title: `Network: ${working(net, company.day)} of ${NETWORK.minimum} for service`, text: "No income until enough satellites are working. Order more.", action: { label: "Order", route } });
+  }
+
+  // The board's review ends the run: worth knowing a season ahead.
+  if (company.day >= REVIEW_DAY - 90) {
+    add({ key: "review", tone: "caution", title: `Board review on day ${REVIEW_DAY}`, text: `${REVIEW_DAY - company.day} days left: the run is scored then. Anything in flight after it won't count.`, action: { label: "Company", route: { place: "home", tab: "company" } } });
   }
 
   if (statuses.length === 0) {

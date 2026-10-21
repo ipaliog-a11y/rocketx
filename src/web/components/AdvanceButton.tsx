@@ -1,17 +1,20 @@
-import type { Company } from "../../sim/company.ts";
+import { REVIEW_DAY, type Company } from "../../sim/company.ts";
 import { game } from "../game.ts";
 import { waitJob } from "../jobs.ts";
 import { timeline } from "../screens/Work.tsx";
 import { Icon } from "./Icon.tsx";
 
-/** The next day something happens: a job finishes, a rocket rolls out, or new work is posted. */
+/** The next day something happens: a job finishes, a rocket rolls out, new work is posted, or the board's review. */
 export function nextEvent(company: Company): { day: number; why: string } | null {
   const events: Array<{ day: number; why: string }> = [];
   for (const r of timeline(company)) if (r.end !== undefined && r.end > company.day) events.push({ day: r.end, why: `${r.task.title} finishes` });
   for (const o of company.orders) if (o.readyDay > company.day) events.push({ day: o.readyDay, why: `a ${company.designs[o.design]?.name ?? o.design} rolls out` });
   for (const c of company.board) if (c.postedDay > company.day) events.push({ day: c.postedDay, why: "new work is posted" });
+  if (company.day < REVIEW_DAY) events.push({ day: REVIEW_DAY, why: "the board's review" });
   if (events.length === 0) return null;
-  return events.reduce((a, b) => (b.day < a.day ? b : a));
+  const next = events.reduce((a, b) => (b.day < a.day ? b : a));
+  // Time stops at the board's review.
+  return next.day > REVIEW_DAY ? { day: REVIEW_DAY, why: "the board's review" } : next;
 }
 
 /** Move the calendar to the next thing that happens, from any screen. */

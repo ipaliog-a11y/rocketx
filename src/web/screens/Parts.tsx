@@ -5,7 +5,8 @@ import { FAILURE_LABELS } from "../../sim/hardware.ts";
 import { optionSpec, parsePartKey, partLabel, SLOTS, type Slot } from "../../sim/parts.ts";
 import { enginesUsing, revisionLetter, type PartKnowledge } from "../../sim/teststand.ts";
 import { Chip } from "../components/Bits.tsx";
-import { game } from "../game.ts";
+import { game, useGame } from "../game.ts";
+import { lessonFor } from "../../sim/archive.ts";
 import { refineJob } from "../jobs.ts";
 import { money, pct } from "../format.ts";
 import { flownUpper, ispRange, partNeed, planPartTest, plannedBurn, refineWorth } from "../partTest.ts";
@@ -185,6 +186,7 @@ function nextStep(company: Company, key: string): string | null {
 function PartCard({ company, partKey, test }: { company: Company; partKey: string; test: (focus: Focus) => void }) {
   const [open, setOpen] = useState(false);
   const { slot, option } = parsePartKey(partKey);
+  const lesson = lessonFor(useGame().archive, slot, option);
   const part = company.campaign.parts[partKey];
   const m = maturity(company, partKey, part);
   const users = enginesUsing(company.campaign, partKey);
@@ -230,6 +232,12 @@ function PartCard({ company, partKey, test }: { company: Company; partKey: strin
                 </li>
               ))}
             </ul>
+          )}
+          {lesson && (
+            <span className="soft" style={{ fontSize: 13 }}>
+              <span className="mono muted">ARCHIVE · </span>
+              {lesson}
+            </span>
           )}
           <TestAction company={company} partKey={partKey} test={test} />
           {refinable && <RefinePanel company={company} partKey={partKey} />}
