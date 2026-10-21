@@ -1,3 +1,4 @@
+import { NETWORK } from "../sim/network.ts";
 import { boosterCost, REFURB, restackCost, type RefurbDepth } from "../sim/fleet.ts";
 import { boosterOf, build, buyLine, LINE_COSTS, licenceSpec, nextSlot, readyDay, REFINE, retuneSpec, fly, retireBooster, wait, type ActionResult, type Company, type FlightReport } from "../sim/company.ts";
 import type { EngineDesign } from "../sim/enginePhysics.ts";
@@ -478,6 +479,53 @@ export function abortTestJob(company: Company, key: string, mission: Mission, on
     alwaysAsk: true,
     caveat: "The abort fires at max-q and the booster is lost on purpose. Telemetry still learns what its engines did on the way up.",
     run: (c) => fly(c, key, { mission, abortTest: true }),
+    onDone,
+  };
+}
+
+/** Charter the company's own network in the engineering office. */
+export function charterJob(): Job {
+  return trackJob(
+    {
+      title: "Charter the company's network?",
+      doing: "Designing the satellite bus and the ground segment",
+      verb: "Charter",
+      days: NETWORK.charter.days,
+      cost: NETWORK.charter.cost,
+      alwaysAsk: true,
+      caveat: `From the day it is chartered, ground operations cost ${money(NETWORK.operations)} a month. Service only starts with ${NETWORK.minimum} satellites working.`,
+    },
+    () => ({ kind: "charter" }),
+  );
+}
+
+/** Re-tune a design's steering for a batch of network satellites. */
+export function retuneDeployJob(company: Company, key: string, count: number): Job {
+  const v = company.designs[key]!;
+  return trackJob(
+    {
+      title: `Re-tune the ${v.name} for ${count} satellites?`,
+      doing: `Re-tuning the ${v.name}'s pitch programme`,
+      verb: "Re-tune",
+      days: RETUNE_COST.days,
+      cost: RETUNE_COST.cost,
+    },
+    (c) => retuneSpec(c, key, { deploy: count }),
+    () => ({ kind: "retune", design: key, pitchProgram: v.pitchProgram, text: "" }),
+  );
+}
+
+/** Launch a batch of the company's own satellites to the network's orbit. */
+export function deployJob(company: Company, key: string, count: number, onDone: (r: FlightReport) => void): Job<FlightReport> {
+  const v = company.designs[key]!;
+  return {
+    title: `Launch ${count} network satellite${count === 1 ? "" : "s"} on the ${v.name}?`,
+    doing: waitForRollout(company, key) > 0 ? `Waiting for the ${v.name} to roll out, then the pad` : `${v.name} on the pad`,
+    verb: "Launch",
+    days: waitForRollout(company, key) + COSTS.padDays,
+    cost: COSTS.launchFee,
+    exposure: [{ cost: count * NETWORK.satCost, text: `If the flight fails, the ${count} satellites (${money(count * NETWORK.satCost)}) go down with it.` }],
+    run: (c) => fly(c, key, { deploy: count }),
     onDone,
   };
 }

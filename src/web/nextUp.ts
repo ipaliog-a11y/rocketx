@@ -1,3 +1,5 @@
+import { money } from "./format.ts";
+import { charterProblem, NETWORK, working } from "../sim/network.ts";
 import { bid, readyDay, reputation, type Bid, type Company } from "../sim/company.ts";
 import type { Contract } from "../sim/contracts.ts";
 import { FAILURE_LABELS } from "../sim/hardware.ts";
@@ -101,6 +103,17 @@ export function nextUp(company: Company, statuses = flightStatuses(company), lim
     const met = app.requirements.filter((r) => r.met).length;
     const missing = app.requirements.find((r) => !r.met)!;
     add({ key: "licence", tone: "data", title: `${LICENCE_LABELS[app.tier]} license: ${met} of ${app.requirements.length}`, text: `Next: ${missing.text.charAt(0).toLowerCase()}${missing.text.slice(1)}${missing.progress ? ` (${missing.progress[0]}/${missing.progress[1]})` : ""}.`, action: { label: "License", route: { place: "home", tab: "company" } } });
+  }
+
+  // The company's own network: open once the market moves on, then satellites to buy and to fly.
+  const net = company.network;
+  const route = { place: "launch", tab: "network" } as const;
+  if (!net && charterProblem(company) === null && !company.tasks.some((t) => t.spec.kind === "charter")) {
+    add({ key: "network", tone: "data", title: "A network of your own", text: `Customers will pay for coverage. Charter it for ${money(NETWORK.charter.cost)}: service starts with ${NETWORK.minimum} satellites.`, action: { label: "Network", route } });
+  } else if (net && net.stored > 0) {
+    add({ key: "network", tone: "good", title: `${net.stored} satellite${net.stored === 1 ? "" : "s"} waiting`, text: `Delivered and waiting for a launch. ${working(net, company.day)} working.`, action: { label: "Launch", route } });
+  } else if (net && working(net, company.day) + net.orders.reduce((n, o) => n + o.count, 0) < NETWORK.minimum) {
+    add({ key: "network", tone: "data", title: `Network: ${working(net, company.day)} of ${NETWORK.minimum} for service`, text: "No income until enough satellites are working. Order more.", action: { label: "Order", route } });
   }
 
   if (statuses.length === 0) {

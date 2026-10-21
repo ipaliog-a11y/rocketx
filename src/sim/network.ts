@@ -4,6 +4,8 @@ import { holds } from "./licence.ts";
 import { marketOf } from "./market.ts";
 import type { Mission } from "./mission.ts";
 import { hashSeed, rng } from "./random.ts";
+import { orbitDeltaV } from "./guide.ts";
+import { idealDeltaV, type Vehicle } from "./vehicle.ts";
 
 /**
  * The company's own constellation. Chartered once the market has moved to
@@ -150,4 +152,23 @@ export function orderSatellites(company: Company, count: number): string {
   company.ledger.push({ day: company.day, category: "satellites", amount: -cost, note: `${count} network satellite${count === 1 ? "" : "s"}` });
   network.orders.push({ count, readyDay: company.day + NETWORK.satDays });
   return `Ordered ${count} satellite${count === 1 ? "" : "s"}: delivered on day ${company.day + NETWORK.satDays}.`;
+}
+
+/** Typical engines deliver this share of their drawings' Isp, and the sizing guide's Δv margin for a direct ascent. */
+const TYPICAL_ISP = 0.975;
+const MARGIN = 0.04;
+
+/**
+ * How many satellites a design carries to the network's orbit on paper: the
+ * sizing guide's estimate, typical engines and its usual margin. Quick
+ * enough for a screen; a re-tune and the forecast settle the real flight.
+ */
+export function paperCapacity(vehicle: Vehicle): number {
+  if (vehicle.pitchProgram?.kind !== "gravity-turn") return 0;
+  const need = orbitDeltaV(networkMission()) * (1 + MARGIN);
+  const dv = (payload: number) => idealDeltaV({ ...vehicle, payloadMass: payload }).reduce((a, b) => a + b, 0) * TYPICAL_ISP;
+  if (dv(batchMass(1)) < need) return 0;
+  let n = 1;
+  while (n < 60 && dv(batchMass(n + 1)) >= need) n++;
+  return n;
 }

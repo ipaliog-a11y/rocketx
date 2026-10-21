@@ -14,16 +14,19 @@ import { Sheet } from "../components/Sheet.tsx";
 import { useGo, type Route } from "../nav.ts";
 import { Factory } from "./Factory.tsx";
 import { Crew } from "./Crew.tsx";
+import { Network } from "./Network.tsx";
+import { working } from "../../sim/network.ts";
 import { glyphKind, Icon, MissionGlyph } from "../components/Icon.tsx";
 import { Info } from "../components/Info.tsx";
 
 type Props = { company: Company; version: number; route: Route };
-type Tab = "flights" | "factory" | "crew";
+type Tab = "flights" | "factory" | "network" | "crew";
 
 /** What each tab is for, behind the ⓘ beside the title. */
 const LAUNCH_INTROS: Record<Tab, string> = {
   flights: "Your signed contracts: build the vehicle, re-tune it for the payload, and fly before the deadline. Missing a deadline costs the penalty and reputation.",
   factory: "Vehicles are built on production lines while the company gets on with everything else. Orders go to the line that frees up first and roll out on their ready day. More lines build more vehicles at once, and each repeat of a design builds faster.",
+  network: `The company's own constellation: charter it once the market has moved on (era 2), buy satellites, launch them on your own rockets, and earn a monthly service income once enough are working.`,
   crew: `A ${CAPSULE.mass.toLocaleString("en-US")} kg capsule for ${CAPSULE.crew} crew under a ${CAPSULE.tower.mass} kg abort tower, dropped at T+${CAPSULE.tower.jettisonAt} s. If the rocket fails, the tower pulls the capsule clear and it comes down on parachutes, if the abort system works. Station cargo flies the same capsule without crew or tower.`,
 };
 
@@ -37,7 +40,7 @@ function countdown(company: Company, c: Contract): { text: string; tone: "good" 
 
 /** Launch: build it and fly it. The signed flights, the factory, and the crew side. */
 export function Launch({ company, version, route }: Props) {
-  const first = (["flights", "factory", "crew"] as const).find((t) => t === route.tab) ?? "flights";
+  const first = (["flights", "factory", "network", "crew"] as const).find((t) => t === route.tab) ?? "flights";
   const [tab, setTab] = useState<Tab>(first);
   return (
     <div className="screen">
@@ -53,12 +56,14 @@ export function Launch({ company, version, route }: Props) {
           tabs={[
             ["flights", signedContracts(company).length > 0 ? `Flights · ${signedContracts(company).length}` : "Flights"],
             ["factory", company.orders.length > 0 ? `Factory · ${company.orders.length}` : "Factory"],
+            ["network", company.network ? `Network · ${working(company.network, company.day)}` : "Network"],
             ["crew", "Crew"],
           ]}
         />
       </div>
       {tab === "flights" && <Flights company={company} version={version} route={route} />}
       {tab === "factory" && <Factory company={company} />}
+      {tab === "network" && <Network company={company} version={version} />}
       {tab === "crew" && <Crew company={company} />}
     </div>
   );

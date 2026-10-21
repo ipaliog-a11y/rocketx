@@ -957,3 +957,12 @@ table.spec.compact td { padding-top: 8px; padding-bottom: 8px; }
   .part-verbs .btn, .checklist .btn { flex: 1 1 100%; }
   .part-verbs { margin-left: 0; }
 }
+
+/* Network readouts: four across, two on a phone. */
+.ro-row.ro-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 4px 0 0; }
+.ro .val.good { color: var(--good); }
+@media (max-width: 700px) {
+  .ro-row.ro-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ro-row.ro-4 .ro:nth-child(2n) { border-right: 0; }
+  .ro-row.ro-4 .ro:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+}
