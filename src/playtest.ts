@@ -82,7 +82,7 @@ const MOVE_CUSHION = 4_000;
 const moveUps: Array<{ day: number; payload: number; drawn: boolean; why?: string }> = [];
 /** Extra cash a bot keeps beyond the network's charter, and beyond a satellite order or a launch for it, $k. */
 const CHARTER_CUSHION = 14_000;
-const NETWORK_CUSHION = 8_000;
+const NETWORK_CUSHION = 12_000;
 /** What the networks did, over every run of a policy. */
 const networkRuns = { batches: 0, deployed: 0, lost: 0, runs: [] as Array<{ chartered: number; service?: number; working: number; income: number; spent: number }> };
 
@@ -416,7 +416,8 @@ function play(seed: number, policy: Policy): Outcome {
     }
     // The company's own network: charter it when affordable, keep satellites coming, fly full batches.
     if (testing && withNetwork && !company.dead) {
-      if (!company.network && charterProblem(company) === null && !company.tasks.some((t) => t.spec.kind === "charter") && company.cash >= NETWORK.charter.cost + CHARTER_CUSHION) {
+      // Not while a heavier rocket is being drawn: the two commitments together leave too little for the flights that pay for them.
+      if (!company.network && drawing === null && charterProblem(company) === null && !company.tasks.some((t) => t.spec.kind === "charter") && company.cash >= NETWORK.charter.cost + CHARTER_CUSHION) {
         if (trace) console.log(`    network: day ${company.day}, chartering with $${(company.cash / 1000).toFixed(1)}M`);
         guard(company, () => book(company, { kind: "charter" }));
       }
@@ -427,10 +428,10 @@ function play(seed: number, policy: Policy): Outcome {
         .filter((x) => x.n > 0)
         .sort((a, b) => b.n / vehicleCost(company.designs[b.k]!).cost - a.n / vehicleCost(company.designs[a.k]!).cost)[0];
       if (net && best) {
-        // Keep two batches on hand or coming, no more: satellites on the ground are money not earning.
+        // Keep one batch on hand or coming, no more: satellites on the ground are money not earning.
         const live = working(net, company.day);
         const coming = net.stored + net.orders.reduce((n, o) => n + o.count, 0);
-        const want = Math.min(NETWORK.planned - live, 2 * best.n) - coming;
+        const want = Math.min(NETWORK.planned - live, best.n) - coming;
         if (want > 0 && company.cash >= want * NETWORK.satCost + NETWORK_CUSHION) {
           if (trace) console.log(`    network: day ${company.day}, ordering ${want} (${live} working)`);
           guard(company, () => orderSatellites(company, want));
