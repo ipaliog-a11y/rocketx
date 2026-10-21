@@ -966,3 +966,19 @@ table.spec.compact td { padding-top: 8px; padding-bottom: 8px; }
   .ro-row.ro-4 .ro:nth-child(2n) { border-right: 0; }
   .ro-row.ro-4 .ro:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
 }
+
+/* Control center: health bars in the satellite table, and the orbit view turning slowly. */
+.health-bar { display: inline-block; position: relative; width: 64px; height: 6px; background: var(--grid); vertical-align: middle; }
+.health-bar i { position: absolute; inset: 0 auto 0 0; background: var(--data); }
+.health-bar i.good { background: var(--good); }
+.health-bar i.warn { background: var(--caution); }
+.health-bar i.bad { background: var(--bad); }
+.health-num { margin-left: 8px; font-size: 12px; }
+.control-orbit-wrap { display: flex; justify-content: center; padding: 4px 0; }
+.control-orbit-spin { transform-box: view-box; transform-origin: 50% 50%; animation: orbit-spin 240s linear infinite; }
+@keyframes orbit-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .control-orbit-spin { animation: none; } }
+.service-chart svg { display: block; width: 100%; height: 140px; }
+.service-days { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); font-size: 10px; color: var(--muted); text-align: center; padding-top: 4px; }
+.service-days span { overflow: hidden; white-space: nowrap; }
+@media (max-width: 700px) { .service-days span:not(:nth-child(3n + 1)) { visibility: hidden; } .service-days span { overflow: visible; } }

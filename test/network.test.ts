@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { build, fly, newCompany, wait, type Company } from "../src/sim/company.ts";
 import { runTask } from "../src/sim/schedule.ts";
 import { advanceMarket } from "../src/sim/market.ts";
-import { charterNetwork, charterProblem, NETWORK, networkMission, orderSatellites, revenueFor, rollLife, working } from "../src/sim/network.ts";
+import { charterNetwork, charterProblem, deploySats, NETWORK, networkMission, orderSatellites, revenueFor, rollLife, working } from "../src/sim/network.ts";
 import { IDEAL_TRUTH } from "../src/sim/hardware.ts";
 import { IDEAL_AERO } from "../src/sim/airframe.ts";
 import { generateBoard, startingCash } from "../src/contracts.ts";
@@ -114,4 +114,20 @@ test("an old save has no network until it charters one", () => {
   assert.equal(c.network, undefined);
   wait(c, 60);
   assert.equal(c.ledger.some((e) => e.category === "satellites"), false);
+});
+
+test("new satellites fill the empty slots first, and out of spec they get half a life", () => {
+  const c = cleared();
+  charterNetwork(c);
+  const first = deploySats(c, 4, true);
+  assert.deepEqual(first.map((s) => s.slot), [0, 1, 2, 3]);
+  // Slot 1 goes dark; the next batch fills it before moving on.
+  first[1]!.end = c.day;
+  wait(c, 1);
+  const next = deploySats(c, 2, false);
+  assert.deepEqual(next.map((s) => s.slot), [1, 4]);
+  for (const s of next) {
+    assert.equal(s.inSpec, false);
+    assert.ok(s.end - s.launched <= Math.ceil(rollLife(c.seed, s.id) / 2));
+  }
 });
