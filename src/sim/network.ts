@@ -23,12 +23,12 @@ export const NETWORK = {
   satMass: 20,
   dispenser: 10,
   /** The engineering office's charter: the satellite bus and the ground segment. $k and days. */
-  charter: { cost: 6_000, days: 120 },
+  charter: { cost: 6_000, days: 90 },
   /** A satellite from the supplier, $k, and how long it takes to arrive. */
   satCost: 250,
   satDays: 60,
   /** Working satellites for coverage to start, and for full coverage. */
-  minimum: 12,
+  minimum: 8,
   planned: 24,
   /** Service income at full coverage, $k a month, and ground operations from the charter on. */
   fullRevenue: 3_000,

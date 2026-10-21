@@ -80,8 +80,9 @@ const RETIRE_AT = 0.85;
 const MOVE_CUSHION = 4_000;
 /** Each time a bot met era work its fleet couldn't carry: whether it drew a rocket for it, and if not why. */
 const moveUps: Array<{ day: number; payload: number; drawn: boolean; why?: string }> = [];
-/** Extra cash a bot keeps beyond a network charter or satellite order, $k. */
-const NETWORK_CUSHION = 20_000;
+/** Extra cash a bot keeps beyond the network's charter, and beyond a satellite order or a launch for it, $k. */
+const CHARTER_CUSHION = 14_000;
+const NETWORK_CUSHION = 8_000;
 /** What the networks did, over every run of a policy. */
 const networkRuns = { batches: 0, deployed: 0, lost: 0, runs: [] as Array<{ chartered: number; service?: number; working: number; income: number; spent: number }> };
 
@@ -415,25 +416,27 @@ function play(seed: number, policy: Policy): Outcome {
     }
     // The company's own network: charter it when affordable, keep satellites coming, fly full batches.
     if (testing && withNetwork && !company.dead) {
-      if (!company.network && charterProblem(company) === null && !company.tasks.some((t) => t.spec.kind === "charter") && company.cash >= NETWORK.charter.cost + NETWORK_CUSHION) {
+      if (!company.network && charterProblem(company) === null && !company.tasks.some((t) => t.spec.kind === "charter") && company.cash >= NETWORK.charter.cost + CHARTER_CUSHION) {
         if (trace) console.log(`    network: day ${company.day}, chartering with $${(company.cash / 1000).toFixed(1)}M`);
         guard(company, () => book(company, { kind: "charter" }));
       }
       const net = company.network;
-      if (net) {
-        const supply = working(net, company.day) + net.stored + net.orders.reduce((n, o) => n + o.count, 0);
-        const want = Math.min(12, NETWORK.planned - supply);
+      // The rocket that puts up the most satellites for its build cost.
+      const best = fleet()
+        .map((k) => ({ k, n: paperCapacity(company.designs[k]!) }))
+        .filter((x) => x.n > 0)
+        .sort((a, b) => b.n / vehicleCost(company.designs[b.k]!).cost - a.n / vehicleCost(company.designs[a.k]!).cost)[0];
+      if (net && best) {
+        // Keep two batches on hand or coming, no more: satellites on the ground are money not earning.
+        const live = working(net, company.day);
+        const coming = net.stored + net.orders.reduce((n, o) => n + o.count, 0);
+        const want = Math.min(NETWORK.planned - live, 2 * best.n) - coming;
         if (want > 0 && company.cash >= want * NETWORK.satCost + NETWORK_CUSHION) {
-          if (trace) console.log(`    network: day ${company.day}, ordering ${want} (${working(net, company.day)} working)`);
+          if (trace) console.log(`    network: day ${company.day}, ordering ${want} (${live} working)`);
           guard(company, () => orderSatellites(company, want));
         }
-        // The rocket that puts up the most satellites for its build cost.
-        const best = fleet()
-          .map((k) => ({ k, n: paperCapacity(company.designs[k]!) }))
-          .filter((x) => x.n > 0)
-          .sort((a, b) => b.n / vehicleCost(company.designs[b.k]!).cost - a.n / vehicleCost(company.designs[a.k]!).cost)[0];
-        const short = NETWORK.planned - working(net, company.day);
-        if (best && net.stored > 0 && net.stored >= Math.min(best.n, short)) {
+        const short = NETWORK.planned - live;
+        if (net.stored > 0 && net.stored >= Math.min(best.n, short)) {
           const n = Math.min(best.n, net.stored);
           // Only when the rocket can be paid for with the cushion intact; a launch that happens loops back, one that can't falls through to customer work.
           if (company.cash >= vehicleCost(company.designs[best.k]!).cost + NETWORK_CUSHION) {
