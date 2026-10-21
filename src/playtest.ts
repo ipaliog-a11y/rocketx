@@ -416,13 +416,17 @@ function play(seed: number, policy: Policy): Outcome {
     // The company's own network: charter it when affordable, keep satellites coming, fly full batches.
     if (testing && withNetwork && !company.dead) {
       if (!company.network && charterProblem(company) === null && !company.tasks.some((t) => t.spec.kind === "charter") && company.cash >= NETWORK.charter.cost + NETWORK_CUSHION) {
+        if (trace) console.log(`    network: day ${company.day}, chartering with $${(company.cash / 1000).toFixed(1)}M`);
         guard(company, () => book(company, { kind: "charter" }));
       }
       const net = company.network;
       if (net) {
         const supply = working(net, company.day) + net.stored + net.orders.reduce((n, o) => n + o.count, 0);
         const want = Math.min(12, NETWORK.planned - supply);
-        if (want > 0 && company.cash >= want * NETWORK.satCost + NETWORK_CUSHION) guard(company, () => orderSatellites(company, want));
+        if (want > 0 && company.cash >= want * NETWORK.satCost + NETWORK_CUSHION) {
+          if (trace) console.log(`    network: day ${company.day}, ordering ${want} (${working(net, company.day)} working)`);
+          guard(company, () => orderSatellites(company, want));
+        }
         // The rocket that puts up the most satellites for its build cost.
         const best = fleet()
           .map((k) => ({ k, n: paperCapacity(company.designs[k]!) }))
@@ -437,6 +441,7 @@ function play(seed: number, policy: Policy): Outcome {
             if (order(company, best.k)) {
               const before = net.sats.length;
               const flown = flyAndCount(company, best.k, { deploy: n });
+              if (trace) console.log(`    network: day ${company.day}, ${n} on ${best.k}, ${net.sats.length - before} up, ${working(net, company.day)} working, $${(company.cash / 1000).toFixed(1)}M`);
               networkRuns.batches += 1;
               networkRuns.deployed += net.sats.length - before;
               networkRuns.lost += n - (net.sats.length - before);
