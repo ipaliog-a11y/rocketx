@@ -18,6 +18,7 @@ import { believedAero, type AeroFacility } from "./tunnel.ts";
 import { believedGnc, flownGnc, rollGncTruth } from "./control.ts";
 import { rollStructureTruths } from "./structures.ts";
 import { advanceMarket, type MarketState } from "./market.ts";
+import { batchMass, deploySats, networkMission, networkTick, NETWORK, working, type Network } from "./network.ts";
 import { flightWindSeed, rollWind } from "./wind.ts";
 import { FLIGHT_PROVEN_TRUST, flightWear, nextSerial, restackCost, rollBoosterTruth, wearFailure, type BoosterUnit } from "./fleet.ts";
 import { ENTRY_HEATING, RECOVERY_CAUSE_LABELS } from "./recovery.ts";
@@ -34,7 +35,7 @@ import { burnTime, type Vehicle } from "./vehicle.ts";
  * company can no longer afford a vehicle that could get there.
  */
 
-export type Category = "test" | "fix" | "rnd" | "analysis" | "build" | "facility" | "launch" | "licence" | "overhead" | "payout" | "penalty";
+export type Category = "test" | "fix" | "rnd" | "analysis" | "build" | "facility" | "launch" | "licence" | "overhead" | "payout" | "penalty" | "satellites" | "network";
 
 /** A vehicle on a production line, paid for, rolling out on its ready day. */
 export type Order = { design: string; line: number; startDay: number; readyDay: number; /** A re-stack: the flown booster it's built on. */ booster?: string };
@@ -112,6 +113,8 @@ export type Company = {
   stacked?: Record<string, string[]>;
   /** The market era the company's reputation has opened, and the day each opened. */
   market?: MarketState;
+  /** The company's own constellation, once chartered. */
+  network?: Network;
 };
 
 export function newCompany(
@@ -237,6 +240,7 @@ function tick(company: Company, deferSolvency = false): string[] {
     notices.push(`Day ${contract.deadline}: ${contract.customer} gave up waiting on "${contract.title}". Penalty $${contract.penalty}k.`);
     notices.push(...seriesAfter(company, contract, false));
   }
+  notices.push(...networkTick(company));
   notices.push(...advanceMarket(company, reputation(company)));
   if (company.dead || deferSolvency) return notices;
   if (company.cash < 0) {
@@ -484,12 +488,13 @@ export function fixAero(company: Company, key: string, mode: FailureMode): Actio
 }
 
 /** Work out a re-tune now, from what is known; it takes effect when the office finishes it. */
-export function retuneSpec(company: Company, key: string, target: { contract: string } | { mission: Mission }): TaskSpec {
+export function retuneSpec(company: Company, key: string, target: { contract: string } | { mission: Mission } | { deploy: number }): TaskSpec {
   const design = designOf(company, key);
   const contract = "contract" in target ? contractOf(company, target.contract) : null;
   // A crew flight carries the abort tower too: tune for what really flies.
-  const loaded = contract?.kind === "crew" ? withCapsule(design) : contract ? { ...design, payloadMass: contract.payloadMass } : design;
-  const mission = contract?.mission ?? (target as { mission: Mission }).mission;
+  const loaded =
+    contract?.kind === "crew" ? withCapsule(design) : contract ? { ...design, payloadMass: contract.payloadMass } : "deploy" in target ? { ...design, payloadMass: batchMass(target.deploy) } : design;
+  const mission = contract?.mission ?? ("deploy" in target ? networkMission() : (target as { mission: Mission }).mission);
   const { vehicle, text } = retuneFromTests(company.campaign, loaded, mission);
   return { kind: "retune", design: key, pitchProgram: vehicle.pitchProgram, text };
 }
@@ -669,14 +674,22 @@ export function nextBooster(company: Company, key: string, contract: Contract | 
   return { serial: null, flight: 1, proven: proven.length, fresh, cautious };
 }
 
-export function fly(company: Company, key: string, target: ({ contract: string } | { mission: Mission; abortTest?: boolean }) & { newBooster?: boolean }): FlightReport {
+export function fly(company: Company, key: string, target: ({ contract: string } | { mission: Mission; abortTest?: boolean } | { deploy: number }) & { newBooster?: boolean }): FlightReport {
   alive(company);
   const design = designOf(company, key);
   const ready = readyDay(company, key);
   if (ready === null) throw new Error(`No ${design.name} built. Build one first.`);
   const contract = "contract" in target ? contractOf(company, target.contract) : null;
   if (contract && !company.accepted.includes(contract.id)) throw new Error(`"${contract.title}" isn't signed.`);
-  const mission = contract?.mission ?? (target as { mission: Mission }).mission;
+  // A batch of the company's own satellites for its network.
+  const deploy = "deploy" in target ? target.deploy : 0;
+  if ("deploy" in target) {
+    if (!company.network) throw new Error("Charter the network first.");
+    if (!Number.isInteger(deploy) || deploy < 1) throw new Error("Launch at least one satellite.");
+    if (company.network.stored < deploy) throw new Error(`Only ${company.network.stored} satellite${company.network.stored === 1 ? "" : "s"} delivered and waiting.`);
+  }
+  const mission = contract?.mission ?? (deploy > 0 ? networkMission() : (target as { mission: Mission }).mission);
+
   const abortTest = "abortTest" in target && target.abortTest === true;
   const crewed = contract?.kind === "crew";
   const needs = contract ? requiredLicence(contract) : missionLicence(mission);
@@ -696,7 +709,7 @@ export function fly(company: Company, key: string, target: ({ contract: string }
     }
   }
   // The capsule rides under its abort tower when people could be aboard, or to prove the tower.
-  const vehicle = crewed || abortTest ? withCapsule(design) : { ...design, payloadMass: contract?.payloadMass ?? design.payloadMass };
+  const vehicle = crewed || abortTest ? withCapsule(design) : { ...design, payloadMass: contract?.payloadMass ?? (deploy > 0 ? batchMass(deploy) : design.payloadMass) };
 
   // A recoverable booster flies under a serial: one that has flown if one is stacked, unless the customer won't have it.
   const reusable = !!design.geometry?.recovery && design.stages.length > 1;
@@ -719,6 +732,7 @@ export function fly(company: Company, key: string, target: ({ contract: string }
 
   const notices = [...early, ...charge(company, "launch", COSTS.launchFee, COSTS.padDays, `${design.name} launch`, { deferSolvency: true })];
   company.inventory[key]! -= 1;
+  if (deploy > 0) company.network!.stored -= deploy;
   // The day's wind, and the attitude loop as built and as testing has corrected it.
   const gncTruth = vehicle.control ? company.campaign.gncTruth?.[vehicle.name] : undefined;
   let result = simulateAscent(vehicle, mission, {
@@ -772,6 +786,19 @@ export function fly(company: Company, key: string, target: ({ contract: string }
   const orbitedBefore = (company.experience[key]?.orbits ?? 0) > 0;
   learnFromFlight(company.campaign, vehicle, result);
   recordExperience(company, key, vehicle, result);
+
+  if (deploy > 0) {
+    const inSpec = result.outcome === "orbit" && (result.summary.insertion?.inSpec ?? false);
+    if (result.outcome === "orbit") {
+      deploySats(company, deploy, inSpec);
+      lines.push(
+        "",
+        inSpec
+          ? `${deploy} network satellite${deploy === 1 ? "" : "s"} in service: ${working(company.network, company.day)} working.`
+          : `${deploy} network satellite${deploy === 1 ? "" : "s"} reached orbit out of spec and spend half their fuel getting to their slots: ${working(company.network, company.day)} working.`,
+      );
+    } else lines.push("", `${deploy} network satellite${deploy === 1 ? "" : "s"} lost with the rocket.`);
+  }
 
   if (result.outcome === "orbit" && company.firstOrbitDay === null) {
     company.firstOrbitDay = company.day;
@@ -1038,6 +1065,8 @@ export function summary(company: Company): string {
     overhead: "Overhead",
     payout: "Contract payouts",
     penalty: "Penalties",
+    satellites: "Network satellites",
+    network: "Network service",
   };
   lines.push("  Money:");
   for (const [category, amount] of totals) lines.push(`    ${labels[category].padEnd(18)} ${money(amount).padStart(9)}`);

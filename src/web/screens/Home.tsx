@@ -33,7 +33,7 @@ function statusesOf(company: Company): FlightStatus[] {
 }
 
 /** A short tag for what each next-up item is about, in the part tree's manner. */
-const TAGS: Record<string, string> = { forecast: "FCST", shape: "AERO", engine: "ENG", licence: "LIC", work: "BID", build: "BLD" };
+const TAGS: Record<string, string> = { forecast: "FCST", shape: "AERO", engine: "ENG", licence: "LIC", work: "BID", build: "BLD", network: "NET" };
 const tagOf = (key: string) => TAGS[key.split(":")[0]!] ?? key.slice(0, 4).toUpperCase();
 
 /** Home › Today: what needs the player, the signed flights, and the campus. */

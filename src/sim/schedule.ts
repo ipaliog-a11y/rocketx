@@ -8,6 +8,7 @@ import { ABORT_FIXES, ABORT_FLAW_LABELS, CAPSULE, fixAbortFlaw, newCapsule, PAD_
 import { designEngine, sameDesign, type EngineDesign } from "./enginePhysics.ts";
 import { proofQuote, rollStructureTruths } from "./structures.ts";
 import { MATERIALS } from "./geometry.ts";
+import { charterNetwork, charterProblem, NETWORK } from "./network.ts";
 import { rollGncTruth } from "./control.ts";
 import { boosterCost, REFURB, type RefurbDepth } from "./fleet.ts";
 import { GNC_TEST_LABELS, gncTestBlocked, gncTestQuote, runGncTest, type GncTest } from "./gncTests.ts";
@@ -85,6 +86,7 @@ export type TaskSpec =
   | { kind: "retune"; design: string; pitchProgram: Vehicle["pitchProgram"]; text: string }
   | { kind: "licence"; tier: Licence }
   | { kind: "capsule" }
+  | { kind: "charter" }
   | { kind: "pad-abort" }
   | { kind: "proof"; design: string }
   | { kind: "gnc"; design: string; test: GncTest }
@@ -245,6 +247,11 @@ export function describeTask(company: Company, spec: TaskSpec): Omit<Task, "id" 
       const missing = next.requirements.filter((r) => !r.met);
       if (missing.length > 0) throw new Error(`The regulator wants: ${missing.map((r) => r.text.toLowerCase()).join("; ")}.`);
       return { track: "regulator", title: `${LICENCE_LABELS[next.tier]} license review`, cost: next.fee, days: next.days, reads: [], writes: ["licence"] };
+    }
+    case "charter": {
+      const problem = charterProblem(company);
+      if (problem) throw new Error(problem);
+      return { track: "office", title: "Charter the network", cost: NETWORK.charter.cost, days: NETWORK.charter.days, reads: [], writes: ["network"] };
     }
     case "capsule": {
       if (company.capsule || pendingOf(company, "capsule").length > 0) throw new Error("The company already has a capsule programme.");
@@ -562,6 +569,13 @@ function effect(company: Company, task: Task): { summary: string; text: string; 
     case "licence":
       company.licence = spec.tier;
       return { summary: `${LICENCE_LABELS[spec.tier]} license granted.`, text: `${LICENCE_LABELS[spec.tier]} license granted on day ${company.day}.`, tone: "good" };
+    case "charter":
+      charterNetwork(company);
+      return {
+        summary: "Network chartered.",
+        tone: "good",
+        text: `The network is chartered: a ${NETWORK.satMass} kg satellite bus and the ground segment, for a constellation at ${NETWORK.km} km, ${NETWORK.inclination}°. Order satellites, then launch them. Service starts with ${NETWORK.minimum} working and is full at ${NETWORK.planned}; ground operations cost $${NETWORK.operations}k a month from today.`,
+      };
     case "capsule":
       company.capsule = newCapsule(company.seed, company.day);
       return {

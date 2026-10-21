@@ -16,6 +16,8 @@ export const LABELS: Record<Category, string> = {
   overhead: "Payroll",
   payout: "Contract payouts",
   penalty: "Penalties",
+  satellites: "Network satellites",
+  network: "Network service",
 };
 
 function tagText(tag: Tag): string {

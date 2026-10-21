@@ -16,6 +16,7 @@ import {
   refusesFlightProven,
   reputation,
   retune,
+  retuneSpec,
   tunnel,
   wait,
   type Company,
@@ -37,6 +38,7 @@ import { flightWindSeed, rollWind } from "./sim/wind.ts";
 import { book, designSpec, runTask } from "./sim/schedule.ts";
 import type { VehicleSpec } from "./sim/builder.ts";
 import type { GncTest } from "./sim/gncTests.ts";
+import { charterProblem, NETWORK, orderSatellites, paperCapacity, working } from "./sim/network.ts";
 
 /**
  * Balance play-testing. Bots play whole company runs and report how they
@@ -78,6 +80,12 @@ const RETIRE_AT = 0.85;
 const MOVE_CUSHION = 4_000;
 /** Each time a bot met era work its fleet couldn't carry: whether it drew a rocket for it, and if not why. */
 const moveUps: Array<{ day: number; payload: number; drawn: boolean; why?: string }> = [];
+/** Extra cash a bot keeps beyond the network's charter, and beyond a satellite order or a launch for it, $k. */
+const CHARTER_CUSHION = 14_000;
+const NETWORK_CUSHION = 12_000;
+/** What the networks did, over every run of a policy. */
+const networkRuns = { batches: 0, deployed: 0, lost: 0, runs: [] as Array<{ chartered: number; service?: number; working: number; income: number; spent: number; rockets: number }> };
+
 /** The day each run's market reached era 2 and era 3. */
 const eraDays: Array<{ two?: number; three?: number }> = [];
 /** Era work each run delivered. */
@@ -358,6 +366,8 @@ function play(seed: number, policy: Policy): Outcome {
   const triedMove = new Set<string>();
   // A heavier rocket in the drawing office, by name.
   let drawing: string | null = null;
+  /** What the network's launches cost in rockets, $k. */
+  let netRockets = 0;
 
   // Orbital work until the horizon: bid on what's posted, wait for more,
   // and buy heritage with a demonstration flight if nobody will sign.
@@ -403,6 +413,51 @@ function play(seed: number, policy: Policy): Outcome {
             if (booked) drawing = name;
             moveUps.push({ day: company.day, payload: job.payloadMass, drawn: booked });
           } else moveUps.push({ day: company.day, payload: job.payloadMass, drawn: false, why: pick ? "cash" : "no engine big enough" });
+        }
+      }
+    }
+    // The company's own network: charter it when affordable, keep satellites coming, fly full batches.
+    if (testing && withNetwork && !company.dead) {
+      // Not while a heavier rocket is being drawn: the two commitments together leave too little for the flights that pay for them.
+      if (!company.network && drawing === null && charterProblem(company) === null && !company.tasks.some((t) => t.spec.kind === "charter") && company.cash >= NETWORK.charter.cost + CHARTER_CUSHION) {
+        if (trace) console.log(`    network: day ${company.day}, chartering with $${(company.cash / 1000).toFixed(1)}M`);
+        guard(company, () => book(company, { kind: "charter" }));
+      }
+      const net = company.network;
+      // The rocket that puts up the most satellites for its build cost.
+      const best = fleet()
+        .map((k) => ({ k, n: paperCapacity(company.designs[k]!) }))
+        .filter((x) => x.n > 0)
+        .sort((a, b) => b.n / vehicleCost(company.designs[b.k]!).cost - a.n / vehicleCost(company.designs[a.k]!).cost)[0];
+      if (net && best) {
+        // Keep one batch on hand or coming, no more: satellites on the ground are money not earning.
+        // And never a rocket for a handful: replacements wait until half a batch is needed.
+        const live = working(net, company.day);
+        const coming = net.stored + net.orders.reduce((n, o) => n + o.count, 0);
+        const gap = NETWORK.planned - live - coming;
+        const want = Math.min(gap, best.n - coming);
+        const worth = Math.ceil(best.n / 2);
+        if (want > 0 && gap >= worth && company.cash >= want * NETWORK.satCost + NETWORK_CUSHION) {
+          if (trace) console.log(`    network: day ${company.day}, ordering ${want} (${live} working)`);
+          guard(company, () => orderSatellites(company, want));
+        }
+        const n = Math.min(best.n, net.stored, NETWORK.planned - live);
+        if (n >= worth && n >= Math.min(best.n, NETWORK.planned - live)) {
+          // Only when the rocket can be paid for with the cushion intact; a launch that happens loops back, one that can't falls through to customer work.
+          const cost = vehicleCost(company.designs[best.k]!).cost;
+          if (company.cash >= cost + NETWORK_CUSHION) {
+            guard(company, () => runTask(company, retuneSpec(company, best.k, { deploy: n })));
+            if (order(company, best.k)) {
+              const before = net.sats.length;
+              const flown = flyAndCount(company, best.k, { deploy: n });
+              if (trace) console.log(`    network: day ${company.day}, ${n} on ${best.k}, ${net.sats.length - before} up, ${working(net, company.day)} working, $${(company.cash / 1000).toFixed(1)}M`);
+              networkRuns.batches += 1;
+              networkRuns.deployed += net.sats.length - before;
+              networkRuns.lost += n - (net.sats.length - before);
+              netRockets += cost;
+              if (flown) continue;
+            }
+          }
         }
       }
     }
@@ -472,6 +527,10 @@ function play(seed: number, policy: Policy): Outcome {
     });
   }
   eraDays.push({ two: company.market?.since[2], three: company.market?.since[3] });
+  if (company.network) {
+    const sum = (cat: string) => company.ledger.filter((e) => e.category === cat).reduce((a, e) => a + e.amount, 0);
+    networkRuns.runs.push({ chartered: company.network.charteredDay, service: company.network.serviceDay, working: working(company.network, company.day), income: sum("network"), spent: -sum("satellites"), rockets: netRockets });
+  }
   eraDelivered.push(company.board.filter((c) => (c.kind === "bus" || c.kind === "platform") && company.closed[c.id] === "delivered").length);
   const statuses = Object.values(company.closed);
   return {
@@ -502,6 +561,8 @@ const policies = (option("--policy") ?? "careful,cheap,reckless,greedy").split("
 const verbose = args.includes("--verbose");
 /** --no-move: bots never draw a heavier rocket for era work, to compare against moving up. */
 const moveUp = !args.includes("--no-move");
+/** --network: testing bots charter the company's own network at era 2 and keep it supplied. */
+const withNetwork = args.includes("--network");
 if (option("--horizon")) HORIZON = Number(option("--horizon"));
 const trace = args.includes("--trace");
 const only = option("--seed");
@@ -512,6 +573,7 @@ for (const policy of policies) {
   fleetRuns.length = 0;
   moveUps.length = 0;
   eraDays.length = 0;
+  Object.assign(networkRuns, { batches: 0, deployed: 0, lost: 0, runs: [] });
   eraDelivered.length = 0;
   boosterLosses.clear();
   const runs: Outcome[] = [];
@@ -526,6 +588,13 @@ for (const policy of policies) {
   console.log(`  ${[...notes].map(([n, k]) => `${n}: ${k}`).join("; ")}`);
   if (losses.size > 0) console.log(`  vehicles lost: ${[...losses].map(([n, k]) => `${n} ×${k}`).join(", ")}`);
   if (extraTests.length > 0) console.log(`  proof and GNC tests: median $${median(extraTests).toFixed(0)}k a run`);
+  if (networkRuns.runs.length > 0) {
+    const r = networkRuns.runs;
+    const served = r.filter((x) => x.service !== undefined);
+    console.log(
+      `  network: chartered in ${r.length} runs (median day ${median(r.map((x) => x.chartered))}), in service in ${served.length} (median day ${median(served.map((x) => x.service!))}); ${networkRuns.batches} batches, ${networkRuns.deployed} satellites up, ${networkRuns.lost} lost at launch; median at the end ${median(r.map((x) => x.working))} working, income $${(median(r.map((x) => x.income)) / 1000).toFixed(1)}M against $${(median(r.map((x) => x.spent)) / 1000).toFixed(1)}M on satellites and operations and $${(median(r.map((x) => x.rockets)) / 1000).toFixed(1)}M on rockets; the network's own books (less the charter) at $${(median(r.map((x) => x.income - x.spent - x.rockets - NETWORK.charter.cost)) / 1000).toFixed(1)}M, paid back in ${r.filter((x) => x.income >= x.spent + x.rockets + NETWORK.charter.cost).length}`,
+    );
+  }
   {
     const two = eraDays.filter((e) => e.two !== undefined).map((e) => e.two!);
     const three = eraDays.filter((e) => e.three !== undefined).map((e) => e.three!);
