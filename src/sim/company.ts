@@ -115,7 +115,16 @@ export type Company = {
   market?: MarketState;
   /** The company's own constellation, once chartered. */
   network?: Network;
+  /** How the company died: out of cash, or unable to afford another try at orbit. */
+  deathCause?: "bankrupt" | "stranded";
+  /** A run that ended alive: retired by the player, or closed at the board's review. */
+  ended?: { day: number; how: "retired" | "review" };
+  /** Set once the run is in the archive, so it goes in once. */
+  archived?: boolean;
 };
+
+/** The board's review closes every run on its fifth anniversary. */
+export const REVIEW_DAY = 5 * 365;
 
 export function newCompany(
   seed: number,
@@ -169,8 +178,23 @@ export function reputation(company: Company): number {
 
 const money = (k: number) => `${k < 0 ? "−" : ""}$${(Math.abs(k) / 1000).toFixed(2)}M`;
 
-function alive(company: Company): void {
+/** Whether the run is over: the company died, retired, or met the board's review. */
+export function runOver(company: Company): boolean {
+  return company.dead || company.ended !== undefined;
+}
+
+/** Throws once the run is over: nothing more can be done. */
+export function alive(company: Company): void {
   if (company.dead) throw new Error("The company is gone. Its cash ran out.");
+  if (company.ended?.how === "retired") throw new Error("The run is over: the company retired.");
+  if (company.ended) throw new Error("The run is over: the board's five-year review closed the books.");
+}
+
+/** Retire the company: the run ends today, alive, and goes to the archive. */
+export function retire(company: Company): ActionResult {
+  alive(company);
+  company.ended = { day: company.day, how: "retired" };
+  return { text: `${company.name} retired on day ${company.day}.`, notices: [] };
 }
 
 /** Move money and time, then settle anything the new date makes due. Returns notices. */
@@ -188,9 +212,10 @@ type SettleOptions = { deferSolvency?: boolean };
  * what it found lands on its own day, and the next job can start.
  */
 export function settleDays(company: Company, days: number, options: SettleOptions = {}): string[] {
-  const target = company.day + days;
+  // Time stops at the board's review.
+  const target = Math.min(company.day + days, Math.max(company.day, REVIEW_DAY));
   const notices = runTracks(company);
-  while (!company.dead) {
+  while (!runOver(company)) {
     const next = nextEvent(company);
     const to = next !== null && next > company.day && next < target ? next : target;
     const step = to - company.day;
@@ -201,7 +226,7 @@ export function settleDays(company: Company, days: number, options: SettleOption
       company.ledger.push({ day: company.day, category: "overhead", amount: -overhead, note: `${step} days` });
     }
     notices.push(...tick(company, options.deferSolvency));
-    if (company.dead) break;
+    if (runOver(company)) break;
     notices.push(...runTracks(company));
     if (company.day >= target) break;
   }
@@ -245,12 +270,17 @@ function tick(company: Company, deferSolvency = false): string[] {
   if (company.dead || deferSolvency) return notices;
   if (company.cash < 0) {
     company.dead = true;
+    company.deathCause = "bankrupt";
     notices.push(`Day ${company.day}: the cash is gone. The company is dead.`);
   } else if (stranded(company)) {
     company.dead = true;
+    company.deathCause = "stranded";
     notices.push(
       `Day ${company.day}: with ${money(company.cash)} and nothing built that can reach orbit, the company can't afford another try at LEO. It is finished.`,
     );
+  } else if (!company.ended && company.day >= REVIEW_DAY) {
+    company.ended = { day: company.day, how: "review" };
+    notices.push(`Day ${company.day}: five years on, the board reviews the company and closes the books.`);
   }
   return notices;
 }
@@ -1012,7 +1042,7 @@ function describeForecast(contract: Contract, forecast: FlightResult): string {
   return `${(orbit.periapsis / 1000).toFixed(0)} × ${(orbit.apoapsis / 1000).toFixed(0)} km, ${ins.inSpec ? "in spec" : "out of spec"}, ${Math.round(forecast.summary.propellantMargin)} kg margin.`;
 }
 
-function describeTag(tag: Tag): string {
+export function describeTag(tag: Tag): string {
   switch (tag) {
     case "no-orbit":
       return "a payload that never reached orbit";
@@ -1047,7 +1077,11 @@ export function status(company: Company): string {
 /** The end-of-run account: where the money went and what the record says. */
 export function summary(company: Company): string {
   const lines = [
-    company.dead ? `THE COMPANY DIED ON DAY ${company.day}.` : `DAY ${company.day}: STILL IN BUSINESS.`,
+    company.dead
+      ? `THE COMPANY DIED ON DAY ${company.day}.`
+      : company.ended
+        ? `DAY ${company.ended.day}: ${company.ended.how === "retired" ? "RETIRED" : "CLOSED AT THE BOARD'S REVIEW"}.`
+        : `DAY ${company.day}: STILL IN BUSINESS.`,
     `  Cash ${money(company.cash)}, reputation ${reputation(company)}.`,
     company.firstOrbitDay === null ? "  Never reached orbit." : `  First orbit on day ${company.firstOrbitDay}.`,
   ];
