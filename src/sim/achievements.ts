@@ -50,6 +50,7 @@ export function achievements(company: Company): Achievement[] {
     { id: "series", title: "Repeat customer", text: "Deliver 3 launches in one series.", earned: bestSeries >= 3, progress: [Math.min(bestSeries, 3), 3] },
     { id: "clean-streak", title: "Boringly reliable", text: "Reach orbit 3 times in a row without a failure.", earned: cleanOrbits >= 3, progress: [Math.min(cleanOrbits, 3), 3] },
     { id: "orbits-10", title: "Old hands", text: "Reach orbit 10 times.", earned: orbits.length >= 10, progress: [Math.min(orbits.length, 10), 10] },
+    { id: "network", title: "In service", text: "Bring the company's own network into service.", earned: company.network?.serviceDay !== undefined, day: company.network?.serviceDay },
   ];
   return list;
 }
