@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { achievements, type Achievement } from "../../sim/achievements.ts";
-import { reputation, type Category, type Company as CompanyState } from "../../sim/company.ts";
+import { reputation, REVIEW_DAY, type Category, type Company as CompanyState } from "../../sim/company.ts";
 import { ERAS, marketOf } from "../../sim/market.ts";
 import { LICENCE_LABELS, LICENCE_ORDER, licenceRank, nextLicence } from "../../sim/licence.ts";
 import { Chip, Stack, Tabs } from "../components/Bits.tsx";
-import { game } from "../game.ts";
+import { game, useGame } from "../game.ts";
+import { ArchiveTab } from "./Archive.tsx";
 import { licenceJob } from "../jobs.ts";
 import { money, shortDate, signed } from "../format.ts";
 import { LABELS, LedgerTab } from "./LedgerTab.tsx";
@@ -15,7 +16,7 @@ import type { Route } from "../nav.ts";
 import { Today } from "./Home.tsx";
 import { Info } from "../components/Info.tsx";
 
-type HomeTab = "today" | "company" | "work" | "ledger";
+type HomeTab = "today" | "company" | "work" | "ledger" | "archive";
 
 /** What each tab is for, behind the ⓘ beside the company's name. */
 const HOME_INTROS: Record<HomeTab, string> = {
@@ -23,6 +24,7 @@ const HOME_INTROS: Record<HomeTab, string> = {
   company: "Where the company stands: its numbers, the license ladder and what the next license wants, where the money went, the fleet and achievements.",
   work: "Each track works one job at a time per unit, and the tracks work side by side. Book work with “Add to plan”, then advance the calendar once: results land on the day each job finishes. Jobs on the same hardware keep the order they were booked in.",
   ledger: "Every payment in and out, and every flight and its outcome.",
+  archive: `What outlives the company: every run that ended, its score and post-mortem, achievements across runs, and lessons by kind of part. Hidden truths are rolled again for every company, so the archive keeps how often each kind of part showed its problems, never a measured number. A run ends when the company dies, retires, or meets the board's review on day ${REVIEW_DAY}.`,
 };
 
 /** Spend categories, in the order and colours the money bar uses. */
@@ -44,9 +46,10 @@ const SPEND: Array<[Category, string]> = [
  * campus; the company's standing; the work on its tracks; the ledger.
  */
 export function Home({ company, route }: { company: CompanyState; route: Route }) {
-  const first = (["today", "company", "work", "ledger"] as const).find((t) => t === route.tab) ?? "today";
+  const first = (["today", "company", "work", "ledger", "archive"] as const).find((t) => t === route.tab) ?? "today";
   const [tab, setTab] = useState<HomeTab>(first);
   const list = achievements(company);
+  const { archive } = useGame();
 
   return (
     <div className="screen">
@@ -61,6 +64,7 @@ export function Home({ company, route }: { company: CompanyState; route: Route }
             ["company", "Company"],
             ["work", company.tasks.length > 0 ? `Work · ${company.tasks.length}` : "Work"],
             ["ledger", "Ledger"],
+            ["archive", archive.played > 0 ? `Archive · ${archive.played}` : "Archive"],
           ]}
         />
       </div>
@@ -68,13 +72,14 @@ export function Home({ company, route }: { company: CompanyState; route: Route }
       {tab === "company" && <Overview company={company} list={list} />}
       {tab === "work" && <Work company={company} />}
       {tab === "ledger" && <LedgerTab company={company} />}
+      {tab === "archive" && <ArchiveTab archive={archive} list={list} />}
     </div>
   );
 }
 
 function NameEditor({ company, info }: { company: CompanyState; info: string }) {
   const [editing, setEditing] = useState(false);
-  const [quitting, setQuitting] = useState(false);
+  const [quitting, setQuitting] = useState<"retire" | "quit" | null>(null);
   const [draft, setDraft] = useState(company.name);
   if (editing) {
     return (
@@ -108,20 +113,35 @@ function NameEditor({ company, info }: { company: CompanyState; info: string }) 
         <button type="button" className="btn quiet" style={{ minHeight: 36 }} onClick={() => (setDraft(company.name), setEditing(true))}>
           Rename
         </button>
-        {quitting ? (
+        {quitting === "retire" ? (
           <span className="actions" style={{ gap: 8 }}>
-            <span className="soft">Abandon this run?</span>
+            <span className="soft">Retire now and score the run?</span>
+            <button type="button" className="btn primary" style={{ minHeight: 36 }} onClick={() => (setQuitting(null), game.retire())}>
+              Retire
+            </button>
+            <button type="button" className="btn" style={{ minHeight: 36 }} onClick={() => setQuitting(null)}>
+              Keep playing
+            </button>
+          </span>
+        ) : quitting === "quit" ? (
+          <span className="actions" style={{ gap: 8 }}>
+            <span className="soft">{company.day > 0 ? "Abandon this run? It goes into the archive as retired." : "Abandon this run?"}</span>
             <button type="button" className="btn" style={{ minHeight: 36 }} onClick={() => game.quit()}>
               Abandon
             </button>
-            <button type="button" className="btn" style={{ minHeight: 36 }} onClick={() => setQuitting(false)}>
+            <button type="button" className="btn" style={{ minHeight: 36 }} onClick={() => setQuitting(null)}>
               Keep playing
             </button>
           </span>
         ) : (
-          <button type="button" className="btn quiet" style={{ minHeight: 36 }} onClick={() => setQuitting(true)}>
-            New run
-          </button>
+          <>
+            <button type="button" className="btn quiet" style={{ minHeight: 36 }} onClick={() => setQuitting("retire")}>
+              Retire
+            </button>
+            <button type="button" className="btn quiet" style={{ minHeight: 36 }} onClick={() => setQuitting("quit")}>
+              New run
+            </button>
+          </>
         )}
       </div>
       <span className="muted">
@@ -150,7 +170,7 @@ function Overview({ company, list }: { company: CompanyState; list: Achievement[
     <>
       <dl className="ro-row">
         <Ro label="Cash" value={(company.cash / 1000).toFixed(2)} unit="$M" tone={company.cash < 2_000 ? "bad" : undefined} bar={peak > 0 ? company.cash / peak : undefined} sub={`peak ${money(peak)}`} />
-        <Ro label="Day" value={String(company.day)} sub={shortDate(company.day).toUpperCase()} />
+        <Ro label="Day" value={String(company.day)} sub={company.day >= REVIEW_DAY - 365 ? `REVIEW ON D ${REVIEW_DAY}` : shortDate(company.day).toUpperCase()} tone={company.day >= REVIEW_DAY - 90 ? "bad" : undefined} />
         <Ro label="Reputation" value={signed(rep)} tone={rep > 0 ? "good" : rep < 0 ? "bad" : undefined} bar={(rep + 5) / 15} sub={marketSub(company)} />
         <Ro label="License" value={LICENCE_LABELS[company.licence]} word sub={nextTier ? `${LICENCE_LABELS[nextTier].toLowerCase()} next` : "every tier held"} />
         <Ro label="Built" value={String(built)} sub="rockets" />
@@ -386,7 +406,7 @@ function FleetCard({ company }: { company: CompanyState }) {
   );
 }
 
-function Achievements({ list }: { list: Achievement[] }) {
+export function Achievements({ list }: { list: Achievement[] }) {
   return (
     <section className="achievements" aria-label="Achievements">
       {list.map((a) => (

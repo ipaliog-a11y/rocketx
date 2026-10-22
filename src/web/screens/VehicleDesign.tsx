@@ -11,7 +11,8 @@ import { landingMargin, type LandingMargin } from "../../sim/landing.ts";
 import { recoveryMass, type RecoveryMode } from "../../sim/recovery.ts";
 import { CurveSlider, PanelHeader, Readout, Stamp, TitleBlock, Verb } from "../design/kit.tsx";
 import { money } from "../format.ts";
-import { game } from "../game.ts";
+import { game, useGame } from "../game.ts";
+import { materialLesson } from "../../sim/archive.ts";
 import { buildJob, designJob, proofJob } from "../jobs.ts";
 import { IMU, type ImuGrade } from "../../sim/control.ts";
 import { reducedMotion } from "../motion.ts";
@@ -59,6 +60,7 @@ const ORBITS = [
 ];
 
 export function VehicleDesign({ company, drawn, job }: { company: Company; drawn: (key: string) => void; job?: string }) {
+  const { archive } = useGame();
   const go = useGo();
   const keys = Object.keys(company.designs);
   const id = (key: string) => `VEH-${String(keys.indexOf(key) + 1).padStart(2, "0")}`;
@@ -437,6 +439,9 @@ export function VehicleDesign({ company, drawn, job }: { company: Company; drawn
                     <span className="note">{MATERIALS[m].qualify > 0 ? `QUALIFY ${money(MATERIALS[m].qualify)}` : "QUALIFIED"}</span>
                   </label>
                 ))}
+                {materialLesson(archive, geo.stages[stageIndex]!.material) && (
+                  <span className="note archive-note">ARCHIVE · {materialLesson(archive, geo.stages[stageIndex]!.material)}</span>
+                )}
               </fieldset>
               <div style={{ display: "flex", flexDirection: "column" }}>
                 {stageIndex === d.spec.stages.length - 1 && d.spec.stages.length < 3 && (

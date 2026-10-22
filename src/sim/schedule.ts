@@ -33,7 +33,7 @@ import { flowSeparates } from "./engine.ts";
 import { RETUNE_COST } from "./tuning.ts";
 import { AERO_FACILITIES, applyAeroFix, BUFFET_FIX, tunnelRun, type AeroFacility } from "./tunnel.ts";
 import type { Vehicle } from "./vehicle.ts";
-import { developedParts, REFINE, reputation, settleDays, type ActionResult, type Category, type Company } from "./company.ts";
+import { alive, developedParts, REFINE, reputation, runOver, settleDays, type ActionResult, type Category, type Company } from "./company.ts";
 
 /**
  * The company's work, on tracks that run side by side: the sea-level stand,
@@ -344,7 +344,7 @@ export function designSpec(company: Company, spec: VehicleSpec): TaskSpec {
 
 /** Book a job: paid now, started when its track is free. */
 export function book(company: Company, spec: TaskSpec): { task: Task; notices: string[] } {
-  if (company.dead) throw new Error("The company is gone. Its cash ran out.");
+  alive(company);
   const d = describeTask(company, spec);
   const task: Task = { id: company.nextTask++, spec, bookedDay: company.day, ...d };
   company.tasks.push(task);
@@ -371,7 +371,7 @@ export function cancelTask(company: Company, id: number): ActionResult {
 export function runTask(company: Company, spec: TaskSpec, followUps = true): ActionResult & { done: TaskDone[] } {
   const { task, notices } = book(company, spec);
   const finishedFrom = company.done.length;
-  while (!company.dead && company.tasks.some((t) => t.id === task.id || (followUps && t.parent === task.id))) {
+  while (!runOver(company) && company.tasks.some((t) => t.id === task.id || (followUps && t.parent === task.id))) {
     const next = nextEvent(company);
     if (next === null) break;
     notices.push(...settleDays(company, next - company.day));
@@ -384,7 +384,7 @@ export function runTask(company: Company, spec: TaskSpec, followUps = true): Act
 
 /** Buy another unit for a track: paid now, working once it is set up. */
 export function buyUnit(company: Company, track: Track): ActionResult {
-  if (company.dead) throw new Error("The company is gone. Its cash ran out.");
+  alive(company);
   const next = TRACKS[track].extra[company.units[track].length - 1];
   if (!next) throw new Error(`The company can't add to its ${TRACKS[track].name.toLowerCase()}.`);
   company.units[track].push(company.day + next.days);

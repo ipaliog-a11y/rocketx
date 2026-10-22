@@ -982,3 +982,32 @@ table.spec.compact td { padding-top: 8px; padding-bottom: 8px; }
 .service-days { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); font-size: 10px; color: var(--muted); text-align: center; padding-top: 4px; }
 .service-days span { overflow: hidden; white-space: nowrap; }
 @media (max-width: 700px) { .service-days span:not(:nth-child(3n + 1)) { visibility: hidden; } .service-days span { overflow: visible; } }
+
+/* Run report: the end of a run, scored, with its autopsy and what goes into the archive. */
+.overlay .card.run-report { max-width: 920px; gap: 16px; }
+.run-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.run-head h2 { margin: 0; font-size: 30px; text-wrap: balance; }
+.run-score { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.run-score > span { font-size: 44px; line-height: 1; color: var(--action); font-variant-numeric: tabular-nums; }
+.run-score small { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.08em; }
+.run-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; }
+.run-cols > section { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.run-lines { margin: 0; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 6px; color: var(--text-soft); }
+.run-tags { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.run-tags li { border: 1px solid var(--line-strong); padding: 3px 8px; font-size: 13px; }
+.run-tags li.fresh { border-color: var(--good-line); background: var(--good-bg); }
+.run-tags small { font-family: var(--mono); color: var(--good); font-size: 10px; }
+.run-note { font-size: 13px; }
+.run-record summary { cursor: pointer; color: var(--text-soft); font-size: 13px; }
+.run-record pre { margin-top: 8px; }
+@media (max-width: 700px) {
+  .run-cols { grid-template-columns: minmax(0, 1fr); }
+  .run-score { align-items: flex-start; }
+}
+
+/* Title screen: the last run, from the archive. */
+.title-archive { display: flex; flex-direction: column; gap: 6px; color: #e2e3ea; font-size: 14px; }
+.title-archive strong { font-size: 16px; color: #f3f1ec; }
+.title-archive ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; color: #c9cbd6; font-size: 13px; }
+.title-archive-sub { font-size: 13px; color: #a9abb8; }
+.archive-note { display: block; margin-top: 6px; text-transform: none; letter-spacing: 0; color: var(--text-soft); }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { droppedOldSave, game } from "../game.ts";
+import { droppedOldSave, game, useGame } from "../game.ts";
+import { bestRun, END_LABELS } from "../../sim/archive.ts";
 import { Icon, type IconName } from "../components/Icon.tsx";
 import { reducedMotion } from "../motion.ts";
 import type { PadScene } from "../scene/launchPad.ts";
@@ -15,6 +16,9 @@ const STEPS: Array<[IconName, string]> = [
 /** The title screen: the pad at dusk under changing cameras, a name, and a button. */
 export function NewGame() {
   const [seed, setSeed] = useState(() => 1 + Math.floor(Math.random() * 9999));
+  const { archive } = useGame();
+  const last = archive.runs.at(-1);
+  const best = bestRun(archive);
   const [name, setName] = useState("");
   const [shots, setShots] = useState<string[]>([]);
   const [shot, setShot] = useState(0);
@@ -83,14 +87,34 @@ export function NewGame() {
         }}
       >
         {droppedOldSave && <span className="warn">Your earlier run came from an older version and can't be carried over.</span>}
-        <ul className="title-steps" aria-label="What you do">
-          {STEPS.map(([icon, text]) => (
-            <li key={text}>
-              <Icon name={icon} />
-              {text}
-            </li>
-          ))}
-        </ul>
+        {last ? (
+          <section className="title-archive" aria-label="The archive">
+            <span className="title-field">
+              Archive · {archive.played} run{archive.played === 1 ? "" : "s"} · best {best?.score ?? 0}
+            </span>
+            <strong>
+              Last time: {last.outcome}, {last.score}
+            </strong>
+            <span className="title-archive-sub">
+              {last.name} · {END_LABELS[last.how].toLowerCase()} on day {last.endDay}
+            </span>
+            <ul>
+              {last.postMortem.slice(0, 3).map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+            <span className="title-archive-sub">New hardware, new faults: the lessons from your tests come with you.</span>
+          </section>
+        ) : (
+          <ul className="title-steps" aria-label="What you do">
+            {STEPS.map(([icon, text]) => (
+              <li key={text}>
+                <Icon name={icon} />
+                {text}
+              </li>
+            ))}
+          </ul>
+        )}
         <label className="stack" style={{ gap: 6 }}>
           <span className="title-field">Name your company</span>
           <input value={name} maxLength={40} placeholder={DEFAULT_NAME} onChange={(e) => setName(e.target.value)} className="name-input" />

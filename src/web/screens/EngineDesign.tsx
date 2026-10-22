@@ -24,7 +24,8 @@ import {
   type PartId,
 } from "../engineDesign.ts";
 import { money } from "../format.ts";
-import { game } from "../game.ts";
+import { game, useGame } from "../game.ts";
+import { lessonFor } from "../../sim/archive.ts";
 import { developJob } from "../jobs.ts";
 import { drawingScale, EngineSchematic } from "./EngineSchematic.tsx";
 
@@ -48,6 +49,7 @@ const CHECK_LABELS: Record<LimitId, string> = {
 const NEW = "new";
 
 export function EngineDesign({ company, show }: { company: Company; show: (engine: string) => void }) {
+  const { archive } = useGame();
   const fams = families(company);
   const latest = (f: (typeof fams)[number]) => f.revisions.at(-1)!;
   const [sel, setSel] = useState<string>(() => (fams[0] ? `${fams[0].name}#${latest(fams[0]).rev}` : NEW));
@@ -103,6 +105,10 @@ export function EngineDesign({ company, show }: { company: Company; show: (engin
   const lim = Object.fromEntries(list.map((p) => [p.id, PART_LIMITS[p.id].some((id) => failing.has(id))])) as Record<PartId, boolean>;
   const current = list.find((p) => p.id === part) ?? list[0]!;
   const param = paramFor(current.id, d.parts.cycle);
+  // What past runs saw of the option this step picks.
+  const slotOf: Record<string, Slot> = { nozzle: "nozzle", chamber: "cooling", injector: "injector", feed: "cycle", turbine: "cycle" };
+  const lessonSlot = slotOf[current.id];
+  const lesson = lessonSlot ? lessonFor(archive, lessonSlot, d.parts[lessonSlot]) : null;
   const curve = useMemo(() => curveFor(current.id, parts, design), [current.id, parts, design]);
   const rev = revision?.rev ?? 0;
   const nextRev = family ? latest(family).rev + 1 : 0;
@@ -341,6 +347,14 @@ export function EngineDesign({ company, show }: { company: Company; show: (engin
           </span>
           <span className="t">{param?.info ?? "Type sets mixing loss and acoustic stability."}</span>
         </div>
+        {lesson && (
+          <div className="ed-info">
+            <span className="lbl" style={{ paddingTop: 1 }}>
+              ARCHIVE
+            </span>
+            <span className="t">{lesson}</span>
+          </div>
+        )}
         <div className="specs">
           {specRows(current.id, d, developed).map(([k, v]) => (
             <div key={k}>

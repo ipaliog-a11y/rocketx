@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { reputation, summary } from "../sim/company.ts";
+import { reputation, runOver } from "../sim/company.ts";
 import { LICENCE_LABELS } from "../sim/licence.ts";
 import { JobConfirm, JobProgress } from "./components/JobDialogs.tsx";
 import { game, useGame } from "./game.ts";
@@ -20,6 +20,7 @@ import { MilestoneBanner } from "./components/Milestone.tsx";
 import { useHold } from "./motion.ts";
 import { AdvanceButton } from "./components/AdvanceButton.tsx";
 import { HelpButton, HelpDialog } from "./components/Help.tsx";
+import { RunReport } from "./components/RunReport.tsx";
 
 /** Each place: its label, a shorter one for the phone's tab bar, and its icon. */
 const PLACES: Array<[Place, string, string, IconName]> = [
@@ -134,26 +135,12 @@ export function App() {
       </div>
 
       <HelpDialog company={company} />
-      {state.pending && !company.dead && <JobConfirm company={company} job={state.pending} />}
+      {state.pending && !runOver(company) && <JobConfirm company={company} job={state.pending} />}
       {state.progress && <JobProgress key={`progress-${state.progress.id}`} progress={state.progress} />}
       {state.moment && !state.progress && <FiringMoment key={`moment-${state.moment.id}`} moment={state.moment} />}
       {state.milestones[0] && !state.progress && !state.moment && !state.pending && !state.cinema && <MilestoneBanner key={`milestone-${state.milestones[0].id}`} milestone={state.milestones[0]} />}
 
-      {company.dead && !state.flight && (
-        <div className="overlay" role="dialog" aria-modal="true" aria-label="The run is over">
-          <div className="card">
-            <h2 className="bad" style={{ fontSize: 30 }}>
-              The company is finished
-            </h2>
-            <pre className="report">{summary(company)}</pre>
-            <div className="actions">
-              <button type="button" className="btn primary" onClick={() => game.quit()}>
-                Start a new run
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {runOver(company) && !state.flight && <RunReport company={company} archive={state.archive} />}
     </div>
     </NavContext.Provider>
   );
